@@ -16,7 +16,7 @@
           <h1 id="chapterTitle">Loading...</h1>
           <p id="chapterMeta" class="meta">Arabic, translations, tafsir, notes</p>
         </div>
-        <button id="settingsButton" class="icon-button" type="button" aria-label="Translation settings" title="Translations">⚙</button>
+        <button id="settingsButton" class="icon-button" type="button" aria-label="Reader settings" title="Reader settings">⚙</button>
       </header>
 
       <main>
@@ -51,6 +51,7 @@
             <button id="translationButton" class="pill-button" type="button">Translations</button>
             <button id="tafsirButton" class="pill-button" type="button">Tafsir</button>
             <button id="lastReadButton" class="pill-button muted" type="button">Last read</button>
+            <button id="themeButton" class="pill-button muted" type="button">Dark mode</button>
             <div class="font-controls" aria-label="Arabic text size">
               <button id="decreaseFont" class="mini-button" type="button" aria-label="Decrease Arabic text size">A-</button>
               <button id="increaseFont" class="mini-button" type="button" aria-label="Increase Arabic text size">A+</button>
@@ -85,6 +86,71 @@
         <button class="nav-item" type="button" data-view="notesView"><span class="nav-icon">✎</span><span>Notes</span></button>
       </nav>
     </div>
+
+    <dialog id="readerSettingsSheet" class="sheet settings-sheet">
+      <form method="dialog" class="sheet-inner">
+        <div class="sheet-header">
+          <div>
+            <h2>Reader Settings</h2>
+            <p id="settingsSummary">Theme, fonts, and spacing</p>
+          </div>
+          <button class="icon-button" value="close" aria-label="Close reader settings">×</button>
+        </div>
+
+        <div class="settings-grid">
+          <label class="field">
+            <span>Theme</span>
+            <select id="themeSelect">
+              <option value="light">Light</option>
+              <option value="dark">Dark</option>
+              <option value="sepia">Sepia</option>
+            </select>
+          </label>
+          <label class="field">
+            <span>Reader width</span>
+            <select id="widthSelect">
+              <option value="comfortable">Comfortable</option>
+              <option value="narrow">Narrow</option>
+              <option value="wide">Wide</option>
+            </select>
+          </label>
+          <label class="field">
+            <span>Arabic font</span>
+            <select id="arabicFontSelect">
+              <option value="uthmani">Uthmani</option>
+              <option value="naskh">Naskh</option>
+              <option value="scheherazade">Scheherazade</option>
+              <option value="serif">Classic Serif</option>
+            </select>
+          </label>
+          <label class="field">
+            <span>Translation font</span>
+            <select id="translationFontSelect">
+              <option value="system">System</option>
+              <option value="serif">Serif</option>
+              <option value="humanist">Humanist</option>
+              <option value="mono">Mono</option>
+            </select>
+          </label>
+          <label class="range-field">
+            <span>Arabic size</span>
+            <input id="arabicSizeRange" type="range" min="0.84" max="1.4" step="0.04">
+          </label>
+          <label class="range-field">
+            <span>Translation size</span>
+            <input id="translationSizeRange" type="range" min="0.9" max="1.22" step="0.04">
+          </label>
+          <label class="range-field">
+            <span>Line spacing</span>
+            <input id="lineHeightRange" type="range" min="1" max="1.24" step="0.04">
+          </label>
+          <label class="check-field">
+            <input id="compactToggle" type="checkbox">
+            <span>Compact cards</span>
+          </label>
+        </div>
+      </form>
+    </dialog>
 
     <dialog id="translationSheet" class="sheet">
       <form method="dialog" class="sheet-inner">

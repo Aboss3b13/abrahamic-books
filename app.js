@@ -11,7 +11,14 @@ const state = {
   selectedChapter: 1,
   selectedTranslations: [85],
   selectedTafsir: 169,
+  theme: "light",
+  width: "comfortable",
+  arabicFont: "uthmani",
+  translationFont: "system",
   arabicScale: 1,
+  translationScale: 1,
+  lineScale: 1,
+  compactCards: false,
   verses: [],
   notes: {},
   currentNoteKey: null,
@@ -30,9 +37,20 @@ const els = {
   translationButton: document.querySelector("#translationButton"),
   tafsirButton: document.querySelector("#tafsirButton"),
   lastReadButton: document.querySelector("#lastReadButton"),
+  themeButton: document.querySelector("#themeButton"),
   decreaseFont: document.querySelector("#decreaseFont"),
   increaseFont: document.querySelector("#increaseFont"),
   settingsButton: document.querySelector("#settingsButton"),
+  readerSettingsSheet: document.querySelector("#readerSettingsSheet"),
+  settingsSummary: document.querySelector("#settingsSummary"),
+  themeSelect: document.querySelector("#themeSelect"),
+  widthSelect: document.querySelector("#widthSelect"),
+  arabicFontSelect: document.querySelector("#arabicFontSelect"),
+  translationFontSelect: document.querySelector("#translationFontSelect"),
+  arabicSizeRange: document.querySelector("#arabicSizeRange"),
+  translationSizeRange: document.querySelector("#translationSizeRange"),
+  lineHeightRange: document.querySelector("#lineHeightRange"),
+  compactToggle: document.querySelector("#compactToggle"),
   translationSheet: document.querySelector("#translationSheet"),
   translationSearch: document.querySelector("#translationSearch"),
   translationList: document.querySelector("#translationList"),
@@ -110,11 +128,20 @@ function bindEvents() {
   });
 
   els.translationButton.addEventListener("click", () => openDialog(els.translationSheet));
-  els.settingsButton.addEventListener("click", () => openDialog(els.translationSheet));
+  els.settingsButton.addEventListener("click", () => openDialog(els.readerSettingsSheet));
   els.tafsirButton.addEventListener("click", () => openDialog(els.tafsirSheet));
   els.lastReadButton.addEventListener("click", restoreLastRead);
+  els.themeButton.addEventListener("click", toggleTheme);
   els.decreaseFont.addEventListener("click", () => changeArabicScale(-0.08));
   els.increaseFont.addEventListener("click", () => changeArabicScale(0.08));
+  els.themeSelect.addEventListener("change", () => updateReaderPref("theme", els.themeSelect.value));
+  els.widthSelect.addEventListener("change", () => updateReaderPref("width", els.widthSelect.value));
+  els.arabicFontSelect.addEventListener("change", () => updateReaderPref("arabicFont", els.arabicFontSelect.value));
+  els.translationFontSelect.addEventListener("change", () => updateReaderPref("translationFont", els.translationFontSelect.value));
+  els.arabicSizeRange.addEventListener("input", () => updateReaderPref("arabicScale", Number(els.arabicSizeRange.value)));
+  els.translationSizeRange.addEventListener("input", () => updateReaderPref("translationScale", Number(els.translationSizeRange.value)));
+  els.lineHeightRange.addEventListener("input", () => updateReaderPref("lineScale", Number(els.lineHeightRange.value)));
+  els.compactToggle.addEventListener("change", () => updateReaderPref("compactCards", els.compactToggle.checked));
   els.translationSearch.addEventListener("input", renderTranslationList);
   els.tafsirSearch.addEventListener("input", renderTafsirList);
   els.noteEditor.addEventListener("input", saveCurrentNote);
@@ -125,6 +152,11 @@ function bindEvents() {
 
   document.querySelectorAll(".nav-item").forEach((button) => {
     button.addEventListener("click", () => switchView(button.dataset.view));
+  });
+
+  document.querySelectorAll("dialog").forEach((dialog) => {
+    dialog.addEventListener("close", syncModalState);
+    dialog.addEventListener("cancel", syncModalState);
   });
 
   els.verses.addEventListener("click", (event) => {
@@ -411,7 +443,9 @@ function scrollToKey(key) {
     setStatus(`Ayah ${key} was not found in this surah.`);
     return;
   }
-  target.scrollIntoView({ behavior: "smooth", block: "center" });
+  const headerOffset = document.querySelector(".topbar")?.getBoundingClientRect().height || 0;
+  const top = target.getBoundingClientRect().top + window.scrollY - headerOffset - 14;
+  window.scrollTo({ top: Math.max(0, top), behavior: "smooth" });
   updateDashboard(key);
   target.animate(
     [
@@ -492,6 +526,7 @@ function switchView(viewId) {
   document.querySelectorAll(".view").forEach((view) => view.classList.toggle("active", view.id === viewId));
   document.querySelectorAll(".nav-item").forEach((button) => button.classList.toggle("active", button.dataset.view === viewId));
   if (viewId === "notesView") renderNotes();
+  window.scrollTo({ top: 0, behavior: "smooth" });
 }
 
 function loadLocalState() {
@@ -506,12 +541,19 @@ function loadLocalState() {
     state.selectedChapter = Number(prefs.selectedChapter) || state.selectedChapter;
     state.selectedTranslations = Array.isArray(prefs.selectedTranslations) ? prefs.selectedTranslations : state.selectedTranslations;
     state.selectedTafsir = Number(prefs.selectedTafsir) || state.selectedTafsir;
-    state.arabicScale = clampNumber(Number(prefs.arabicScale) || state.arabicScale, 0.84, 1.32);
+    state.theme = ["light", "dark", "sepia"].includes(prefs.theme) ? prefs.theme : state.theme;
+    state.width = ["comfortable", "narrow", "wide"].includes(prefs.width) ? prefs.width : state.width;
+    state.arabicFont = ["uthmani", "naskh", "scheherazade", "serif"].includes(prefs.arabicFont) ? prefs.arabicFont : state.arabicFont;
+    state.translationFont = ["system", "serif", "humanist", "mono"].includes(prefs.translationFont) ? prefs.translationFont : state.translationFont;
+    state.arabicScale = clampNumber(Number(prefs.arabicScale) || state.arabicScale, 0.84, 1.4);
+    state.translationScale = clampNumber(Number(prefs.translationScale) || state.translationScale, 0.9, 1.22);
+    state.lineScale = clampNumber(Number(prefs.lineScale) || state.lineScale, 1, 1.24);
+    state.compactCards = Boolean(prefs.compactCards);
   } catch {
     savePrefs();
   }
 
-  applyArabicScale();
+  applyReaderPrefs();
 }
 
 function savePrefs() {
@@ -519,7 +561,14 @@ function savePrefs() {
     selectedChapter: state.selectedChapter,
     selectedTranslations: state.selectedTranslations,
     selectedTafsir: state.selectedTafsir,
+    theme: state.theme,
+    width: state.width,
+    arabicFont: state.arabicFont,
+    translationFont: state.translationFont,
     arabicScale: state.arabicScale,
+    translationScale: state.translationScale,
+    lineScale: state.lineScale,
+    compactCards: state.compactCards,
   }));
 }
 
@@ -544,17 +593,59 @@ function updateDashboard(activeKey = localStorage.getItem("quran-reader-last-rea
 }
 
 function changeArabicScale(delta) {
-  state.arabicScale = clampNumber(Number((state.arabicScale + delta).toFixed(2)), 0.84, 1.32);
-  applyArabicScale();
+  state.arabicScale = clampNumber(Number((state.arabicScale + delta).toFixed(2)), 0.84, 1.4);
+  applyReaderPrefs();
   savePrefs();
 }
 
-function applyArabicScale() {
-  document.documentElement.style.setProperty("--arabic-scale", state.arabicScale);
+function toggleTheme() {
+  updateReaderPref("theme", state.theme === "dark" ? "light" : "dark");
+}
+
+function updateReaderPref(key, value) {
+  if (key === "arabicScale") state.arabicScale = clampNumber(Number(value), 0.84, 1.4);
+  else if (key === "translationScale") state.translationScale = clampNumber(Number(value), 0.9, 1.22);
+  else if (key === "lineScale") state.lineScale = clampNumber(Number(value), 1, 1.24);
+  else state[key] = value;
+
+  applyReaderPrefs();
+  savePrefs();
+}
+
+function applyReaderPrefs() {
+  const root = document.documentElement;
+  root.dataset.theme = state.theme;
+  root.dataset.width = state.width;
+  root.dataset.arabicFont = state.arabicFont;
+  root.dataset.translationFont = state.translationFont;
+  root.dataset.density = state.compactCards ? "compact" : "comfortable";
+  root.style.setProperty("--arabic-scale", state.arabicScale);
+  root.style.setProperty("--translation-scale", state.translationScale);
+  root.style.setProperty("--line-scale", state.lineScale);
+  document.querySelector('meta[name="theme-color"]')?.setAttribute("content", state.theme === "dark" ? "#111816" : "#173f35");
+
+  els.themeSelect.value = state.theme;
+  els.widthSelect.value = state.width;
+  els.arabicFontSelect.value = state.arabicFont;
+  els.translationFontSelect.value = state.translationFont;
+  els.arabicSizeRange.value = String(state.arabicScale);
+  els.translationSizeRange.value = String(state.translationScale);
+  els.lineHeightRange.value = String(state.lineScale);
+  els.compactToggle.checked = state.compactCards;
+  els.themeButton.textContent = state.theme === "dark" ? "Light mode" : "Dark mode";
+  els.settingsSummary.textContent = `${capitalize(state.theme)} · ${capitalize(state.arabicFont)} Arabic · ${capitalize(state.translationFont)} translation`;
+}
+
+function syncModalState() {
+  document.body.classList.toggle("modal-open", Boolean(document.querySelector("dialog[open]")));
 }
 
 function clampNumber(value, min, max) {
   return Math.min(Math.max(value, min), max);
+}
+
+function capitalize(value) {
+  return String(value).charAt(0).toUpperCase() + String(value).slice(1);
 }
 
 function getChapter(number) {
@@ -591,6 +682,7 @@ function openDialog(dialog) {
   } else {
     dialog.setAttribute("open", "");
   }
+  syncModalState();
 }
 
 function escapeHTML(value) {

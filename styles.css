@@ -13,8 +13,87 @@
   --gold-soft: #fff4d7;
   --rose: #9f3f4d;
   --arabic-scale: 1;
+  --translation-scale: 1;
+  --line-scale: 1;
+  --reader-width: 780px;
+  --arabic-font: "Amiri Quran", "Scheherazade New", "Noto Naskh Arabic", serif;
+  --translation-font: Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
   --shadow: 0 18px 44px rgba(28, 41, 35, 0.12);
   --soft-shadow: 0 8px 24px rgba(28, 41, 35, 0.07);
+}
+
+:root[data-theme="dark"] {
+  color-scheme: dark;
+  --ink: #eef5ef;
+  --muted: #a8b8b1;
+  --paper: #111816;
+  --paper-2: #16221f;
+  --panel: #1c2925;
+  --line: #31433d;
+  --green: #62b399;
+  --green-2: #7ac7ad;
+  --teal: #64bdc8;
+  --gold: #d2a84c;
+  --gold-soft: #382f1b;
+  --rose: #ef8b98;
+  --shadow: 0 18px 44px rgba(0, 0, 0, 0.35);
+  --soft-shadow: 0 8px 24px rgba(0, 0, 0, 0.24);
+}
+
+:root[data-theme="sepia"] {
+  color-scheme: light;
+  --ink: #281f17;
+  --muted: #766757;
+  --paper: #f7edda;
+  --paper-2: #efe0c4;
+  --panel: #fff8ea;
+  --line: #dfcba6;
+  --green: #36594c;
+  --green-2: #55786b;
+  --teal: #657d7a;
+  --gold: #9c6f22;
+  --gold-soft: #f3dfae;
+  --rose: #944654;
+}
+
+:root[data-width="narrow"] {
+  --reader-width: 660px;
+}
+
+:root[data-width="wide"] {
+  --reader-width: 940px;
+}
+
+:root[data-arabic-font="naskh"] {
+  --arabic-font: "Noto Naskh Arabic", "Amiri Quran", serif;
+}
+
+:root[data-arabic-font="scheherazade"] {
+  --arabic-font: "Scheherazade New", "Amiri Quran", serif;
+}
+
+:root[data-arabic-font="serif"] {
+  --arabic-font: Georgia, "Times New Roman", serif;
+}
+
+:root[data-translation-font="serif"] {
+  --translation-font: Georgia, "Times New Roman", serif;
+}
+
+:root[data-translation-font="humanist"] {
+  --translation-font: "Trebuchet MS", "Segoe UI", ui-sans-serif, system-ui, sans-serif;
+}
+
+:root[data-translation-font="mono"] {
+  --translation-font: "SFMono-Regular", Consolas, "Liberation Mono", monospace;
+}
+
+:root[data-density="compact"] {
+  --card-pad: 9px;
+}
+
+:root:not([data-density="compact"]) {
+  --card-pad: 14px;
 }
 
 * {
@@ -23,6 +102,8 @@
 
 html {
   min-height: 100%;
+  scroll-behavior: smooth;
+  scroll-padding-top: 132px;
   background:
     radial-gradient(circle at top left, rgba(176, 130, 47, 0.12), transparent 34rem),
     linear-gradient(180deg, #f7f4ec 0%, var(--paper-2) 42%, var(--paper) 100%);
@@ -33,7 +114,12 @@ body {
   margin: 0;
   color: var(--ink);
   background: transparent;
-  font-family: Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+  font-family: var(--translation-font);
+  overflow-y: auto;
+}
+
+body.modal-open {
+  overflow: hidden;
 }
 
 button,
@@ -99,7 +185,7 @@ h2 {
 }
 
 main {
-  width: min(100%, 780px);
+  width: min(100%, var(--reader-width));
   margin: 0 auto;
   padding: 14px 14px 28px;
 }
@@ -124,7 +210,7 @@ main {
   padding: 11px 12px;
   border: 1px solid rgba(223, 229, 223, 0.86);
   border-radius: 8px;
-  background: rgba(255, 255, 255, 0.82);
+  background: color-mix(in srgb, var(--panel) 86%, transparent);
   box-shadow: var(--soft-shadow);
 }
 
@@ -172,6 +258,12 @@ textarea {
   color: var(--ink);
   background: rgba(255, 255, 255, 0.94);
   outline: none;
+}
+
+:root[data-theme="dark"] select,
+:root[data-theme="dark"] input,
+:root[data-theme="dark"] textarea {
+  background: #192521;
 }
 
 select,
@@ -280,7 +372,7 @@ textarea:focus {
   border: 1px solid var(--line);
   border-radius: 8px;
   color: var(--muted);
-  background: #fffdf8;
+  background: color-mix(in srgb, var(--panel) 88%, var(--gold-soft));
   font-size: 0.9rem;
 }
 
@@ -312,7 +404,7 @@ textarea:focus {
   display: flex;
   justify-content: space-between;
   gap: 10px;
-  padding: 10px 12px 0;
+  padding: var(--card-pad) var(--card-pad) 0;
 }
 
 .ayah-key {
@@ -328,6 +420,10 @@ textarea:focus {
   font-variant-numeric: tabular-nums;
 }
 
+:root[data-theme="dark"] .ayah-key {
+  color: #f4d37d;
+}
+
 .ayah-actions {
   display: flex;
   gap: 6px;
@@ -339,7 +435,7 @@ textarea:focus {
   border: 1px solid var(--line);
   border-radius: 999px;
   color: var(--muted);
-  background: #fff;
+  background: var(--panel);
   font-weight: 900;
 }
 
@@ -350,7 +446,7 @@ textarea:focus {
   padding: 3px;
   border: 1px solid var(--line);
   border-radius: 999px;
-  background: rgba(255, 255, 255, 0.72);
+  background: color-mix(in srgb, var(--panel) 76%, transparent);
 }
 
 .font-controls .mini-button {
@@ -365,25 +461,27 @@ textarea:focus {
 }
 
 .arabic {
-  padding: 16px 14px 14px;
+  padding: calc(var(--card-pad) + 2px) var(--card-pad) var(--card-pad);
   direction: rtl;
   text-align: right;
-  font-family: "Amiri Quran", "Scheherazade New", "Noto Naskh Arabic", serif;
+  font-family: var(--arabic-font);
   font-size: calc(clamp(1.9rem, 8vw, 2.85rem) * var(--arabic-scale));
-  line-height: 2.05;
-  color: #111b17;
+  line-height: calc(2.05 * var(--line-scale));
+  color: var(--ink);
 }
 
 .translations {
   display: grid;
   gap: 10px;
-  padding: 0 12px 12px;
+  padding: 0 var(--card-pad) var(--card-pad);
 }
 
 .translation {
   padding-top: 11px;
   border-top: 1px solid var(--line);
-  line-height: 1.55;
+  font-family: var(--translation-font);
+  font-size: calc(1rem * var(--translation-scale));
+  line-height: calc(1.55 * var(--line-scale));
 }
 
 .translation-name {
@@ -399,10 +497,10 @@ textarea:focus {
 }
 
 .note-preview {
-  margin: 0 12px 12px;
+  margin: 0 var(--card-pad) var(--card-pad);
   padding: 10px;
   border-left: 3px solid var(--gold);
-  color: #394740;
+  color: var(--ink);
   background: var(--gold-soft);
   border-radius: 6px;
   line-height: 1.45;
@@ -451,7 +549,7 @@ textarea:focus {
 
 .note-card p {
   margin-bottom: 0;
-  color: #37453f;
+  color: var(--ink);
   line-height: 1.45;
   white-space: pre-wrap;
 }
@@ -465,10 +563,10 @@ textarea:focus {
   display: grid;
   grid-template-columns: 1fr 1fr;
   gap: 6px;
-  width: min(100%, 780px);
+  width: min(100%, var(--reader-width));
   margin: 0 auto;
   padding: 8px 10px calc(8px + env(safe-area-inset-bottom));
-  background: rgba(251, 250, 246, 0.9);
+  background: color-mix(in srgb, var(--paper) 88%, transparent);
   border-top: 1px solid var(--line);
   backdrop-filter: blur(14px);
 }
@@ -517,17 +615,61 @@ textarea:focus {
   display: grid;
   gap: 12px;
   max-height: inherit;
+  min-height: 0;
   padding: 14px;
   border: 1px solid var(--line);
   border-radius: inherit;
   background: var(--paper);
   box-shadow: var(--shadow);
-  overflow: hidden;
+  overflow: auto;
+  overscroll-behavior: contain;
+}
+
+.settings-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 12px;
+  min-height: 0;
+}
+
+.range-field,
+.check-field {
+  display: grid;
+  gap: 6px;
+  min-width: 0;
+  color: var(--muted);
+  font-size: 0.75rem;
+  font-weight: 800;
+}
+
+.range-field input {
+  min-height: 30px;
+  padding: 0;
+  accent-color: var(--green-2);
+}
+
+.check-field {
+  grid-template-columns: 18px 1fr;
+  align-items: center;
+  align-content: center;
+  min-height: 44px;
+  padding: 0 10px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: var(--panel);
+}
+
+.check-field input {
+  width: 18px;
+  min-height: 18px;
+  padding: 0;
+  accent-color: var(--green-2);
 }
 
 .resource-list {
   display: grid;
   gap: 8px;
+  min-height: 0;
   overflow: auto;
   padding-bottom: 4px;
 }
@@ -591,7 +733,7 @@ textarea:focus {
 .tafsir-content {
   overflow: auto;
   padding: 2px 2px 8px;
-  color: #2c3833;
+  color: var(--ink);
   line-height: 1.6;
 }
 
@@ -609,12 +751,12 @@ textarea:focus {
 @media (min-width: 680px) {
   .app-shell {
     background:
-      linear-gradient(90deg, rgba(251, 250, 246, 0.88), rgba(251, 250, 246, 0.96)),
+      linear-gradient(90deg, color-mix(in srgb, var(--paper) 88%, transparent), color-mix(in srgb, var(--paper) 96%, transparent)),
       url("./assets/geometric-header.webp") center / 640px;
   }
 
   .topbar {
-    width: min(100%, 780px);
+    width: min(100%, var(--reader-width));
     margin: 0 auto;
     border-radius: 0 0 18px 18px;
     box-shadow: var(--shadow);
@@ -635,6 +777,10 @@ textarea:focus {
   }
 
   .reader-controls {
+    grid-template-columns: 1fr;
+  }
+
+  .settings-grid {
     grid-template-columns: 1fr;
   }
 
