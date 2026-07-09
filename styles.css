@@ -368,7 +368,7 @@ main {
   top: calc(76px + env(safe-area-inset-top));
   z-index: 3;
   display: grid;
-  grid-template-columns: repeat(3, minmax(0, 1fr));
+  grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));
   gap: 10px;
   margin-bottom: 10px;
   padding: 10px;
@@ -390,23 +390,26 @@ main {
 }
 
 body.filters-compact:not(.filters-expanded) .reader-controls {
-  grid-template-columns: 1fr 1fr 0.85fr;
+  grid-template-columns: 42px;
+  width: max-content;
   gap: 6px;
   padding: 6px;
 }
 
 body.filters-compact:not(.filters-expanded) .reader-controls .field {
-  gap: 2px;
-}
-
-body.filters-compact:not(.filters-expanded) .reader-controls .field span {
   display: none;
 }
 
-body.filters-compact:not(.filters-expanded) .reader-controls select,
-body.filters-compact:not(.filters-expanded) .reader-controls input {
-  min-height: 36px;
-  font-size: 0.82rem;
+body.filters-compact:not(.filters-expanded) .reader-controls::before {
+  content: "⚙";
+  display: grid;
+  place-items: center;
+  width: 36px;
+  height: 36px;
+  border-radius: 999px;
+  color: #fff;
+  background: var(--green);
+  font-weight: 900;
 }
 
 select,
@@ -788,7 +791,7 @@ textarea:focus {
   left: 0;
   z-index: 5;
   display: grid;
-  grid-template-columns: repeat(3, 1fr);
+  grid-template-columns: repeat(2, 1fr);
   gap: 6px;
   width: min(100%, var(--reader-width));
   margin: 0 auto;

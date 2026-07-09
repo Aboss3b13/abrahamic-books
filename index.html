@@ -43,6 +43,7 @@
                 <option value="quran">Quran</option>
                 <option value="old">Old Testament</option>
                 <option value="new">New Testament</option>
+                <option value="hadith">Hadith</option>
               </select>
             </label>
             <label class="field">
@@ -50,11 +51,21 @@
               <select id="chapterSelect"></select>
             </label>
             <label class="field bible-field" hidden>
-              <span>Chapter</span>
-              <select id="biblePassageSelect"></select>
+              <span>Book</span>
+              <select id="bibleBookSelect"></select>
             </label>
-            <select id="bibleBookSelect" hidden></select>
-            <select id="bibleChapterSelect" hidden></select>
+            <label class="field bible-field" hidden>
+              <span>Chapter</span>
+              <select id="bibleChapterSelect"></select>
+            </label>
+            <label class="field hadith-field" hidden>
+              <span>Collection</span>
+              <select id="hadithCollectionSelect"></select>
+            </label>
+            <label class="field hadith-field" hidden>
+              <span>Section</span>
+              <select id="hadithSectionSelect"></select>
+            </label>
             <label class="field">
               <span>Verse</span>
               <input id="ayahSearch" type="search" placeholder="2:255, 255, John 3:16">
@@ -90,31 +101,11 @@
           <div id="notesList" class="notes-list"></div>
         </section>
 
-        <section id="libraryView" class="view" aria-label="Scripture library">
-          <div class="library-panel">
-            <div>
-              <h2>Library</h2>
-              <p>Quran, Bible, and reference tools</p>
-            </div>
-            <label class="field">
-              <span>Collection</span>
-              <select id="libraryCollection">
-                <option value="quran">Quran</option>
-                <option value="old">Old Testament</option>
-                <option value="new">New Testament</option>
-              </select>
-            </label>
-            <input id="librarySearch" class="wide-search" type="search" placeholder="Search this collection">
-            <div id="libraryNotice" class="status">Choose a collection.</div>
-            <article id="libraryContent" class="library-content"></article>
-          </div>
-        </section>
       </main>
 
       <nav class="bottom-nav" aria-label="Primary">
         <button class="nav-item active" type="button" data-view="readView"><span class="nav-icon">☰</span><span>Read</span></button>
         <button class="nav-item" type="button" data-view="notesView"><span class="nav-icon">✎</span><span>Notes</span></button>
-        <button class="nav-item" type="button" data-view="libraryView"><span class="nav-icon">▦</span><span>Library</span></button>
       </nav>
     </div>
 
