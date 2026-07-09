@@ -48,14 +48,7 @@
           </div>
 
           <div class="quick-actions">
-            <button id="translationButton" class="pill-button" type="button">Translations</button>
-            <button id="tafsirButton" class="pill-button" type="button">Tafsir</button>
             <button id="lastReadButton" class="pill-button muted" type="button">Last read</button>
-            <button id="themeButton" class="pill-button muted" type="button">Dark mode</button>
-            <div class="font-controls" aria-label="Arabic text size">
-              <button id="decreaseFont" class="mini-button" type="button" aria-label="Decrease Arabic text size">A-</button>
-              <button id="increaseFont" class="mini-button" type="button" aria-label="Increase Arabic text size">A+</button>
-            </div>
           </div>
 
           <div id="status" class="status">Preparing reader...</div>
@@ -77,13 +70,40 @@
             </div>
           </div>
           <input id="notesSearch" class="wide-search" type="search" placeholder="Search notes, surah, or ayah">
+          <div id="tagFilters" class="tag-filters"></div>
+          <div id="notesVersePreview" class="verse-preview" hidden></div>
           <div id="notesList" class="notes-list"></div>
+        </section>
+
+        <section id="libraryView" class="view" aria-label="Scripture library">
+          <div class="library-panel">
+            <div>
+              <h2>Library</h2>
+              <p>Quran, Bible, and reference tools</p>
+            </div>
+            <label class="field">
+              <span>Collection</span>
+              <select id="libraryCollection">
+                <option value="quran">Quran</option>
+                <option value="bible">Bible</option>
+                <option value="tanakh">Tanakh / Hebrew Bible</option>
+                <option value="apocrypha">Apocrypha / Deuterocanon</option>
+              </select>
+            </label>
+            <div id="libraryNotice" class="status">Choose a collection.</div>
+            <div id="bibleControls" class="bible-controls" hidden>
+              <input id="bibleReference" type="search" placeholder="John 3:16, Genesis 1, Psalm 23">
+              <button id="loadBibleReference" class="text-button primary" type="button">Open</button>
+            </div>
+            <article id="libraryContent" class="library-content"></article>
+          </div>
         </section>
       </main>
 
       <nav class="bottom-nav" aria-label="Primary">
         <button class="nav-item active" type="button" data-view="readView"><span class="nav-icon">☰</span><span>Read</span></button>
         <button class="nav-item" type="button" data-view="notesView"><span class="nav-icon">✎</span><span>Notes</span></button>
+        <button class="nav-item" type="button" data-view="libraryView"><span class="nav-icon">▦</span><span>Library</span></button>
       </nav>
     </div>
 
@@ -98,12 +118,21 @@
         </div>
 
         <div class="settings-grid">
+          <div class="settings-actions">
+            <button id="translationButton" class="text-button" type="button">Translations</button>
+            <button id="tafsirButton" class="text-button" type="button">Tafsir</button>
+            <button id="themeButton" class="text-button" type="button">Dark mode</button>
+          </div>
           <label class="field">
             <span>Theme</span>
             <select id="themeSelect">
               <option value="light">Light</option>
               <option value="dark">Dark</option>
               <option value="sepia">Sepia</option>
+              <option value="midnight">Midnight</option>
+              <option value="emerald">Emerald</option>
+              <option value="contrast">High Contrast</option>
+              <option value="custom">Custom</option>
             </select>
           </label>
           <label class="field">
@@ -144,11 +173,50 @@
             <span>Line spacing</span>
             <input id="lineHeightRange" type="range" min="1" max="1.24" step="0.04">
           </label>
+          <label class="field">
+            <span>Card style</span>
+            <select id="cardStyleSelect">
+              <option value="soft">Soft</option>
+              <option value="flat">Flat</option>
+              <option value="outlined">Outlined</option>
+            </select>
+          </label>
+          <label class="field">
+            <span>Header style</span>
+            <select id="headerStyleSelect">
+              <option value="pattern">Pattern</option>
+              <option value="solid">Solid</option>
+              <option value="minimal">Minimal</option>
+            </select>
+          </label>
+          <div id="customThemeControls" class="custom-theme-controls">
+            <label class="color-field"><span>Background</span><input id="customPaper" type="color"></label>
+            <label class="color-field"><span>Card</span><input id="customPanel" type="color"></label>
+            <label class="color-field"><span>Text</span><input id="customInk" type="color"></label>
+            <label class="color-field"><span>Accent</span><input id="customAccent" type="color"></label>
+          </div>
           <label class="check-field">
             <input id="compactToggle" type="checkbox">
             <span>Compact cards</span>
           </label>
+          <div class="font-controls" aria-label="Arabic text size">
+            <button id="decreaseFont" class="mini-button" type="button" aria-label="Decrease Arabic text size">A-</button>
+            <button id="increaseFont" class="mini-button" type="button" aria-label="Increase Arabic text size">A+</button>
+          </div>
         </div>
+      </form>
+    </dialog>
+
+    <dialog id="wordSheet" class="sheet word-sheet">
+      <form method="dialog" class="sheet-inner">
+        <div class="sheet-header">
+          <div>
+            <h2 id="wordTitle">Word</h2>
+            <p id="wordSubtitle">Translation</p>
+          </div>
+          <button class="icon-button" value="close" aria-label="Close word translation">×</button>
+        </div>
+        <article id="wordContent" class="word-content"></article>
       </form>
     </dialog>
 
@@ -189,6 +257,7 @@
           </div>
           <button class="icon-button" value="close" aria-label="Close note">×</button>
         </div>
+        <input id="noteTags" class="wide-search" type="text" placeholder="Tags: mercy, prayer, study">
         <textarea id="noteEditor" rows="9" placeholder="Write your reflection, question, reminder, or action..."></textarea>
         <div class="sheet-actions">
           <button id="deleteNote" class="text-button danger" type="button">Delete</button>

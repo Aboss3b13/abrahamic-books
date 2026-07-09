@@ -56,6 +56,52 @@
   --rose: #944654;
 }
 
+:root[data-theme="midnight"] {
+  color-scheme: dark;
+  --ink: #eaf0ff;
+  --muted: #9faccc;
+  --paper: #090d1a;
+  --paper-2: #111a31;
+  --panel: #151d33;
+  --line: #2c3858;
+  --green: #7fa7ff;
+  --green-2: #9cc0ff;
+  --teal: #76d6e4;
+  --gold: #f0bf5d;
+  --gold-soft: #332a17;
+  --rose: #ff8aa3;
+}
+
+:root[data-theme="emerald"] {
+  --ink: #10221b;
+  --muted: #5e746a;
+  --paper: #eef8f0;
+  --paper-2: #dceee2;
+  --panel: #fbfffc;
+  --line: #c9dfd0;
+  --green: #0b6b4d;
+  --green-2: #168764;
+  --teal: #267b89;
+  --gold: #a0761c;
+  --gold-soft: #f4e9c5;
+}
+
+:root[data-theme="contrast"] {
+  color-scheme: dark;
+  --ink: #ffffff;
+  --muted: #d6d6d6;
+  --paper: #000000;
+  --paper-2: #050505;
+  --panel: #101010;
+  --line: #ffffff;
+  --green: #00ff99;
+  --green-2: #00ffcc;
+  --teal: #00ddff;
+  --gold: #ffd400;
+  --gold-soft: #2b2400;
+  --rose: #ff5c8a;
+}
+
 :root[data-width="narrow"] {
   --reader-width: 660px;
 }
@@ -94,6 +140,16 @@
 
 :root:not([data-density="compact"]) {
   --card-pad: 14px;
+}
+
+:root[data-card-style="flat"] {
+  --soft-shadow: none;
+  --shadow: none;
+}
+
+:root[data-card-style="outlined"] {
+  --soft-shadow: none;
+  --shadow: none;
 }
 
 * {
@@ -152,6 +208,23 @@ button {
     linear-gradient(125deg, rgba(15, 57, 48, 0.98), rgba(31, 111, 120, 0.88)),
     url("./assets/geometric-header.webp") center / cover;
   border-bottom: 1px solid rgba(255, 255, 255, 0.16);
+}
+
+:root[data-header-style="solid"] .topbar {
+  background: linear-gradient(125deg, var(--green), var(--teal));
+}
+
+:root[data-header-style="minimal"] .topbar {
+  color: var(--ink);
+  background: var(--paper);
+  border-bottom-color: var(--line);
+  box-shadow: none;
+}
+
+:root[data-header-style="minimal"] .topbar .icon-button {
+  color: var(--ink);
+  background: var(--panel);
+  border-color: var(--line);
 }
 
 .eyebrow,
@@ -561,7 +634,7 @@ textarea:focus {
   left: 0;
   z-index: 5;
   display: grid;
-  grid-template-columns: 1fr 1fr;
+  grid-template-columns: repeat(3, 1fr);
   gap: 6px;
   width: min(100%, var(--reader-width));
   margin: 0 auto;
@@ -625,6 +698,13 @@ textarea:focus {
   overscroll-behavior: contain;
 }
 
+.settings-actions {
+  grid-column: 1 / -1;
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 8px;
+}
+
 .settings-grid {
   display: grid;
   grid-template-columns: repeat(2, minmax(0, 1fr));
@@ -640,6 +720,31 @@ textarea:focus {
   color: var(--muted);
   font-size: 0.75rem;
   font-weight: 800;
+}
+
+.font-controls {
+  justify-content: flex-start;
+}
+
+.custom-theme-controls {
+  grid-column: 1 / -1;
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 8px;
+}
+
+.color-field {
+  display: grid;
+  gap: 6px;
+  color: var(--muted);
+  font-size: 0.75rem;
+  font-weight: 800;
+}
+
+.color-field input {
+  width: 100%;
+  min-height: 42px;
+  padding: 4px;
 }
 
 .range-field input {
@@ -737,6 +842,136 @@ textarea:focus {
   line-height: 1.6;
 }
 
+.arabic-word {
+  display: inline-block;
+  margin: 0 0.06em;
+  padding: 0 0.08em;
+  border: 0;
+  border-radius: 6px;
+  color: inherit;
+  background: transparent;
+  font-family: inherit;
+  font-size: inherit;
+  line-height: inherit;
+}
+
+.arabic-word:hover,
+.arabic-word:focus {
+  background: color-mix(in srgb, var(--gold-soft) 72%, transparent);
+  outline: 2px solid color-mix(in srgb, var(--gold) 58%, transparent);
+}
+
+.word-content {
+  display: grid;
+  gap: 10px;
+}
+
+.word-arabic {
+  direction: rtl;
+  font-family: var(--arabic-font);
+  font-size: 2.4rem;
+  line-height: 1.8;
+}
+
+.word-translation {
+  font-size: 1.1rem;
+  line-height: 1.5;
+}
+
+.library-panel,
+.verse-preview {
+  display: grid;
+  gap: 12px;
+}
+
+.library-panel h2,
+.library-panel p {
+  margin-bottom: 4px;
+}
+
+.bible-controls {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  gap: 8px;
+}
+
+.library-content,
+.verse-preview {
+  padding: 14px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: var(--panel);
+  box-shadow: var(--soft-shadow);
+}
+
+.library-content h3,
+.verse-preview strong {
+  margin: 0 0 8px;
+  color: var(--green);
+}
+
+.scripture-verse,
+.preview-arabic,
+.preview-translation {
+  margin: 0 0 10px;
+  line-height: 1.6;
+}
+
+.preview-arabic {
+  direction: rtl;
+  text-align: right;
+  font-family: var(--arabic-font);
+  font-size: 1.65rem;
+  line-height: 1.9;
+}
+
+.tag-filters {
+  display: flex;
+  gap: 8px;
+  overflow-x: auto;
+  padding-bottom: 4px;
+}
+
+.tag-chip {
+  flex: 0 0 auto;
+  min-height: 34px;
+  padding: 0 10px;
+  border: 1px solid var(--line);
+  border-radius: 999px;
+  color: var(--muted);
+  background: var(--panel);
+  font-weight: 800;
+}
+
+.tag-chip.active {
+  color: #fff;
+  background: var(--green);
+  border-color: var(--green);
+}
+
+.note-tags {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  margin-top: 10px;
+}
+
+.note-tags span {
+  padding: 4px 8px;
+  border-radius: 999px;
+  color: var(--green);
+  background: color-mix(in srgb, var(--green-2) 12%, transparent);
+  font-size: 0.75rem;
+  font-weight: 800;
+}
+
+:root[data-card-style="outlined"] .ayah-card,
+:root[data-card-style="outlined"] .note-card,
+:root[data-card-style="outlined"] .library-content,
+:root[data-card-style="outlined"] .verse-preview {
+  border-width: 2px;
+}
+
 .tafsir-content h1,
 .tafsir-content h2,
 .tafsir-content h3 {
@@ -781,6 +1016,12 @@ textarea:focus {
   }
 
   .settings-grid {
+    grid-template-columns: 1fr;
+  }
+
+  .settings-actions,
+  .custom-theme-controls,
+  .bible-controls {
     grid-template-columns: 1fr;
   }
 

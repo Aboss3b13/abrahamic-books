@@ -19,8 +19,18 @@ const state = {
   translationScale: 1,
   lineScale: 1,
   compactCards: false,
+  cardStyle: "soft",
+  headerStyle: "pattern",
+  customTheme: {
+    paper: "#111816",
+    panel: "#1c2925",
+    ink: "#eef5ef",
+    accent: "#7ac7ad",
+  },
   verses: [],
   notes: {},
+  noteTagFilter: "",
+  bibleReference: "John 3:16",
   currentNoteKey: null,
 };
 
@@ -50,7 +60,27 @@ const els = {
   arabicSizeRange: document.querySelector("#arabicSizeRange"),
   translationSizeRange: document.querySelector("#translationSizeRange"),
   lineHeightRange: document.querySelector("#lineHeightRange"),
+  cardStyleSelect: document.querySelector("#cardStyleSelect"),
+  headerStyleSelect: document.querySelector("#headerStyleSelect"),
+  customThemeControls: document.querySelector("#customThemeControls"),
+  customPaper: document.querySelector("#customPaper"),
+  customPanel: document.querySelector("#customPanel"),
+  customInk: document.querySelector("#customInk"),
+  customAccent: document.querySelector("#customAccent"),
   compactToggle: document.querySelector("#compactToggle"),
+  wordSheet: document.querySelector("#wordSheet"),
+  wordTitle: document.querySelector("#wordTitle"),
+  wordSubtitle: document.querySelector("#wordSubtitle"),
+  wordContent: document.querySelector("#wordContent"),
+  noteTags: document.querySelector("#noteTags"),
+  tagFilters: document.querySelector("#tagFilters"),
+  notesVersePreview: document.querySelector("#notesVersePreview"),
+  libraryCollection: document.querySelector("#libraryCollection"),
+  libraryNotice: document.querySelector("#libraryNotice"),
+  bibleControls: document.querySelector("#bibleControls"),
+  bibleReference: document.querySelector("#bibleReference"),
+  loadBibleReference: document.querySelector("#loadBibleReference"),
+  libraryContent: document.querySelector("#libraryContent"),
   translationSheet: document.querySelector("#translationSheet"),
   translationSearch: document.querySelector("#translationSearch"),
   translationList: document.querySelector("#translationList"),
@@ -141,14 +171,28 @@ function bindEvents() {
   els.arabicSizeRange.addEventListener("input", () => updateReaderPref("arabicScale", Number(els.arabicSizeRange.value)));
   els.translationSizeRange.addEventListener("input", () => updateReaderPref("translationScale", Number(els.translationSizeRange.value)));
   els.lineHeightRange.addEventListener("input", () => updateReaderPref("lineScale", Number(els.lineHeightRange.value)));
+  els.cardStyleSelect.addEventListener("change", () => updateReaderPref("cardStyle", els.cardStyleSelect.value));
+  els.headerStyleSelect.addEventListener("change", () => updateReaderPref("headerStyle", els.headerStyleSelect.value));
   els.compactToggle.addEventListener("change", () => updateReaderPref("compactCards", els.compactToggle.checked));
+  [els.customPaper, els.customPanel, els.customInk, els.customAccent].forEach((input) => {
+    input.addEventListener("input", updateCustomTheme);
+  });
   els.translationSearch.addEventListener("input", renderTranslationList);
   els.tafsirSearch.addEventListener("input", renderTafsirList);
   els.noteEditor.addEventListener("input", saveCurrentNote);
+  els.noteTags.addEventListener("input", saveCurrentNote);
   els.deleteNote.addEventListener("click", deleteCurrentNote);
   els.notesSearch.addEventListener("input", renderNotes);
   els.exportNotes.addEventListener("click", exportNotes);
   els.importNotes.addEventListener("change", importNotes);
+  els.libraryCollection.addEventListener("change", renderLibrary);
+  els.loadBibleReference.addEventListener("click", loadBibleReference);
+  els.bibleReference.addEventListener("keydown", (event) => {
+    if (event.key === "Enter") {
+      event.preventDefault();
+      loadBibleReference();
+    }
+  });
 
   document.querySelectorAll(".nav-item").forEach((button) => {
     button.addEventListener("click", () => switchView(button.dataset.view));
@@ -169,6 +213,12 @@ function bindEvents() {
     if (button.dataset.action === "tafsir") openTafsir(key);
     if (button.dataset.action === "bookmark") saveLastRead(key);
   });
+
+  els.verses.addEventListener("click", (event) => {
+    const word = event.target.closest(".arabic-word");
+    if (!word) return;
+    openWordTranslation(word.closest(".ayah-card")?.dataset.key, Number(word.dataset.position));
+  });
 }
 
 async function loadChapter(chapterNumber) {
@@ -182,18 +232,8 @@ async function loadChapter(chapterNumber) {
 
   try {
     const ids = state.selectedTranslations.join(",");
-    const [arabicData, translationData] = await Promise.all([
-      getJSON(`${API}/quran/verses/uthmani?chapter_number=${chapterNumber}&per_page=300`),
-      ids
-        ? getJSON(`${API}/verses/by_chapter/${chapterNumber}?language=en&words=false&translations=${ids}&per_page=300`)
-        : Promise.resolve({ verses: [] }),
-    ]);
-
-    const translationsByKey = new Map((translationData.verses || []).map((verse) => [verse.verse_key, verse.translations || []]));
-    state.verses = (arabicData.verses || []).map((verse) => ({
-      ...verse,
-      translations: translationsByKey.get(verse.verse_key) || [],
-    }));
+    const data = await getJSON(`${API}/verses/by_chapter/${chapterNumber}?language=en&words=true&translations=${ids}&per_page=300&word_fields=text_uthmani,translation,transliteration`);
+    state.verses = data.verses || [];
 
     renderVerses();
     updateDashboard();
@@ -228,6 +268,7 @@ function renderVerses() {
 
 function renderVerse(verse) {
   const note = state.notes[verse.verse_key]?.text?.trim();
+  const tags = state.notes[verse.verse_key]?.tags || [];
   const translations = verse.translations.length
     ? verse.translations.map(renderTranslation).join("")
     : `<div class="translation"><p>No selected translation returned for this ayah.</p></div>`;
@@ -242,11 +283,22 @@ function renderVerse(verse) {
           <button class="mini-button" type="button" data-action="bookmark" aria-label="Save ${verse.verse_key} as last read">⌖</button>
         </div>
       </div>
-      <div class="arabic" lang="ar" dir="rtl">${escapeHTML(verse.text_uthmani)}</div>
+      <div class="arabic" lang="ar" dir="rtl">${renderArabicWords(verse)}</div>
       <div class="translations">${translations}</div>
       ${note ? `<div class="note-preview">${escapeHTML(note)}</div>` : ""}
+      ${tags.length ? `<div class="note-tags">${tags.map((tag) => `<span>#${escapeHTML(tag)}</span>`).join("")}</div>` : ""}
     </article>
   `;
+}
+
+function renderArabicWords(verse) {
+  if (!Array.isArray(verse.words) || !verse.words.length) return escapeHTML(verse.text_uthmani || "");
+  return verse.words
+    .map((word) => {
+      if (word.char_type_name === "end") return `<span class="ayah-end">${escapeHTML(word.text_uthmani || word.text || "")}</span>`;
+      return `<button class="arabic-word" type="button" data-position="${word.position}" aria-label="Translate ${escapeHTML(word.text_uthmani || word.text || "")}">${escapeHTML(word.text_uthmani || word.text || "")}</button>`;
+    })
+    .join(" ");
 }
 
 function renderTranslation(translation) {
@@ -337,6 +389,7 @@ function openNote(key) {
   els.noteTitle.textContent = `Note ${key}`;
   els.noteSubtitle.textContent = chapter ? chapter.name_simple : "Ayah note";
   els.noteEditor.value = state.notes[key]?.text || "";
+  els.noteTags.value = (state.notes[key]?.tags || []).join(", ");
   openDialog(els.noteSheet);
   setTimeout(() => els.noteEditor.focus(), 80);
 }
@@ -346,8 +399,10 @@ function saveCurrentNote() {
   if (!key) return;
   const text = els.noteEditor.value;
 
-  if (text.trim()) {
-    state.notes[key] = { text, updatedAt: new Date().toISOString() };
+  const tags = parseTags(els.noteTags.value);
+
+  if (text.trim() || tags.length) {
+    state.notes[key] = { text, tags, updatedAt: new Date().toISOString() };
   } else {
     delete state.notes[key];
   }
@@ -364,7 +419,23 @@ function deleteCurrentNote() {
   refreshVerse(state.currentNoteKey);
   renderNotes();
   els.noteEditor.value = "";
+  els.noteTags.value = "";
   els.noteSheet.close();
+}
+
+function openWordTranslation(key, position) {
+  const verse = state.verses.find((item) => item.verse_key === key);
+  const word = verse?.words?.find((item) => item.position === position);
+  if (!word) return;
+
+  els.wordTitle.textContent = word.text_uthmani || word.text || "Word";
+  els.wordSubtitle.textContent = `${key} · word ${position}`;
+  els.wordContent.innerHTML = `
+    <div class="word-arabic" lang="ar" dir="rtl">${escapeHTML(word.text_uthmani || word.text || "")}</div>
+    <div class="word-translation"><strong>${escapeHTML(word.translation?.text || "No translation available")}</strong></div>
+    <div>${escapeHTML(word.transliteration?.text || "")}</div>
+  `;
+  openDialog(els.wordSheet);
 }
 
 async function openTafsir(key) {
@@ -385,26 +456,32 @@ async function openTafsir(key) {
 function renderNotes() {
   const query = els.notesSearch.value.trim().toLowerCase();
   const entries = Object.entries(state.notes)
-    .filter(([, note]) => note.text.trim())
+    .filter(([, note]) => note.text?.trim() || note.tags?.length)
     .sort((a, b) => new Date(b[1].updatedAt) - new Date(a[1].updatedAt))
     .filter(([key, note]) => {
       const chapter = getChapter(Number(key.split(":")[0]));
-      const haystack = `${key} ${chapter?.name_simple || ""} ${chapter?.name_arabic || ""} ${note.text}`.toLowerCase();
-      return haystack.includes(query);
+      const tags = note.tags || [];
+      const haystack = `${key} ${chapter?.name_simple || ""} ${chapter?.name_arabic || ""} ${note.text || ""} ${tags.join(" ")}`.toLowerCase();
+      const matchesSearch = haystack.includes(query);
+      const matchesTag = !state.noteTagFilter || tags.includes(state.noteTagFilter);
+      return matchesSearch && matchesTag;
     });
 
-  const total = Object.values(state.notes).filter((note) => note.text.trim()).length;
+  const total = Object.values(state.notes).filter((note) => note.text?.trim() || note.tags?.length).length;
   els.notesCount.textContent = `${total} saved ${total === 1 ? "note" : "notes"}`;
   els.dashboardNotes.textContent = String(total);
+  renderTagFilters();
 
   els.notesList.innerHTML = entries.length
     ? entries.map(([key, note]) => {
         const chapter = getChapter(Number(key.split(":")[0]));
+        const tags = note.tags || [];
         return `
           <article class="note-card">
             <button type="button" data-key="${key}">
               <strong>${escapeHTML(key)} · ${escapeHTML(chapter?.name_simple || "Surah")}</strong>
-              <p>${escapeHTML(note.text)}</p>
+              <p>${escapeHTML(note.text || "")}</p>
+              ${tags.length ? `<div class="note-tags">${tags.map((tag) => `<span>#${escapeHTML(tag)}</span>`).join("")}</div>` : ""}
             </button>
           </article>
         `;
@@ -412,14 +489,45 @@ function renderNotes() {
     : `<div class="status">No notes yet.</div>`;
 
   els.notesList.querySelectorAll("button[data-key]").forEach((button) => {
-    button.addEventListener("click", async () => {
+    button.addEventListener("click", () => {
       const key = button.dataset.key;
-      const chapterNumber = Number(key.split(":")[0]);
-      switchView("readView");
-      if (chapterNumber !== state.selectedChapter) await loadChapter(chapterNumber);
-      scrollToKey(key);
-      openNote(key);
+      showNoteVersePreview(key);
     });
+  });
+}
+
+function renderTagFilters() {
+  const tags = [...new Set(Object.values(state.notes).flatMap((note) => note.tags || []))].sort();
+  els.tagFilters.innerHTML = tags.length
+    ? [`<button class="tag-chip ${state.noteTagFilter ? "" : "active"}" type="button" data-tag="">All</button>`, ...tags.map((tag) => `<button class="tag-chip ${state.noteTagFilter === tag ? "active" : ""}" type="button" data-tag="${escapeHTML(tag)}">#${escapeHTML(tag)}</button>`)].join("")
+    : "";
+  els.tagFilters.querySelectorAll("button").forEach((button) => {
+    button.addEventListener("click", () => {
+      state.noteTagFilter = button.dataset.tag;
+      renderNotes();
+    });
+  });
+}
+
+async function showNoteVersePreview(key) {
+  const chapterNumber = Number(key.split(":")[0]);
+  if (chapterNumber !== state.selectedChapter) await loadChapter(chapterNumber);
+  const verse = state.verses.find((item) => item.verse_key === key);
+  const translation = verse?.translations?.[0]?.text || "";
+  els.notesVersePreview.hidden = false;
+  els.notesVersePreview.innerHTML = `
+    <strong>${escapeHTML(key)} · ${escapeHTML(getChapter(chapterNumber)?.name_simple || "Surah")}</strong>
+    <div class="preview-arabic" lang="ar" dir="rtl">${renderArabicWords(verse || {})}</div>
+    <p class="preview-translation">${sanitizeHTML(translation)}</p>
+    <div class="sheet-actions">
+      <button class="text-button" type="button" data-action="edit-note">Edit note</button>
+      <button class="text-button primary" type="button" data-action="jump-note">Jump to verse</button>
+    </div>
+  `;
+  els.notesVersePreview.querySelector('[data-action="edit-note"]').addEventListener("click", () => openNote(key));
+  els.notesVersePreview.querySelector('[data-action="jump-note"]').addEventListener("click", () => {
+    switchView("readView");
+    requestAnimationFrame(() => scrollToKey(key));
   });
 }
 
@@ -526,6 +634,7 @@ function switchView(viewId) {
   document.querySelectorAll(".view").forEach((view) => view.classList.toggle("active", view.id === viewId));
   document.querySelectorAll(".nav-item").forEach((button) => button.classList.toggle("active", button.dataset.view === viewId));
   if (viewId === "notesView") renderNotes();
+  if (viewId === "libraryView") renderLibrary();
   window.scrollTo({ top: 0, behavior: "smooth" });
 }
 
@@ -541,7 +650,7 @@ function loadLocalState() {
     state.selectedChapter = Number(prefs.selectedChapter) || state.selectedChapter;
     state.selectedTranslations = Array.isArray(prefs.selectedTranslations) ? prefs.selectedTranslations : state.selectedTranslations;
     state.selectedTafsir = Number(prefs.selectedTafsir) || state.selectedTafsir;
-    state.theme = ["light", "dark", "sepia"].includes(prefs.theme) ? prefs.theme : state.theme;
+    state.theme = ["light", "dark", "sepia", "midnight", "emerald", "contrast", "custom"].includes(prefs.theme) ? prefs.theme : state.theme;
     state.width = ["comfortable", "narrow", "wide"].includes(prefs.width) ? prefs.width : state.width;
     state.arabicFont = ["uthmani", "naskh", "scheherazade", "serif"].includes(prefs.arabicFont) ? prefs.arabicFont : state.arabicFont;
     state.translationFont = ["system", "serif", "humanist", "mono"].includes(prefs.translationFont) ? prefs.translationFont : state.translationFont;
@@ -549,6 +658,11 @@ function loadLocalState() {
     state.translationScale = clampNumber(Number(prefs.translationScale) || state.translationScale, 0.9, 1.22);
     state.lineScale = clampNumber(Number(prefs.lineScale) || state.lineScale, 1, 1.24);
     state.compactCards = Boolean(prefs.compactCards);
+    state.cardStyle = ["soft", "flat", "outlined"].includes(prefs.cardStyle) ? prefs.cardStyle : state.cardStyle;
+    state.headerStyle = ["pattern", "solid", "minimal"].includes(prefs.headerStyle) ? prefs.headerStyle : state.headerStyle;
+    if (prefs.customTheme && typeof prefs.customTheme === "object") {
+      state.customTheme = { ...state.customTheme, ...prefs.customTheme };
+    }
   } catch {
     savePrefs();
   }
@@ -569,6 +683,9 @@ function savePrefs() {
     translationScale: state.translationScale,
     lineScale: state.lineScale,
     compactCards: state.compactCards,
+    cardStyle: state.cardStyle,
+    headerStyle: state.headerStyle,
+    customTheme: state.customTheme,
   }));
 }
 
@@ -619,9 +736,21 @@ function applyReaderPrefs() {
   root.dataset.arabicFont = state.arabicFont;
   root.dataset.translationFont = state.translationFont;
   root.dataset.density = state.compactCards ? "compact" : "comfortable";
+  root.dataset.cardStyle = state.cardStyle;
+  root.dataset.headerStyle = state.headerStyle;
   root.style.setProperty("--arabic-scale", state.arabicScale);
   root.style.setProperty("--translation-scale", state.translationScale);
   root.style.setProperty("--line-scale", state.lineScale);
+  if (state.theme === "custom") {
+    root.style.setProperty("--paper", state.customTheme.paper);
+    root.style.setProperty("--paper-2", state.customTheme.paper);
+    root.style.setProperty("--panel", state.customTheme.panel);
+    root.style.setProperty("--ink", state.customTheme.ink);
+    root.style.setProperty("--green", state.customTheme.accent);
+    root.style.setProperty("--green-2", state.customTheme.accent);
+  } else {
+    ["--paper", "--paper-2", "--panel", "--ink", "--green", "--green-2"].forEach((name) => root.style.removeProperty(name));
+  }
   document.querySelector('meta[name="theme-color"]')?.setAttribute("content", state.theme === "dark" ? "#111816" : "#173f35");
 
   els.themeSelect.value = state.theme;
@@ -632,8 +761,73 @@ function applyReaderPrefs() {
   els.translationSizeRange.value = String(state.translationScale);
   els.lineHeightRange.value = String(state.lineScale);
   els.compactToggle.checked = state.compactCards;
+  els.cardStyleSelect.value = state.cardStyle;
+  els.headerStyleSelect.value = state.headerStyle;
+  els.customPaper.value = state.customTheme.paper;
+  els.customPanel.value = state.customTheme.panel;
+  els.customInk.value = state.customTheme.ink;
+  els.customAccent.value = state.customTheme.accent;
+  els.customThemeControls.hidden = state.theme !== "custom";
   els.themeButton.textContent = state.theme === "dark" ? "Light mode" : "Dark mode";
   els.settingsSummary.textContent = `${capitalize(state.theme)} · ${capitalize(state.arabicFont)} Arabic · ${capitalize(state.translationFont)} translation`;
+}
+
+function updateCustomTheme() {
+  state.customTheme = {
+    paper: els.customPaper.value,
+    panel: els.customPanel.value,
+    ink: els.customInk.value,
+    accent: els.customAccent.value,
+  };
+  state.theme = "custom";
+  applyReaderPrefs();
+  savePrefs();
+}
+
+function parseTags(value) {
+  return [...new Set(String(value)
+    .split(/[,#\s]+/)
+    .map((tag) => tag.trim().toLowerCase())
+    .filter(Boolean))].slice(0, 12);
+}
+
+function renderLibrary() {
+  const collection = els.libraryCollection.value;
+  els.bibleControls.hidden = collection !== "bible";
+  els.libraryContent.innerHTML = "";
+
+  if (collection === "quran") {
+    els.libraryNotice.textContent = "The Quran is available in the Read tab with Arabic, translations, tafsir, notes, and word-by-word translation.";
+    return;
+  }
+
+  if (collection === "bible") {
+    els.libraryNotice.textContent = "Open any Bible reference. Text is loaded from the public-domain World English Bible.";
+    els.bibleReference.value = state.bibleReference;
+    return;
+  }
+
+  els.libraryNotice.textContent = "This collection is listed as a library category. Full text sources can be added here once a reliable public-domain source is selected.";
+  els.libraryContent.innerHTML = `<p class="scripture-verse">Available next: search, references, notes, and side-by-side study once the text source is connected.</p>`;
+}
+
+async function loadBibleReference() {
+  const reference = els.bibleReference.value.trim();
+  if (!reference) return;
+  state.bibleReference = reference;
+  els.libraryNotice.textContent = "Loading Bible reference...";
+  els.libraryContent.innerHTML = "";
+
+  try {
+    const data = await getJSON(`https://bible-api.com/${encodeURIComponent(reference)}`);
+    els.libraryNotice.textContent = `${data.translation_name || "Bible"} · ${data.reference || reference}`;
+    els.libraryContent.innerHTML = `
+      <h3>${escapeHTML(data.reference || reference)}</h3>
+      ${(data.verses || []).map((verse) => `<p class="scripture-verse"><strong>${escapeHTML(`${verse.book_name} ${verse.chapter}:${verse.verse}`)}</strong> ${escapeHTML(verse.text.trim())}</p>`).join("") || `<p>${escapeHTML(data.text || "No text returned.")}</p>`}
+    `;
+  } catch (error) {
+    els.libraryNotice.textContent = `Could not load that reference. ${error.message}`;
+  }
 }
 
 function syncModalState() {
