@@ -1,0 +1,149 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+    <meta name="theme-color" content="#173f35">
+    <title>Quran Reader</title>
+    <link rel="preconnect" href="https://api.quran.com">
+    <link rel="stylesheet" href="./styles.css">
+  </head>
+  <body>
+    <div class="app-shell">
+      <header class="topbar">
+        <div>
+          <p class="eyebrow">Quran Reader</p>
+          <h1 id="chapterTitle">Loading...</h1>
+          <p id="chapterMeta" class="meta">Arabic, translations, tafsir, notes</p>
+        </div>
+        <button id="settingsButton" class="icon-button" type="button" aria-label="Translation settings" title="Translations">⚙</button>
+      </header>
+
+      <main>
+        <section id="readView" class="view active" aria-label="Read Quran">
+          <div class="reading-dashboard">
+            <div>
+              <span class="dashboard-label">Now reading</span>
+              <strong id="dashboardSurah">Surah</strong>
+            </div>
+            <div>
+              <span class="dashboard-label">Progress</span>
+              <strong id="dashboardProgress">0 / 0</strong>
+            </div>
+            <div>
+              <span class="dashboard-label">Notes</span>
+              <strong id="dashboardNotes">0</strong>
+            </div>
+          </div>
+
+          <div class="reader-controls">
+            <label class="field">
+              <span>Surah</span>
+              <select id="chapterSelect"></select>
+            </label>
+            <label class="field">
+              <span>Find ayah</span>
+              <input id="ayahSearch" type="search" inputmode="numeric" placeholder="2:255 or 255">
+            </label>
+          </div>
+
+          <div class="quick-actions">
+            <button id="translationButton" class="pill-button" type="button">Translations</button>
+            <button id="tafsirButton" class="pill-button" type="button">Tafsir</button>
+            <button id="lastReadButton" class="pill-button muted" type="button">Last read</button>
+            <div class="font-controls" aria-label="Arabic text size">
+              <button id="decreaseFont" class="mini-button" type="button" aria-label="Decrease Arabic text size">A-</button>
+              <button id="increaseFont" class="mini-button" type="button" aria-label="Increase Arabic text size">A+</button>
+            </div>
+          </div>
+
+          <div id="status" class="status">Preparing reader...</div>
+          <div id="verses" class="verses" aria-live="polite"></div>
+        </section>
+
+        <section id="notesView" class="view" aria-label="Notes">
+          <div class="notes-header">
+            <div>
+              <h2>Notes</h2>
+              <p id="notesCount">0 saved notes</p>
+            </div>
+            <div class="notes-actions">
+              <button id="exportNotes" class="icon-button" type="button" aria-label="Export notes">⇩</button>
+              <label class="icon-button file-button" aria-label="Import notes">
+                ⇧
+                <input id="importNotes" type="file" accept="application/json">
+              </label>
+            </div>
+          </div>
+          <input id="notesSearch" class="wide-search" type="search" placeholder="Search notes, surah, or ayah">
+          <div id="notesList" class="notes-list"></div>
+        </section>
+      </main>
+
+      <nav class="bottom-nav" aria-label="Primary">
+        <button class="nav-item active" type="button" data-view="readView"><span class="nav-icon">☰</span><span>Read</span></button>
+        <button class="nav-item" type="button" data-view="notesView"><span class="nav-icon">✎</span><span>Notes</span></button>
+      </nav>
+    </div>
+
+    <dialog id="translationSheet" class="sheet">
+      <form method="dialog" class="sheet-inner">
+        <div class="sheet-header">
+          <div>
+            <h2>Translations</h2>
+            <p id="translationSummary">Choose one or more</p>
+          </div>
+          <button class="icon-button" value="close" aria-label="Close translations">×</button>
+        </div>
+        <input id="translationSearch" class="wide-search" type="search" placeholder="Search language, author, name">
+        <div id="translationList" class="resource-list"></div>
+      </form>
+    </dialog>
+
+    <dialog id="tafsirSheet" class="sheet">
+      <form method="dialog" class="sheet-inner">
+        <div class="sheet-header">
+          <div>
+            <h2>Tafsir</h2>
+            <p id="tafsirSummary">Select a tafsir source</p>
+          </div>
+          <button class="icon-button" value="close" aria-label="Close tafsir">×</button>
+        </div>
+        <input id="tafsirSearch" class="wide-search" type="search" placeholder="Search tafsir, language, author">
+        <div id="tafsirList" class="resource-list compact"></div>
+      </form>
+    </dialog>
+
+    <dialog id="noteSheet" class="sheet note-sheet">
+      <form method="dialog" class="sheet-inner">
+        <div class="sheet-header">
+          <div>
+            <h2 id="noteTitle">Note</h2>
+            <p id="noteSubtitle">Ayah note</p>
+          </div>
+          <button class="icon-button" value="close" aria-label="Close note">×</button>
+        </div>
+        <textarea id="noteEditor" rows="9" placeholder="Write your reflection, question, reminder, or action..."></textarea>
+        <div class="sheet-actions">
+          <button id="deleteNote" class="text-button danger" type="button">Delete</button>
+          <button class="text-button primary" value="close">Done</button>
+        </div>
+      </form>
+    </dialog>
+
+    <dialog id="tafsirContentSheet" class="sheet tafsir-content-sheet">
+      <form method="dialog" class="sheet-inner">
+        <div class="sheet-header">
+          <div>
+            <h2 id="tafsirContentTitle">Tafsir</h2>
+            <p id="tafsirContentSubtitle">Loading...</p>
+          </div>
+          <button class="icon-button" value="close" aria-label="Close tafsir content">×</button>
+        </div>
+        <article id="tafsirContent" class="tafsir-content"></article>
+      </form>
+    </dialog>
+
+    <script src="./app.js"></script>
+  </body>
+</html>
