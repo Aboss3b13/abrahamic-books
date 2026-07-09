@@ -219,8 +219,8 @@ html {
   scroll-behavior: smooth;
   scroll-padding-top: 132px;
   background:
-    radial-gradient(circle at top left, rgba(176, 130, 47, 0.12), transparent 34rem),
-    linear-gradient(180deg, #f7f4ec 0%, var(--paper-2) 42%, var(--paper) 100%);
+    radial-gradient(circle at top left, color-mix(in srgb, var(--gold) 16%, transparent), transparent 34rem),
+    linear-gradient(180deg, var(--paper-2) 0%, var(--paper) 100%);
 }
 
 body {
@@ -263,9 +263,9 @@ button {
   padding: calc(18px + env(safe-area-inset-top)) 18px 22px;
   color: #f8f3e8;
   background:
-    linear-gradient(125deg, rgba(15, 57, 48, 0.98), rgba(31, 111, 120, 0.88)),
+    linear-gradient(125deg, color-mix(in srgb, var(--green) 92%, black), color-mix(in srgb, var(--teal) 86%, black)),
     url("./assets/geometric-header.webp") center / cover;
-  border-bottom: 1px solid rgba(255, 255, 255, 0.16);
+  border-bottom: 1px solid var(--line);
 }
 
 :root[data-header-style="solid"] .topbar {
@@ -339,7 +339,7 @@ main {
 .reading-dashboard > div {
   min-width: 0;
   padding: 11px 12px;
-  border: 1px solid rgba(223, 229, 223, 0.86);
+  border: 1px solid var(--line);
   border-radius: 8px;
   background: color-mix(in srgb, var(--panel) 86%, transparent);
   box-shadow: var(--soft-shadow);
@@ -633,14 +633,12 @@ textarea:focus {
   line-height: calc(1.7 * var(--line-scale));
 }
 
-.explanation-panel {
-  margin: 0 var(--card-pad) var(--card-pad);
-  padding: 10px;
-  border-left: 3px solid var(--gold);
-  border-radius: 6px;
-  color: var(--muted);
-  background: color-mix(in srgb, var(--gold-soft) 52%, transparent);
-  line-height: 1.45;
+.original-scripture {
+  padding: var(--card-pad) var(--card-pad) 0;
+  color: var(--green);
+  font-family: "Noto Naskh Arabic", "SBL Hebrew", "SBL Greek", Georgia, serif;
+  font-size: calc(1.55rem * var(--translation-scale));
+  line-height: calc(1.8 * var(--line-scale));
 }
 
 .note-preview {
