@@ -38,7 +38,7 @@
 
           <div class="reader-controls">
             <label class="field">
-              <span>Book set</span>
+              <span>Book</span>
               <select id="scriptureSelect">
                 <option value="quran">Quran</option>
                 <option value="old">Old Testament</option>
@@ -46,19 +46,17 @@
               </select>
             </label>
             <label class="field">
-              <span>Surah</span>
+              <span id="chapterControlLabel">Chapter</span>
               <select id="chapterSelect"></select>
             </label>
             <label class="field bible-field" hidden>
-              <span>Book</span>
-              <select id="bibleBookSelect"></select>
-            </label>
-            <label class="field bible-field" hidden>
               <span>Chapter</span>
-              <select id="bibleChapterSelect"></select>
+              <select id="biblePassageSelect"></select>
             </label>
+            <select id="bibleBookSelect" hidden></select>
+            <select id="bibleChapterSelect" hidden></select>
             <label class="field">
-              <span>Find verse</span>
+              <span>Verse</span>
               <input id="ayahSearch" type="search" placeholder="2:255, 255, John 3:16">
             </label>
           </div>

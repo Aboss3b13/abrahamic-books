@@ -85,6 +85,7 @@ const els = {
   chapterSelect: document.querySelector("#chapterSelect"),
   bibleBookSelect: document.querySelector("#bibleBookSelect"),
   bibleChapterSelect: document.querySelector("#bibleChapterSelect"),
+  biblePassageSelect: document.querySelector("#biblePassageSelect"),
   ayahSearch: document.querySelector("#ayahSearch"),
   dashboardSurah: document.querySelector("#dashboardSurah"),
   dashboardProgress: document.querySelector("#dashboardProgress"),
@@ -226,6 +227,14 @@ function bindEvents() {
     loadBibleChapter();
   });
 
+  els.biblePassageSelect.addEventListener("change", () => {
+    const [book, chapter] = els.biblePassageSelect.value.split("|");
+    state.selectedBibleBook = book;
+    state.selectedBibleChapter = Number(chapter) || 1;
+    savePrefs();
+    loadBibleChapter();
+  });
+
   els.ayahSearch.addEventListener("change", jumpToAyah);
   els.ayahSearch.addEventListener("keydown", (event) => {
     if (event.key === "Enter") {
@@ -286,6 +295,11 @@ function bindEvents() {
     dialog.addEventListener("cancel", syncModalState);
   });
 
+  window.addEventListener("scroll", updateFilterBarState, { passive: true });
+  document.querySelector(".reader-controls")?.addEventListener("click", () => {
+    document.body.classList.add("filters-expanded");
+  });
+
   els.verses.addEventListener("click", (event) => {
     const button = event.target.closest("button[data-action]");
     if (!button) return;
@@ -308,6 +322,12 @@ function bindEvents() {
     if (!word) return;
     openOriginalWordTranslation(word.dataset.word, word.dataset.lang, word.closest(".ayah-card")?.dataset.key);
   });
+}
+
+function updateFilterBarState() {
+  const compact = window.scrollY > 150;
+  document.body.classList.toggle("filters-compact", compact);
+  if (!compact) document.body.classList.remove("filters-expanded");
 }
 
 async function loadChapter(chapterNumber) {
@@ -402,6 +422,7 @@ function renderBibleBookOptions() {
   }
   els.bibleBookSelect.innerHTML = books.map(([name]) => `<option value="${escapeHTML(name)}">${escapeHTML(name)}</option>`).join("");
   els.bibleBookSelect.value = state.selectedBibleBook;
+  renderBiblePassageOptions();
   renderBibleChapterOptions();
 }
 
@@ -410,6 +431,18 @@ function renderBibleChapterOptions() {
   state.selectedBibleChapter = clampNumber(state.selectedBibleChapter, 1, chapters);
   els.bibleChapterSelect.innerHTML = Array.from({ length: chapters }, (_, index) => `<option value="${index + 1}">${index + 1}</option>`).join("");
   els.bibleChapterSelect.value = String(state.selectedBibleChapter);
+  renderBiblePassageOptions();
+}
+
+function renderBiblePassageOptions() {
+  const books = getBibleBooks();
+  els.biblePassageSelect.innerHTML = books.map(([book, chapters]) => {
+    return Array.from({ length: chapters }, (_, index) => {
+      const chapter = index + 1;
+      return `<option value="${escapeHTML(book)}|${chapter}">${escapeHTML(book)} ${chapter}</option>`;
+    }).join("");
+  }).join("");
+  els.biblePassageSelect.value = `${state.selectedBibleBook}|${state.selectedBibleChapter}`;
 }
 
 function updateBibleHeader() {
@@ -481,6 +514,7 @@ function renderVerseMeta(verse) {
     const chapter = getChapter(Number(verse.verse_key.split(":")[0]));
     return [
       chapter?.revelation_place ? `${capitalize(chapter.revelation_place)}` : "",
+      "Quranic revelation",
       verse.juz_number ? `Juz ${verse.juz_number}` : "",
       verse.page_number ? `Page ${verse.page_number}` : "",
       verse.ruku_number ? `Ruku ${verse.ruku_number}` : "",
@@ -489,8 +523,10 @@ function renderVerseMeta(verse) {
 
   return [
     verse.scripture === "old" ? "Old Testament" : "New Testament",
+    verse.scripture === "old" ? "Origin: ancient Israel/Judah tradition" : "Origin: early Christian Mediterranean tradition",
     "World English Bible",
     verse.originalText ? verse.originalLanguage : "",
+    "Exact date/place varies by book",
     `${verse.book_name} ${verse.chapter}:${verse.verse_number}`,
   ].filter(Boolean).map((item) => `<span>${escapeHTML(item)}</span>`).join("");
 }
