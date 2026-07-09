@@ -387,19 +387,26 @@ textarea {
   border: 1px solid var(--line);
   border-radius: 8px;
   color: var(--ink);
-  background: rgba(255, 255, 255, 0.94);
+  background: var(--panel);
   outline: none;
-}
-
-:root[data-theme="dark"] select,
-:root[data-theme="dark"] input,
-:root[data-theme="dark"] textarea {
-  background: #192521;
 }
 
 select,
 input {
   padding: 0 12px;
+}
+
+select {
+  appearance: none;
+  padding-right: 34px;
+  background-image:
+    linear-gradient(45deg, transparent 50%, var(--muted) 50%),
+    linear-gradient(135deg, var(--muted) 50%, transparent 50%);
+  background-position:
+    calc(100% - 18px) 52%,
+    calc(100% - 12px) 52%;
+  background-size: 6px 6px, 6px 6px;
+  background-repeat: no-repeat;
 }
 
 textarea {
@@ -436,9 +443,11 @@ textarea:focus {
 .pill-button,
 .text-button,
 .icon-button {
+  max-width: 100%;
   border: 1px solid var(--line);
   color: var(--ink);
   background: var(--panel);
+  overflow-wrap: anywhere;
 }
 
 .pill-button {
@@ -465,6 +474,7 @@ textarea:focus {
   padding: 0 14px;
   border-radius: 8px;
   font-weight: 800;
+  white-space: normal;
 }
 
 .text-button.primary {
@@ -562,6 +572,7 @@ textarea:focus {
 
 .mini-button {
   min-width: 36px;
+  max-width: 100%;
   height: 34px;
   border: 1px solid var(--line);
   border-radius: 999px;
@@ -639,6 +650,44 @@ textarea:focus {
   font-family: "Noto Naskh Arabic", "SBL Hebrew", "SBL Greek", Georgia, serif;
   font-size: calc(1.55rem * var(--translation-scale));
   line-height: calc(1.8 * var(--line-scale));
+  overflow-wrap: anywhere;
+}
+
+.original-word {
+  display: inline-block;
+  max-width: 100%;
+  margin: 0 0.06em;
+  padding: 0 0.08em;
+  border: 0;
+  border-radius: 6px;
+  color: inherit;
+  background: transparent;
+  font: inherit;
+  line-height: inherit;
+  overflow-wrap: anywhere;
+}
+
+.original-word:hover,
+.original-word:focus {
+  background: color-mix(in srgb, var(--gold-soft) 72%, transparent);
+  outline: 2px solid color-mix(in srgb, var(--gold) 58%, transparent);
+}
+
+.verse-meta {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  padding: 0 var(--card-pad) var(--card-pad);
+}
+
+.verse-meta span {
+  padding: 4px 8px;
+  border: 1px solid var(--line);
+  border-radius: 999px;
+  color: var(--muted);
+  background: color-mix(in srgb, var(--panel) 80%, transparent);
+  font-size: 0.72rem;
+  font-weight: 800;
 }
 
 .note-preview {
@@ -724,6 +773,7 @@ textarea:focus {
   background: transparent;
   font-size: 0.72rem;
   font-weight: 900;
+  overflow: hidden;
 }
 
 .nav-item span {
@@ -993,6 +1043,7 @@ textarea:focus {
   color: var(--ink);
   background: var(--panel);
   text-align: left;
+  overflow-wrap: anywhere;
 }
 
 .library-book span {
@@ -1141,6 +1192,21 @@ textarea:focus {
 
   main {
     padding-inline: 18px;
+  }
+}
+
+@media (max-width: 760px) {
+  .reader-controls {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  .notes-header {
+    align-items: stretch;
+    flex-direction: column;
+  }
+
+  .notes-actions {
+    flex-wrap: wrap;
   }
 }
 

@@ -49,10 +49,10 @@ const state = {
   selectedChapter: 1,
   selectedTranslations: [85],
   selectedTafsir: 169,
-  theme: "light",
+  theme: "sepia",
   width: "comfortable",
   arabicFont: "uthmani",
-  translationFont: "system",
+  translationFont: "mono",
   arabicScale: 1,
   translationScale: 1,
   lineScale: 1,
@@ -74,7 +74,7 @@ const state = {
   notes: {},
   currentNoteReferences: [],
   noteTagFilter: "",
-  bibleReference: "John 3:16",
+  originalWordCache: {},
   currentNoteKey: null,
 };
 
@@ -131,10 +131,8 @@ const els = {
   tagFilters: document.querySelector("#tagFilters"),
   notesVersePreview: document.querySelector("#notesVersePreview"),
   libraryCollection: document.querySelector("#libraryCollection"),
+  librarySearch: document.querySelector("#librarySearch"),
   libraryNotice: document.querySelector("#libraryNotice"),
-  bibleControls: document.querySelector("#bibleControls"),
-  bibleReference: document.querySelector("#bibleReference"),
-  loadBibleReference: document.querySelector("#loadBibleReference"),
   libraryContent: document.querySelector("#libraryContent"),
   translationSheet: document.querySelector("#translationSheet"),
   translationSearch: document.querySelector("#translationSearch"),
@@ -277,13 +275,7 @@ function bindEvents() {
   els.exportNotes.addEventListener("click", exportNotes);
   els.importNotes.addEventListener("change", importNotes);
   els.libraryCollection.addEventListener("change", renderLibrary);
-  els.loadBibleReference.addEventListener("click", loadBibleReference);
-  els.bibleReference.addEventListener("keydown", (event) => {
-    if (event.key === "Enter") {
-      event.preventDefault();
-      loadBibleReference();
-    }
-  });
+  els.librarySearch.addEventListener("input", renderLibrary);
 
   document.querySelectorAll(".nav-item").forEach((button) => {
     button.addEventListener("click", () => switchView(button.dataset.view));
@@ -309,6 +301,12 @@ function bindEvents() {
     const word = event.target.closest(".arabic-word");
     if (!word) return;
     openWordTranslation(word.closest(".ayah-card")?.dataset.key, Number(word.dataset.position));
+  });
+
+  els.verses.addEventListener("click", (event) => {
+    const word = event.target.closest(".original-word");
+    if (!word) return;
+    openOriginalWordTranslation(word.dataset.word, word.dataset.lang, word.closest(".ayah-card")?.dataset.key);
   });
 }
 
@@ -381,6 +379,7 @@ async function loadBibleChapter() {
 
 function renderScriptureControls() {
   els.scriptureSelect.value = state.scripture;
+  els.libraryCollection.value = state.scripture;
   const isQuran = state.scripture === "quran";
   els.chapterSelect.closest(".field").hidden = !isQuran;
   document.querySelectorAll(".bible-field").forEach((field) => {
@@ -388,6 +387,7 @@ function renderScriptureControls() {
   });
   els.tafsirButton.hidden = !isQuran;
   els.translationButton.hidden = !isQuran;
+  els.ayahSearch.placeholder = isQuran ? "2:255, 255, Al-Baqarah" : `${state.selectedBibleBook} ${state.selectedBibleChapter}:1`;
   if (!isQuran) {
     renderBibleBookOptions();
     renderBibleChapterOptions();
@@ -460,11 +460,39 @@ function renderVerse(verse) {
           <button class="mini-button" type="button" data-action="bookmark" aria-label="Save ${verse.verse_key} as last read">⌖</button>
         </div>
       </div>
-      ${isQuran ? `<div class="arabic" lang="ar" dir="rtl">${renderArabicWords(verse)}</div><div class="translations">${translations}</div>` : `${state.showOriginalBible && verse.originalText ? `<div class="original-scripture" dir="${verse.scripture === "old" ? "rtl" : "ltr"}">${escapeHTML(verse.originalText)}</div>` : ""}<div class="scripture-text">${escapeHTML(verse.text || "")}</div>`}
+      ${isQuran ? `<div class="arabic" lang="ar" dir="rtl">${renderArabicWords(verse)}</div><div class="translations">${translations}</div>` : `${state.showOriginalBible && verse.originalText ? `<div class="original-scripture" dir="${verse.scripture === "old" ? "rtl" : "ltr"}">${renderOriginalWords(verse)}</div>` : ""}<div class="scripture-text">${escapeHTML(verse.text || "")}</div>`}
+      <div class="verse-meta">${renderVerseMeta(verse)}</div>
       ${note ? `<div class="note-preview">${escapeHTML(note)}</div>` : ""}
       ${tags.length ? `<div class="note-tags">${tags.map((tag) => `<span>#${escapeHTML(tag)}</span>`).join("")}</div>` : ""}
     </article>
   `;
+}
+
+function renderOriginalWords(verse) {
+  return String(verse.originalText || "")
+    .split(/\s+/)
+    .filter(Boolean)
+    .map((word) => `<button class="original-word" type="button" data-lang="${verse.scripture === "old" ? "he" : "el"}" data-word="${escapeHTML(word)}">${escapeHTML(word)}</button>`)
+    .join(" ");
+}
+
+function renderVerseMeta(verse) {
+  if (!verse.scripture || verse.scripture === "quran") {
+    const chapter = getChapter(Number(verse.verse_key.split(":")[0]));
+    return [
+      chapter?.revelation_place ? `${capitalize(chapter.revelation_place)}` : "",
+      verse.juz_number ? `Juz ${verse.juz_number}` : "",
+      verse.page_number ? `Page ${verse.page_number}` : "",
+      verse.ruku_number ? `Ruku ${verse.ruku_number}` : "",
+    ].filter(Boolean).map((item) => `<span>${escapeHTML(item)}</span>`).join("");
+  }
+
+  return [
+    verse.scripture === "old" ? "Old Testament" : "New Testament",
+    "World English Bible",
+    verse.originalText ? verse.originalLanguage : "",
+    `${verse.book_name} ${verse.chapter}:${verse.verse_number}`,
+  ].filter(Boolean).map((item) => `<span>${escapeHTML(item)}</span>`).join("");
 }
 
 function renderArabicWords(verse) {
@@ -630,6 +658,36 @@ function openWordTranslation(key, position) {
     <div>${escapeHTML(word.transliteration?.text || "")}</div>
   `;
   openDialog(els.wordSheet);
+}
+
+async function openOriginalWordTranslation(rawWord, lang, key) {
+  const word = cleanOriginalWord(rawWord);
+  if (!word) return;
+  const label = lang === "he" ? "Hebrew" : "Greek";
+  els.wordTitle.textContent = word;
+  els.wordSubtitle.textContent = `${formatReferenceKey(key)} · ${label}`;
+  els.wordContent.innerHTML = `
+    <div class="word-arabic" dir="${lang === "he" ? "rtl" : "ltr"}">${escapeHTML(word)}</div>
+    <div class="word-translation">Looking up translation...</div>
+  `;
+  openDialog(els.wordSheet);
+
+  const cacheKey = `${lang}:${word}`;
+  if (!state.originalWordCache[cacheKey]) {
+    try {
+      const data = await getJSON(`https://api.mymemory.translated.net/get?q=${encodeURIComponent(word)}&langpair=${lang}%7Cen`);
+      state.originalWordCache[cacheKey] = data.responseData?.translatedText || "";
+    } catch {
+      state.originalWordCache[cacheKey] = "";
+    }
+  }
+
+  const translation = state.originalWordCache[cacheKey];
+  els.wordContent.innerHTML = `
+    <div class="word-arabic" dir="${lang === "he" ? "rtl" : "ltr"}">${escapeHTML(word)}</div>
+    <div class="word-translation"><strong>${escapeHTML(translation || "No direct word translation found")}</strong></div>
+    <div>${escapeHTML(label)} word lookup. Inflected biblical forms may translate imperfectly.</div>
+  `;
 }
 
 async function openTafsir(key) {
@@ -824,8 +882,13 @@ function jumpToAyah() {
   const raw = els.ayahSearch.value.trim();
   if (!raw) return;
   const parsedRef = parseLooseReference(raw);
-  if (parsedRef && parsedRef.type !== "quran") {
+  if (parsedRef) {
     jumpToReference(parsedRef.key);
+    return;
+  }
+  if (state.scripture !== "quran") {
+    const verse = Number(raw);
+    if (verse) scrollToKey(bibleKey(state.selectedBibleBook, state.selectedBibleChapter, verse));
     return;
   }
   const key = raw.includes(":") ? raw : `${state.selectedChapter}:${raw}`;
@@ -1028,15 +1091,15 @@ function setStatus(message) {
 }
 
 function updateDashboard(activeKey = localStorage.getItem("quran-reader-last-read-v1")) {
-  const chapter = getChapter(state.selectedChapter);
-  if (chapter) els.dashboardSurah.textContent = chapter.name_simple;
+  const isQuran = state.scripture === "quran";
+  const chapter = isQuran ? getChapter(state.selectedChapter) : null;
+  els.dashboardSurah.textContent = isQuran ? chapter?.name_simple || "Quran" : state.selectedBibleBook;
 
-  const activeChapter = Number(String(activeKey || "").split(":")[0]);
-  const activeAyah = Number(String(activeKey || "").split(":")[1]);
+  const active = parseReferenceKey(activeKey || "");
   const verseCount = chapter?.verses_count || state.verses.length || 0;
-  const progress = activeChapter === state.selectedChapter && activeAyah ? activeAyah : state.verses.length ? 1 : 0;
+  const progress = active.type === state.scripture && active.chapter === (isQuran ? state.selectedChapter : state.selectedBibleChapter) ? active.verse : state.verses.length ? 1 : 0;
   els.dashboardProgress.textContent = `${Math.min(progress, verseCount)} / ${verseCount}`;
-  els.dashboardNotes.textContent = String(Object.values(state.notes).filter((note) => note.text.trim()).length);
+  els.dashboardNotes.textContent = String(Object.values(state.notes).filter((note) => note.text?.trim() || note.tags?.length || note.references?.length || note.standalone).length);
 }
 
 function changeArabicScale(delta) {
@@ -1136,12 +1199,13 @@ function parseTags(value) {
 
 function renderLibrary() {
   const collection = els.libraryCollection.value;
-  els.bibleControls.hidden = collection !== "bible";
+  const query = els.librarySearch.value.trim().toLowerCase();
   els.libraryContent.innerHTML = "";
 
   if (collection === "quran") {
-    els.libraryNotice.textContent = `${state.chapters.length} surahs · Arabic, translations, tafsir, and word-by-word translation`;
-    els.libraryContent.innerHTML = state.chapters.map((chapter) => `
+    const chapters = state.chapters.filter((chapter) => `${chapter.id} ${chapter.name_simple} ${chapter.name_arabic} ${chapter.translated_name?.name || ""}`.toLowerCase().includes(query));
+    els.libraryNotice.textContent = `${chapters.length} surahs · Arabic, translations, tafsir, and word-by-word translation`;
+    els.libraryContent.innerHTML = chapters.map((chapter) => `
       <button class="library-book" type="button" data-quran="${chapter.id}">
         <strong>${chapter.id}. ${escapeHTML(chapter.name_simple)} · ${escapeHTML(chapter.name_arabic)}</strong>
         <span>${chapter.verses_count} ayat</span>
@@ -1158,13 +1222,8 @@ function renderLibrary() {
     return;
   }
 
-  if (collection === "bible") {
-    els.libraryNotice.textContent = "Open any Bible reference. Text is loaded from the public-domain World English Bible.";
-    els.bibleReference.value = state.bibleReference;
-    return;
-  }
-
-  const books = collection === "new" ? NEW_TESTAMENT : OLD_TESTAMENT;
+  const books = (collection === "new" ? NEW_TESTAMENT : OLD_TESTAMENT)
+    .filter(([book]) => book.toLowerCase().includes(query));
   els.libraryNotice.textContent = `${collection === "new" ? "New" : "Old"} Testament · ${books.length} books · World English Bible`;
   els.libraryContent.innerHTML = books.map(([book, chapters]) => `
     <button class="library-book" type="button" data-set="${collection}" data-book="${escapeHTML(book)}">
@@ -1182,25 +1241,6 @@ function renderLibrary() {
       loadBibleChapter();
     });
   });
-}
-
-async function loadBibleReference() {
-  const reference = els.bibleReference.value.trim();
-  if (!reference) return;
-  state.bibleReference = reference;
-  els.libraryNotice.textContent = "Loading Bible reference...";
-  els.libraryContent.innerHTML = "";
-
-  try {
-    const data = await getJSON(`https://bible-api.com/${encodeURIComponent(reference)}`);
-    els.libraryNotice.textContent = `${data.translation_name || "Bible"} · ${data.reference || reference}`;
-    els.libraryContent.innerHTML = `
-      <h3>${escapeHTML(data.reference || reference)}</h3>
-      ${(data.verses || []).map((verse) => `<p class="scripture-verse"><strong>${escapeHTML(`${verse.book_name} ${verse.chapter}:${verse.verse}`)}</strong> ${escapeHTML(verse.text.trim())}</p>`).join("") || `<p>${escapeHTML(data.text || "No text returned.")}</p>`}
-    `;
-  } catch (error) {
-    els.libraryNotice.textContent = `Could not load that reference. ${error.message}`;
-  }
 }
 
 function syncModalState() {
@@ -1247,6 +1287,7 @@ function bibleKey(book, chapter, verse) {
 
 function parseReferenceKey(key) {
   const raw = String(key || "");
+  if (!raw) return { type: state.scripture, chapter: state.selectedChapter, verse: 0, label: "" };
   if (raw.startsWith("note:")) return { type: "note", label: "Study note" };
   if (raw.startsWith("old:") || raw.startsWith("new:")) {
     const [type, bookRaw, chapter, verse] = raw.split(":");
@@ -1255,6 +1296,12 @@ function parseReferenceKey(key) {
   }
   const [chapter, verse] = raw.split(":").map(Number);
   return { type: "quran", chapter, verse, label: `Quran ${raw}` };
+}
+
+function cleanOriginalWord(word) {
+  return String(word || "")
+    .replace(/[.,;:!?()[\]{}"“”‘’·׃־]/g, "")
+    .trim();
 }
 
 function parseLooseReference(value) {

@@ -102,16 +102,12 @@
               <span>Collection</span>
               <select id="libraryCollection">
                 <option value="quran">Quran</option>
-              <option value="old">Old Testament</option>
-              <option value="new">New Testament</option>
-              <option value="bible">Bible Reference</option>
-            </select>
+                <option value="old">Old Testament</option>
+                <option value="new">New Testament</option>
+              </select>
             </label>
+            <input id="librarySearch" class="wide-search" type="search" placeholder="Search this collection">
             <div id="libraryNotice" class="status">Choose a collection.</div>
-            <div id="bibleControls" class="bible-controls" hidden>
-              <input id="bibleReference" type="search" placeholder="John 3:16, Genesis 1, Psalm 23">
-              <button id="loadBibleReference" class="text-button primary" type="button">Open</button>
-            </div>
             <article id="libraryContent" class="library-content"></article>
           </div>
         </section>
