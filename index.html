@@ -38,12 +38,28 @@
 
           <div class="reader-controls">
             <label class="field">
+              <span>Book set</span>
+              <select id="scriptureSelect">
+                <option value="quran">Quran</option>
+                <option value="old">Old Testament</option>
+                <option value="new">New Testament</option>
+              </select>
+            </label>
+            <label class="field">
               <span>Surah</span>
               <select id="chapterSelect"></select>
             </label>
+            <label class="field bible-field" hidden>
+              <span>Book</span>
+              <select id="bibleBookSelect"></select>
+            </label>
+            <label class="field bible-field" hidden>
+              <span>Chapter</span>
+              <select id="bibleChapterSelect"></select>
+            </label>
             <label class="field">
-              <span>Find ayah</span>
-              <input id="ayahSearch" type="search" inputmode="numeric" placeholder="2:255 or 255">
+              <span>Find verse</span>
+              <input id="ayahSearch" type="search" placeholder="2:255, 255, John 3:16">
             </label>
           </div>
 
@@ -85,10 +101,10 @@
               <span>Collection</span>
               <select id="libraryCollection">
                 <option value="quran">Quran</option>
-                <option value="bible">Bible</option>
-                <option value="tanakh">Tanakh / Hebrew Bible</option>
-                <option value="apocrypha">Apocrypha / Deuterocanon</option>
-              </select>
+              <option value="old">Old Testament</option>
+              <option value="new">New Testament</option>
+              <option value="bible">Bible Reference</option>
+            </select>
             </label>
             <div id="libraryNotice" class="status">Choose a collection.</div>
             <div id="bibleControls" class="bible-controls" hidden>
@@ -132,6 +148,10 @@
               <option value="midnight">Midnight</option>
               <option value="emerald">Emerald</option>
               <option value="contrast">High Contrast</option>
+              <option value="rose">Rose</option>
+              <option value="ocean">Ocean</option>
+              <option value="graphite">Graphite</option>
+              <option value="paper">Paper</option>
               <option value="custom">Custom</option>
             </select>
           </label>
@@ -191,9 +211,13 @@
           </label>
           <div id="customThemeControls" class="custom-theme-controls">
             <label class="color-field"><span>Background</span><input id="customPaper" type="color"></label>
+            <label class="color-field"><span>Background 2</span><input id="customPaper2" type="color"></label>
             <label class="color-field"><span>Card</span><input id="customPanel" type="color"></label>
             <label class="color-field"><span>Text</span><input id="customInk" type="color"></label>
+            <label class="color-field"><span>Muted text</span><input id="customMuted" type="color"></label>
+            <label class="color-field"><span>Lines</span><input id="customLine" type="color"></label>
             <label class="color-field"><span>Accent</span><input id="customAccent" type="color"></label>
+            <label class="color-field"><span>Highlight</span><input id="customHighlight" type="color"></label>
           </div>
           <label class="check-field">
             <input id="compactToggle" type="checkbox">
@@ -258,6 +282,14 @@
           <button class="icon-button" value="close" aria-label="Close note">×</button>
         </div>
         <input id="noteTags" class="wide-search" type="text" placeholder="Tags: mercy, prayer, study">
+        <div class="cross-ref-panel">
+          <label class="field">
+            <span>Add cross-reference</span>
+            <input id="referenceSearch" type="search" placeholder="Search or enter: Quran 2:255, John 3:16">
+          </label>
+          <div id="referenceResults" class="reference-results"></div>
+          <div id="noteReferences" class="note-references"></div>
+        </div>
         <textarea id="noteEditor" rows="9" placeholder="Write your reflection, question, reminder, or action..."></textarea>
         <div class="sheet-actions">
           <button id="deleteNote" class="text-button danger" type="button">Delete</button>

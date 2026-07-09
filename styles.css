@@ -102,6 +102,64 @@
   --rose: #ff5c8a;
 }
 
+:root[data-theme="rose"] {
+  --ink: #2a1620;
+  --muted: #795a68;
+  --paper: #fff2f6;
+  --paper-2: #f6dce7;
+  --panel: #fffafd;
+  --line: #e7bfd0;
+  --green: #9b305c;
+  --green-2: #bd4774;
+  --teal: #7a668e;
+  --gold: #a97320;
+  --gold-soft: #f7dfc0;
+}
+
+:root[data-theme="ocean"] {
+  color-scheme: dark;
+  --ink: #ecfbff;
+  --muted: #a7c7cf;
+  --paper: #07181f;
+  --paper-2: #0e2b35;
+  --panel: #12333d;
+  --line: #285563;
+  --green: #47c9d8;
+  --green-2: #71e2eb;
+  --teal: #6dc3ff;
+  --gold: #ffd166;
+  --gold-soft: #3c321b;
+}
+
+:root[data-theme="graphite"] {
+  color-scheme: dark;
+  --ink: #f1f1f1;
+  --muted: #b5b5b5;
+  --paper: #151515;
+  --paper-2: #202020;
+  --panel: #262626;
+  --line: #454545;
+  --green: #d8d8d8;
+  --green-2: #ffffff;
+  --teal: #b5b5b5;
+  --gold: #d6b85f;
+  --gold-soft: #393224;
+}
+
+:root[data-theme="paper"] {
+  --ink: #191816;
+  --muted: #69645d;
+  --paper: #fffffb;
+  --paper-2: #f2f0e9;
+  --panel: #ffffff;
+  --line: #d8d5ca;
+  --green: #303f3a;
+  --green-2: #59655f;
+  --teal: #687c83;
+  --gold: #9b782d;
+  --gold-soft: #f3ead1;
+}
+
 :root[data-width="narrow"] {
   --reader-width: 660px;
 }
@@ -307,7 +365,7 @@ main {
 
 .reader-controls {
   display: grid;
-  grid-template-columns: minmax(0, 1fr) 128px;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
   gap: 10px;
   margin-bottom: 10px;
 }
@@ -567,6 +625,22 @@ textarea:focus {
 
 .translation p {
   margin-bottom: 0;
+}
+
+.scripture-text {
+  padding: var(--card-pad);
+  font-size: calc(1.08rem * var(--translation-scale));
+  line-height: calc(1.7 * var(--line-scale));
+}
+
+.explanation-panel {
+  margin: 0 var(--card-pad) var(--card-pad);
+  padding: 10px;
+  border-left: 3px solid var(--gold);
+  border-radius: 6px;
+  color: var(--muted);
+  background: color-mix(in srgb, var(--gold-soft) 52%, transparent);
+  line-height: 1.45;
 }
 
 .note-preview {
@@ -904,6 +978,30 @@ textarea:focus {
   box-shadow: var(--soft-shadow);
 }
 
+.library-content {
+  display: grid;
+  gap: 8px;
+}
+
+.library-book {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  min-height: 48px;
+  padding: 10px 12px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  color: var(--ink);
+  background: var(--panel);
+  text-align: left;
+}
+
+.library-book span {
+  color: var(--muted);
+  font-size: 0.82rem;
+}
+
 .library-content h3,
 .verse-preview strong {
   margin: 0 0 8px;
@@ -963,6 +1061,52 @@ textarea:focus {
   background: color-mix(in srgb, var(--green-2) 12%, transparent);
   font-size: 0.75rem;
   font-weight: 800;
+}
+
+.cross-ref-panel {
+  display: grid;
+  gap: 8px;
+}
+
+.reference-results,
+.note-references {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.reference-row,
+.reference-pill {
+  border: 1px solid var(--line);
+  border-radius: 999px;
+  background: var(--panel);
+}
+
+.reference-row {
+  min-height: 34px;
+  padding: 0 10px;
+  color: var(--ink);
+  font-weight: 800;
+}
+
+.reference-pill {
+  display: flex;
+  overflow: hidden;
+}
+
+.reference-pill button {
+  min-height: 34px;
+  border: 0;
+  border-right: 1px solid var(--line);
+  color: var(--ink);
+  background: transparent;
+  font-weight: 800;
+}
+
+.reference-pill button:last-child {
+  min-width: 34px;
+  border-right: 0;
+  color: var(--rose);
 }
 
 :root[data-card-style="outlined"] .ayah-card,

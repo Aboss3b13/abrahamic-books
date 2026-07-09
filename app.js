@@ -4,10 +4,32 @@ const STORE = {
   prefs: "quran-reader-prefs-v1",
 };
 
+const OLD_TESTAMENT = [
+  ["Genesis", 50], ["Exodus", 40], ["Leviticus", 27], ["Numbers", 36], ["Deuteronomy", 34],
+  ["Joshua", 24], ["Judges", 21], ["Ruth", 4], ["1 Samuel", 31], ["2 Samuel", 24],
+  ["1 Kings", 22], ["2 Kings", 25], ["1 Chronicles", 29], ["2 Chronicles", 36], ["Ezra", 10],
+  ["Nehemiah", 13], ["Esther", 10], ["Job", 42], ["Psalms", 150], ["Proverbs", 31],
+  ["Ecclesiastes", 12], ["Song of Solomon", 8], ["Isaiah", 66], ["Jeremiah", 52], ["Lamentations", 5],
+  ["Ezekiel", 48], ["Daniel", 12], ["Hosea", 14], ["Joel", 3], ["Amos", 9], ["Obadiah", 1],
+  ["Jonah", 4], ["Micah", 7], ["Nahum", 3], ["Habakkuk", 3], ["Zephaniah", 3], ["Haggai", 2],
+  ["Zechariah", 14], ["Malachi", 4],
+];
+
+const NEW_TESTAMENT = [
+  ["Matthew", 28], ["Mark", 16], ["Luke", 24], ["John", 21], ["Acts", 28], ["Romans", 16],
+  ["1 Corinthians", 16], ["2 Corinthians", 13], ["Galatians", 6], ["Ephesians", 6], ["Philippians", 4],
+  ["Colossians", 4], ["1 Thessalonians", 5], ["2 Thessalonians", 3], ["1 Timothy", 6], ["2 Timothy", 4],
+  ["Titus", 3], ["Philemon", 1], ["Hebrews", 13], ["James", 5], ["1 Peter", 5], ["2 Peter", 3],
+  ["1 John", 5], ["2 John", 1], ["3 John", 1], ["Jude", 1], ["Revelation", 22],
+];
+
 const state = {
   chapters: [],
   translations: [],
   tafsirs: [],
+  scripture: "quran",
+  selectedBibleBook: "Genesis",
+  selectedBibleChapter: 1,
   selectedChapter: 1,
   selectedTranslations: [85],
   selectedTafsir: 169,
@@ -23,12 +45,17 @@ const state = {
   headerStyle: "pattern",
   customTheme: {
     paper: "#111816",
+    paper2: "#16221f",
     panel: "#1c2925",
     ink: "#eef5ef",
+    muted: "#a8b8b1",
+    line: "#31433d",
     accent: "#7ac7ad",
+    highlight: "#d2a84c",
   },
   verses: [],
   notes: {},
+  currentNoteReferences: [],
   noteTagFilter: "",
   bibleReference: "John 3:16",
   currentNoteKey: null,
@@ -37,7 +64,10 @@ const state = {
 const els = {
   chapterTitle: document.querySelector("#chapterTitle"),
   chapterMeta: document.querySelector("#chapterMeta"),
+  scriptureSelect: document.querySelector("#scriptureSelect"),
   chapterSelect: document.querySelector("#chapterSelect"),
+  bibleBookSelect: document.querySelector("#bibleBookSelect"),
+  bibleChapterSelect: document.querySelector("#bibleChapterSelect"),
   ayahSearch: document.querySelector("#ayahSearch"),
   dashboardSurah: document.querySelector("#dashboardSurah"),
   dashboardProgress: document.querySelector("#dashboardProgress"),
@@ -64,15 +94,22 @@ const els = {
   headerStyleSelect: document.querySelector("#headerStyleSelect"),
   customThemeControls: document.querySelector("#customThemeControls"),
   customPaper: document.querySelector("#customPaper"),
+  customPaper2: document.querySelector("#customPaper2"),
   customPanel: document.querySelector("#customPanel"),
   customInk: document.querySelector("#customInk"),
+  customMuted: document.querySelector("#customMuted"),
+  customLine: document.querySelector("#customLine"),
   customAccent: document.querySelector("#customAccent"),
+  customHighlight: document.querySelector("#customHighlight"),
   compactToggle: document.querySelector("#compactToggle"),
   wordSheet: document.querySelector("#wordSheet"),
   wordTitle: document.querySelector("#wordTitle"),
   wordSubtitle: document.querySelector("#wordSubtitle"),
   wordContent: document.querySelector("#wordContent"),
   noteTags: document.querySelector("#noteTags"),
+  referenceSearch: document.querySelector("#referenceSearch"),
+  referenceResults: document.querySelector("#referenceResults"),
+  noteReferences: document.querySelector("#noteReferences"),
   tagFilters: document.querySelector("#tagFilters"),
   notesVersePreview: document.querySelector("#notesVersePreview"),
   libraryCollection: document.querySelector("#libraryCollection"),
@@ -136,17 +173,40 @@ async function init() {
     }
 
     renderChapterOptions();
+    renderBibleBookOptions();
+    renderScriptureControls();
     renderResourceLists();
     renderNotes();
-    await loadChapter(state.selectedChapter);
+    await loadCurrentScripture();
   } catch (error) {
     setStatus(`Could not load Quran data. ${error.message}`);
   }
 }
 
 function bindEvents() {
+  els.scriptureSelect.addEventListener("change", () => {
+    state.scripture = els.scriptureSelect.value;
+    savePrefs();
+    renderScriptureControls();
+    loadCurrentScripture();
+  });
+
   els.chapterSelect.addEventListener("change", () => {
     loadChapter(Number(els.chapterSelect.value));
+  });
+
+  els.bibleBookSelect.addEventListener("change", () => {
+    state.selectedBibleBook = els.bibleBookSelect.value;
+    state.selectedBibleChapter = 1;
+    savePrefs();
+    renderBibleChapterOptions();
+    loadBibleChapter();
+  });
+
+  els.bibleChapterSelect.addEventListener("change", () => {
+    state.selectedBibleChapter = Number(els.bibleChapterSelect.value);
+    savePrefs();
+    loadBibleChapter();
   });
 
   els.ayahSearch.addEventListener("change", jumpToAyah);
@@ -174,13 +234,20 @@ function bindEvents() {
   els.cardStyleSelect.addEventListener("change", () => updateReaderPref("cardStyle", els.cardStyleSelect.value));
   els.headerStyleSelect.addEventListener("change", () => updateReaderPref("headerStyle", els.headerStyleSelect.value));
   els.compactToggle.addEventListener("change", () => updateReaderPref("compactCards", els.compactToggle.checked));
-  [els.customPaper, els.customPanel, els.customInk, els.customAccent].forEach((input) => {
+  [els.customPaper, els.customPaper2, els.customPanel, els.customInk, els.customMuted, els.customLine, els.customAccent, els.customHighlight].forEach((input) => {
     input.addEventListener("input", updateCustomTheme);
   });
   els.translationSearch.addEventListener("input", renderTranslationList);
   els.tafsirSearch.addEventListener("input", renderTafsirList);
   els.noteEditor.addEventListener("input", saveCurrentNote);
   els.noteTags.addEventListener("input", saveCurrentNote);
+  els.referenceSearch.addEventListener("input", renderReferenceResults);
+  els.referenceSearch.addEventListener("keydown", (event) => {
+    if (event.key === "Enter") {
+      event.preventDefault();
+      addReferenceFromSearch();
+    }
+  });
   els.deleteNote.addEventListener("click", deleteCurrentNote);
   els.notesSearch.addEventListener("input", renderNotes);
   els.exportNotes.addEventListener("click", exportNotes);
@@ -222,6 +289,7 @@ function bindEvents() {
 }
 
 async function loadChapter(chapterNumber) {
+  state.scripture = "quran";
   state.selectedChapter = chapterNumber;
   els.chapterSelect.value = String(chapterNumber);
   savePrefs();
@@ -241,6 +309,81 @@ async function loadChapter(chapterNumber) {
   } catch (error) {
     setStatus(`Could not load this surah. ${error.message}`);
   }
+}
+
+async function loadCurrentScripture() {
+  if (state.scripture === "quran") {
+    await loadChapter(state.selectedChapter);
+  } else {
+    await loadBibleChapter();
+  }
+}
+
+async function loadBibleChapter() {
+  const book = state.selectedBibleBook;
+  const chapter = state.selectedBibleChapter;
+  savePrefs();
+  updateBibleHeader();
+  setStatus(`Loading ${book} ${chapter}...`);
+  els.verses.innerHTML = "";
+
+  try {
+    const data = await getJSON(`https://bible-api.com/${encodeURIComponent(`${book} ${chapter}`)}`);
+    state.verses = (data.verses || []).map((verse) => ({
+      scripture: state.scripture,
+      verse_key: bibleKey(verse.book_name, verse.chapter, verse.verse),
+      bible_reference: `${verse.book_name} ${verse.chapter}:${verse.verse}`,
+      text: verse.text.trim(),
+      translations: [{ text: verse.text.trim(), resource_id: "web" }],
+      book_name: verse.book_name,
+      chapter: verse.chapter,
+      verse_number: verse.verse,
+    }));
+    renderVerses();
+    updateDashboard();
+    setStatus("");
+  } catch (error) {
+    setStatus(`Could not load ${book} ${chapter}. ${error.message}`);
+  }
+}
+
+function renderScriptureControls() {
+  els.scriptureSelect.value = state.scripture;
+  const isQuran = state.scripture === "quran";
+  els.chapterSelect.closest(".field").hidden = !isQuran;
+  document.querySelectorAll(".bible-field").forEach((field) => {
+    field.hidden = isQuran;
+  });
+  els.tafsirButton.hidden = !isQuran;
+  els.translationButton.hidden = !isQuran;
+  if (!isQuran) {
+    renderBibleBookOptions();
+    renderBibleChapterOptions();
+  }
+}
+
+function renderBibleBookOptions() {
+  const books = getBibleBooks();
+  if (!books.some(([name]) => name === state.selectedBibleBook)) {
+    state.selectedBibleBook = books[0]?.[0] || "Genesis";
+    state.selectedBibleChapter = 1;
+  }
+  els.bibleBookSelect.innerHTML = books.map(([name]) => `<option value="${escapeHTML(name)}">${escapeHTML(name)}</option>`).join("");
+  els.bibleBookSelect.value = state.selectedBibleBook;
+  renderBibleChapterOptions();
+}
+
+function renderBibleChapterOptions() {
+  const chapters = getBibleBooks().find(([name]) => name === state.selectedBibleBook)?.[1] || 1;
+  state.selectedBibleChapter = clampNumber(state.selectedBibleChapter, 1, chapters);
+  els.bibleChapterSelect.innerHTML = Array.from({ length: chapters }, (_, index) => `<option value="${index + 1}">${index + 1}</option>`).join("");
+  els.bibleChapterSelect.value = String(state.selectedBibleChapter);
+}
+
+function updateBibleHeader() {
+  els.chapterTitle.textContent = `${state.selectedBibleBook} ${state.selectedBibleChapter}`;
+  els.chapterMeta.textContent = `${state.scripture === "old" ? "Old Testament" : "New Testament"} · World English Bible`;
+  els.dashboardSurah.textContent = state.selectedBibleBook;
 }
 
 function renderChapterOptions() {
@@ -269,6 +412,7 @@ function renderVerses() {
 function renderVerse(verse) {
   const note = state.notes[verse.verse_key]?.text?.trim();
   const tags = state.notes[verse.verse_key]?.tags || [];
+  const isQuran = !verse.scripture || verse.scripture === "quran";
   const translations = verse.translations.length
     ? verse.translations.map(renderTranslation).join("")
     : `<div class="translation"><p>No selected translation returned for this ayah.</p></div>`;
@@ -276,15 +420,14 @@ function renderVerse(verse) {
   return `
     <article class="ayah-card" id="ayah-${verse.verse_key.replace(":", "-")}" data-key="${verse.verse_key}">
       <div class="ayah-top">
-        <div class="ayah-key">${verse.verse_key}</div>
+        <div class="ayah-key">${escapeHTML(displayKey(verse))}</div>
         <div class="ayah-actions">
           <button class="mini-button ${note ? "active" : ""}" type="button" data-action="note" aria-label="Note for ${verse.verse_key}">✎</button>
-          <button class="mini-button" type="button" data-action="tafsir" aria-label="Tafsir for ${verse.verse_key}">≡</button>
+          ${isQuran ? `<button class="mini-button" type="button" data-action="tafsir" aria-label="Tafsir for ${verse.verse_key}">≡</button>` : ""}
           <button class="mini-button" type="button" data-action="bookmark" aria-label="Save ${verse.verse_key} as last read">⌖</button>
         </div>
       </div>
-      <div class="arabic" lang="ar" dir="rtl">${renderArabicWords(verse)}</div>
-      <div class="translations">${translations}</div>
+      ${isQuran ? `<div class="arabic" lang="ar" dir="rtl">${renderArabicWords(verse)}</div><div class="translations">${translations}</div>` : `<div class="scripture-text">${escapeHTML(verse.text || "")}</div><div class="explanation-panel">World English Bible · public domain text. Use notes and cross-references for study links.</div>`}
       ${note ? `<div class="note-preview">${escapeHTML(note)}</div>` : ""}
       ${tags.length ? `<div class="note-tags">${tags.map((tag) => `<span>#${escapeHTML(tag)}</span>`).join("")}</div>` : ""}
     </article>
@@ -302,6 +445,9 @@ function renderArabicWords(verse) {
 }
 
 function renderTranslation(translation) {
+  if (translation.resource_id === "web") {
+    return `<div class="translation"><div class="translation-name">World English Bible</div><p>${escapeHTML(translation.text || "")}</p></div>`;
+  }
   const resource = state.translations.find((item) => item.id === translation.resource_id);
   const name = resource ? `${resource.name} · ${resource.language_name}` : `Translation ${translation.resource_id}`;
   return `
@@ -384,12 +530,17 @@ function updateTafsirSummary() {
 }
 
 function openNote(key) {
-  const chapter = getChapter(Number(key.split(":")[0]));
+  const parsed = parseReferenceKey(key);
+  const chapter = parsed.type === "quran" ? getChapter(Number(key.split(":")[0])) : null;
   state.currentNoteKey = key;
-  els.noteTitle.textContent = `Note ${key}`;
-  els.noteSubtitle.textContent = chapter ? chapter.name_simple : "Ayah note";
+  state.currentNoteReferences = state.notes[key]?.references || [];
+  els.noteTitle.textContent = `Note ${formatReferenceKey(key)}`;
+  els.noteSubtitle.textContent = chapter ? chapter.name_simple : parsed.label || "Verse note";
   els.noteEditor.value = state.notes[key]?.text || "";
   els.noteTags.value = (state.notes[key]?.tags || []).join(", ");
+  els.referenceSearch.value = "";
+  renderNoteReferences();
+  renderReferenceResults();
   openDialog(els.noteSheet);
   setTimeout(() => els.noteEditor.focus(), 80);
 }
@@ -402,7 +553,7 @@ function saveCurrentNote() {
   const tags = parseTags(els.noteTags.value);
 
   if (text.trim() || tags.length) {
-    state.notes[key] = { text, tags, updatedAt: new Date().toISOString() };
+    state.notes[key] = { text, tags, references: state.currentNoteReferences, updatedAt: new Date().toISOString() };
   } else {
     delete state.notes[key];
   }
@@ -420,6 +571,8 @@ function deleteCurrentNote() {
   renderNotes();
   els.noteEditor.value = "";
   els.noteTags.value = "";
+  els.referenceSearch.value = "";
+  state.currentNoteReferences = [];
   els.noteSheet.close();
 }
 
@@ -459,9 +612,8 @@ function renderNotes() {
     .filter(([, note]) => note.text?.trim() || note.tags?.length)
     .sort((a, b) => new Date(b[1].updatedAt) - new Date(a[1].updatedAt))
     .filter(([key, note]) => {
-      const chapter = getChapter(Number(key.split(":")[0]));
       const tags = note.tags || [];
-      const haystack = `${key} ${chapter?.name_simple || ""} ${chapter?.name_arabic || ""} ${note.text || ""} ${tags.join(" ")}`.toLowerCase();
+      const haystack = `${key} ${formatReferenceKey(key)} ${note.text || ""} ${(note.references || []).map(formatReferenceKey).join(" ")} ${tags.join(" ")}`.toLowerCase();
       const matchesSearch = haystack.includes(query);
       const matchesTag = !state.noteTagFilter || tags.includes(state.noteTagFilter);
       return matchesSearch && matchesTag;
@@ -474,14 +626,15 @@ function renderNotes() {
 
   els.notesList.innerHTML = entries.length
     ? entries.map(([key, note]) => {
-        const chapter = getChapter(Number(key.split(":")[0]));
         const tags = note.tags || [];
+        const refs = note.references || [];
         return `
           <article class="note-card">
             <button type="button" data-key="${key}">
-              <strong>${escapeHTML(key)} · ${escapeHTML(chapter?.name_simple || "Surah")}</strong>
+              <strong>${escapeHTML(formatReferenceKey(key))}</strong>
               <p>${escapeHTML(note.text || "")}</p>
               ${tags.length ? `<div class="note-tags">${tags.map((tag) => `<span>#${escapeHTML(tag)}</span>`).join("")}</div>` : ""}
+              ${refs.length ? `<div class="note-tags">${refs.map((ref) => `<span>${escapeHTML(formatReferenceKey(ref))}</span>`).join("")}</div>` : ""}
             </button>
           </article>
         `;
@@ -509,16 +662,87 @@ function renderTagFilters() {
   });
 }
 
+function renderReferenceResults() {
+  const query = els.referenceSearch.value.trim();
+  if (!query) {
+    els.referenceResults.innerHTML = "";
+    return;
+  }
+
+  const parsed = parseLooseReference(query);
+  const suggestions = [];
+  if (parsed) suggestions.push(parsed);
+
+  if (!parsed) {
+    state.chapters
+      .filter((chapter) => `${chapter.id} ${chapter.name_simple} ${chapter.name_arabic}`.toLowerCase().includes(query.toLowerCase()))
+      .slice(0, 4)
+      .forEach((chapter) => suggestions.push({ key: `${chapter.id}:1`, label: `Quran ${chapter.name_simple} 1`, type: "quran" }));
+
+    [...OLD_TESTAMENT, ...NEW_TESTAMENT]
+      .filter(([name]) => name.toLowerCase().includes(query.toLowerCase()))
+      .slice(0, 5)
+      .forEach(([name]) => suggestions.push({ key: bibleKey(name, 1, 1), label: `${name} 1:1`, type: getBookSet(name) }));
+  }
+
+  els.referenceResults.innerHTML = suggestions.length
+    ? suggestions.map((item) => `<button class="reference-row" type="button" data-key="${escapeHTML(item.key)}">${escapeHTML(item.label)}</button>`).join("")
+    : `<button class="reference-row" type="button" data-key="${escapeHTML(query)}">Add "${escapeHTML(query)}"</button>`;
+
+  els.referenceResults.querySelectorAll("button").forEach((button) => {
+    button.addEventListener("click", () => addNoteReference(button.dataset.key));
+  });
+}
+
+function addReferenceFromSearch() {
+  const parsed = parseLooseReference(els.referenceSearch.value.trim());
+  if (parsed) addNoteReference(parsed.key);
+}
+
+function addNoteReference(key) {
+  if (!key || state.currentNoteReferences.includes(key)) return;
+  state.currentNoteReferences = [...state.currentNoteReferences, key];
+  els.referenceSearch.value = "";
+  renderReferenceResults();
+  renderNoteReferences();
+  saveCurrentNote();
+}
+
+function renderNoteReferences() {
+  els.noteReferences.innerHTML = state.currentNoteReferences.length
+    ? state.currentNoteReferences.map((key) => `
+      <div class="reference-pill">
+        <button type="button" data-jump="${escapeHTML(key)}">${escapeHTML(formatReferenceKey(key))}</button>
+        <button type="button" data-remove="${escapeHTML(key)}" aria-label="Remove ${escapeHTML(key)}">×</button>
+      </div>
+    `).join("")
+    : "";
+
+  els.noteReferences.querySelectorAll("[data-remove]").forEach((button) => {
+    button.addEventListener("click", () => {
+      state.currentNoteReferences = state.currentNoteReferences.filter((key) => key !== button.dataset.remove);
+      renderNoteReferences();
+      saveCurrentNote();
+    });
+  });
+
+  els.noteReferences.querySelectorAll("[data-jump]").forEach((button) => {
+    button.addEventListener("click", () => jumpToReference(button.dataset.jump));
+  });
+}
+
 async function showNoteVersePreview(key) {
-  const chapterNumber = Number(key.split(":")[0]);
-  if (chapterNumber !== state.selectedChapter) await loadChapter(chapterNumber);
+  await ensureReferenceLoaded(key);
   const verse = state.verses.find((item) => item.verse_key === key);
-  const translation = verse?.translations?.[0]?.text || "";
+  const parsed = parseReferenceKey(key);
+  const translation = parsed.type === "quran" ? verse?.translations?.[0]?.text || "" : verse?.text || "";
+  const refs = state.notes[key]?.references || [];
   els.notesVersePreview.hidden = false;
   els.notesVersePreview.innerHTML = `
-    <strong>${escapeHTML(key)} · ${escapeHTML(getChapter(chapterNumber)?.name_simple || "Surah")}</strong>
-    <div class="preview-arabic" lang="ar" dir="rtl">${renderArabicWords(verse || {})}</div>
+    <strong>${escapeHTML(formatReferenceKey(key))}</strong>
+    ${parsed.type === "quran" ? `<div class="preview-arabic" lang="ar" dir="rtl">${renderArabicWords(verse || {})}</div>` : ""}
     <p class="preview-translation">${sanitizeHTML(translation)}</p>
+    ${refs.length ? `<div class="note-tags">${refs.map((ref) => `<span>${escapeHTML(formatReferenceKey(ref))}</span>`).join("")}</div>` : ""}
     <div class="sheet-actions">
       <button class="text-button" type="button" data-action="edit-note">Edit note</button>
       <button class="text-button primary" type="button" data-action="jump-note">Jump to verse</button>
@@ -534,6 +758,11 @@ async function showNoteVersePreview(key) {
 function jumpToAyah() {
   const raw = els.ayahSearch.value.trim();
   if (!raw) return;
+  const parsedRef = parseLooseReference(raw);
+  if (parsedRef && parsedRef.type !== "quran") {
+    jumpToReference(parsedRef.key);
+    return;
+  }
   const key = raw.includes(":") ? raw : `${state.selectedChapter}:${raw}`;
   const [chapter, ayah] = key.split(":").map(Number);
   if (!chapter || !ayah) return;
@@ -543,6 +772,30 @@ function jumpToAyah() {
   } else {
     scrollToKey(key);
   }
+}
+
+async function jumpToReference(key) {
+  await ensureReferenceLoaded(key);
+  switchView("readView");
+  requestAnimationFrame(() => scrollToKey(key));
+}
+
+async function ensureReferenceLoaded(key) {
+  const parsed = parseReferenceKey(key);
+  if (parsed.type === "quran") {
+    if (state.scripture !== "quran" || parsed.chapter !== state.selectedChapter) {
+      state.scripture = "quran";
+      renderScriptureControls();
+      await loadChapter(parsed.chapter);
+    }
+    return;
+  }
+
+  state.scripture = parsed.type;
+  state.selectedBibleBook = parsed.book;
+  state.selectedBibleChapter = parsed.chapter;
+  renderScriptureControls();
+  await loadBibleChapter();
 }
 
 function scrollToKey(key) {
@@ -583,6 +836,10 @@ function restoreLastRead() {
   if (!key) {
     setStatus("No last-read ayah saved yet.");
     setTimeout(() => setStatus(""), 1600);
+    return;
+  }
+  if (key.startsWith("old:") || key.startsWith("new:")) {
+    jumpToReference(key);
     return;
   }
   const chapter = Number(key.split(":")[0]);
@@ -647,10 +904,13 @@ function loadLocalState() {
 
   try {
     const prefs = JSON.parse(localStorage.getItem(STORE.prefs)) || {};
+    state.scripture = ["quran", "old", "new"].includes(prefs.scripture) ? prefs.scripture : state.scripture;
+    state.selectedBibleBook = typeof prefs.selectedBibleBook === "string" ? prefs.selectedBibleBook : state.selectedBibleBook;
+    state.selectedBibleChapter = Number(prefs.selectedBibleChapter) || state.selectedBibleChapter;
     state.selectedChapter = Number(prefs.selectedChapter) || state.selectedChapter;
     state.selectedTranslations = Array.isArray(prefs.selectedTranslations) ? prefs.selectedTranslations : state.selectedTranslations;
     state.selectedTafsir = Number(prefs.selectedTafsir) || state.selectedTafsir;
-    state.theme = ["light", "dark", "sepia", "midnight", "emerald", "contrast", "custom"].includes(prefs.theme) ? prefs.theme : state.theme;
+    state.theme = ["light", "dark", "sepia", "midnight", "emerald", "contrast", "rose", "ocean", "graphite", "paper", "custom"].includes(prefs.theme) ? prefs.theme : state.theme;
     state.width = ["comfortable", "narrow", "wide"].includes(prefs.width) ? prefs.width : state.width;
     state.arabicFont = ["uthmani", "naskh", "scheherazade", "serif"].includes(prefs.arabicFont) ? prefs.arabicFont : state.arabicFont;
     state.translationFont = ["system", "serif", "humanist", "mono"].includes(prefs.translationFont) ? prefs.translationFont : state.translationFont;
@@ -672,6 +932,9 @@ function loadLocalState() {
 
 function savePrefs() {
   localStorage.setItem(STORE.prefs, JSON.stringify({
+    scripture: state.scripture,
+    selectedBibleBook: state.selectedBibleBook,
+    selectedBibleChapter: state.selectedBibleChapter,
     selectedChapter: state.selectedChapter,
     selectedTranslations: state.selectedTranslations,
     selectedTafsir: state.selectedTafsir,
@@ -743,13 +1006,17 @@ function applyReaderPrefs() {
   root.style.setProperty("--line-scale", state.lineScale);
   if (state.theme === "custom") {
     root.style.setProperty("--paper", state.customTheme.paper);
-    root.style.setProperty("--paper-2", state.customTheme.paper);
+    root.style.setProperty("--paper-2", state.customTheme.paper2);
     root.style.setProperty("--panel", state.customTheme.panel);
     root.style.setProperty("--ink", state.customTheme.ink);
+    root.style.setProperty("--muted", state.customTheme.muted);
+    root.style.setProperty("--line", state.customTheme.line);
     root.style.setProperty("--green", state.customTheme.accent);
     root.style.setProperty("--green-2", state.customTheme.accent);
+    root.style.setProperty("--gold", state.customTheme.highlight);
+    root.style.setProperty("--gold-soft", state.customTheme.highlight);
   } else {
-    ["--paper", "--paper-2", "--panel", "--ink", "--green", "--green-2"].forEach((name) => root.style.removeProperty(name));
+    ["--paper", "--paper-2", "--panel", "--ink", "--muted", "--line", "--green", "--green-2", "--gold", "--gold-soft"].forEach((name) => root.style.removeProperty(name));
   }
   document.querySelector('meta[name="theme-color"]')?.setAttribute("content", state.theme === "dark" ? "#111816" : "#173f35");
 
@@ -764,9 +1031,13 @@ function applyReaderPrefs() {
   els.cardStyleSelect.value = state.cardStyle;
   els.headerStyleSelect.value = state.headerStyle;
   els.customPaper.value = state.customTheme.paper;
+  els.customPaper2.value = state.customTheme.paper2;
   els.customPanel.value = state.customTheme.panel;
   els.customInk.value = state.customTheme.ink;
+  els.customMuted.value = state.customTheme.muted;
+  els.customLine.value = state.customTheme.line;
   els.customAccent.value = state.customTheme.accent;
+  els.customHighlight.value = state.customTheme.highlight;
   els.customThemeControls.hidden = state.theme !== "custom";
   els.themeButton.textContent = state.theme === "dark" ? "Light mode" : "Dark mode";
   els.settingsSummary.textContent = `${capitalize(state.theme)} · ${capitalize(state.arabicFont)} Arabic · ${capitalize(state.translationFont)} translation`;
@@ -775,9 +1046,13 @@ function applyReaderPrefs() {
 function updateCustomTheme() {
   state.customTheme = {
     paper: els.customPaper.value,
+    paper2: els.customPaper2.value,
     panel: els.customPanel.value,
     ink: els.customInk.value,
+    muted: els.customMuted.value,
+    line: els.customLine.value,
     accent: els.customAccent.value,
+    highlight: els.customHighlight.value,
   };
   state.theme = "custom";
   applyReaderPrefs();
@@ -807,8 +1082,24 @@ function renderLibrary() {
     return;
   }
 
-  els.libraryNotice.textContent = "This collection is listed as a library category. Full text sources can be added here once a reliable public-domain source is selected.";
-  els.libraryContent.innerHTML = `<p class="scripture-verse">Available next: search, references, notes, and side-by-side study once the text source is connected.</p>`;
+  const books = collection === "new" ? NEW_TESTAMENT : OLD_TESTAMENT;
+  els.libraryNotice.textContent = `${collection === "new" ? "New" : "Old"} Testament · ${books.length} books · World English Bible`;
+  els.libraryContent.innerHTML = books.map(([book, chapters]) => `
+    <button class="library-book" type="button" data-set="${collection}" data-book="${escapeHTML(book)}">
+      <strong>${escapeHTML(book)}</strong>
+      <span>${chapters} chapters</span>
+    </button>
+  `).join("");
+  els.libraryContent.querySelectorAll(".library-book").forEach((button) => {
+    button.addEventListener("click", () => {
+      state.scripture = button.dataset.set;
+      state.selectedBibleBook = button.dataset.book;
+      state.selectedBibleChapter = 1;
+      renderScriptureControls();
+      switchView("readView");
+      loadBibleChapter();
+    });
+  });
 }
 
 async function loadBibleReference() {
@@ -836,6 +1127,63 @@ function syncModalState() {
 
 function clampNumber(value, min, max) {
   return Math.min(Math.max(value, min), max);
+}
+
+function getBibleBooks() {
+  return state.scripture === "new" ? NEW_TESTAMENT : OLD_TESTAMENT;
+}
+
+function getBookSet(book) {
+  if (OLD_TESTAMENT.some(([name]) => name.toLowerCase() === String(book).toLowerCase())) return "old";
+  if (NEW_TESTAMENT.some(([name]) => name.toLowerCase() === String(book).toLowerCase())) return "new";
+  return "old";
+}
+
+function bibleKey(book, chapter, verse) {
+  return `${getBookSet(book)}:${String(book).replaceAll(" ", "_")}:${chapter}:${verse}`;
+}
+
+function parseReferenceKey(key) {
+  const raw = String(key || "");
+  if (raw.startsWith("old:") || raw.startsWith("new:")) {
+    const [type, bookRaw, chapter, verse] = raw.split(":");
+    const book = bookRaw.replaceAll("_", " ");
+    return { type, book, chapter: Number(chapter), verse: Number(verse), label: `${book} ${chapter}:${verse}` };
+  }
+  const [chapter, verse] = raw.split(":").map(Number);
+  return { type: "quran", chapter, verse, label: `Quran ${raw}` };
+}
+
+function parseLooseReference(value) {
+  const raw = String(value || "").trim();
+  if (!raw) return null;
+  const quran = raw.match(/^(?:quran\s*)?(\d{1,3})[:\s](\d{1,3})$/i);
+  if (quran) return { type: "quran", key: `${Number(quran[1])}:${Number(quran[2])}`, label: `Quran ${Number(quran[1])}:${Number(quran[2])}` };
+
+  const bible = raw.match(/^((?:[1-3]\s*)?[a-zA-Z ]+?)\s+(\d{1,3})[:\s](\d{1,3})$/);
+  if (!bible) return null;
+  const book = normalizeBibleBook(bible[1]);
+  if (!book) return null;
+  const chapter = Number(bible[2]);
+  const verse = Number(bible[3]);
+  return { type: getBookSet(book), key: bibleKey(book, chapter, verse), label: `${book} ${chapter}:${verse}` };
+}
+
+function normalizeBibleBook(book) {
+  const cleaned = String(book).trim().replace(/\s+/g, " ").toLowerCase();
+  const all = [...OLD_TESTAMENT, ...NEW_TESTAMENT].map(([name]) => name);
+  return all.find((name) => name.toLowerCase() === cleaned) || all.find((name) => name.toLowerCase().startsWith(cleaned)) || null;
+}
+
+function formatReferenceKey(key) {
+  const parsed = parseReferenceKey(key);
+  if (parsed.type === "quran") return `Quran ${parsed.chapter}:${parsed.verse}`;
+  return parsed.label;
+}
+
+function displayKey(verse) {
+  if (verse.bible_reference) return verse.bible_reference;
+  return verse.verse_key;
 }
 
 function capitalize(value) {
