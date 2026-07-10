@@ -6,6 +6,7 @@
     <meta name="theme-color" content="#173f35">
     <title>Quran Reader</title>
     <link rel="preconnect" href="https://api.quran.com">
+    <link rel="manifest" href="./manifest.webmanifest">
     <link rel="stylesheet" href="./styles.css">
   </head>
   <body>
@@ -16,7 +17,7 @@
           <h1 id="chapterTitle">Loading...</h1>
           <p id="chapterMeta" class="meta">Arabic, translations, tafsir, notes</p>
         </div>
-        <button id="settingsButton" class="icon-button" type="button" aria-label="Translation settings" title="Translations">⚙</button>
+        <button id="settingsButton" class="icon-button" type="button" aria-label="Reader settings" title="Reader settings">⚙</button>
       </header>
 
       <main>
@@ -38,23 +39,48 @@
 
           <div class="reader-controls">
             <label class="field">
-              <span>Surah</span>
-              <select id="chapterSelect"></select>
+              <span>Tradition</span>
+              <select id="traditionSelect">
+                <option value="islam">Islam</option>
+                <option value="christianity">Christianity</option>
+              </select>
             </label>
             <label class="field">
-              <span>Find ayah</span>
-              <input id="ayahSearch" type="search" inputmode="numeric" placeholder="2:255 or 255">
+              <span>Text</span>
+              <select id="scriptureSelect">
+                <option value="quran">Quran</option>
+                <option value="hadith">Hadith</option>
+              </select>
+            </label>
+            <label class="field">
+              <span id="chapterControlLabel">Chapter</span>
+              <select id="chapterSelect"></select>
+            </label>
+            <label class="field bible-field" hidden>
+              <span>Book</span>
+              <select id="bibleBookSelect"></select>
+            </label>
+            <label class="field bible-field" hidden>
+              <span>Chapter</span>
+              <select id="bibleChapterSelect"></select>
+            </label>
+            <label class="field hadith-field" hidden>
+              <span>Collection</span>
+              <select id="hadithCollectionSelect"></select>
+            </label>
+            <label class="field hadith-field" hidden>
+              <span>Section</span>
+              <select id="hadithSectionSelect"></select>
+            </label>
+            <label class="field">
+              <span id="verseControlLabel">Verse</span>
+              <input id="ayahSearch" type="search" placeholder="2:255, 255, John 3:16">
             </label>
           </div>
 
           <div class="quick-actions">
-            <button id="translationButton" class="pill-button" type="button">Translations</button>
-            <button id="tafsirButton" class="pill-button" type="button">Tafsir</button>
             <button id="lastReadButton" class="pill-button muted" type="button">Last read</button>
-            <div class="font-controls" aria-label="Arabic text size">
-              <button id="decreaseFont" class="mini-button" type="button" aria-label="Decrease Arabic text size">A-</button>
-              <button id="increaseFont" class="mini-button" type="button" aria-label="Increase Arabic text size">A+</button>
-            </div>
+            <a class="pill-button apk-download" href="http://62.171.166.27/downloads/abrahamic-books-offline.apk" download>Download APK</a>
           </div>
 
           <div id="status" class="status">Preparing reader...</div>
@@ -62,29 +88,193 @@
         </section>
 
         <section id="notesView" class="view" aria-label="Notes">
-          <div class="notes-header">
-            <div>
-              <h2>Notes</h2>
-              <p id="notesCount">0 saved notes</p>
+          <div class="view-toolbar notes-toolbar">
+            <div class="notes-header">
+              <div>
+                <h2>Notes</h2>
+                <p id="notesCount">0 saved notes</p>
+              </div>
+              <div class="notes-actions">
+                <button id="newStudyNote" class="text-button primary" type="button">New note</button>
+                <button id="exportNotes" class="icon-button" type="button" aria-label="Export notes">⇩</button>
+                <label class="icon-button file-button" aria-label="Import notes">
+                  ⇧
+                  <input id="importNotes" type="file" accept="application/json">
+                </label>
+              </div>
             </div>
-            <div class="notes-actions">
-              <button id="exportNotes" class="icon-button" type="button" aria-label="Export notes">⇩</button>
-              <label class="icon-button file-button" aria-label="Import notes">
-                ⇧
-                <input id="importNotes" type="file" accept="application/json">
-              </label>
-            </div>
+            <input id="notesSearch" class="wide-search" type="search" placeholder="Search notes, tags, or references">
+            <div id="tagFilters" class="tag-filters"></div>
           </div>
-          <input id="notesSearch" class="wide-search" type="search" placeholder="Search notes, surah, or ayah">
+          <div id="notesVersePreview" class="verse-preview" hidden></div>
           <div id="notesList" class="notes-list"></div>
         </section>
+
+        <section id="searchView" class="view" aria-label="Search texts">
+          <div class="view-toolbar search-toolbar">
+            <div class="notes-header">
+              <div>
+                <h2>Search</h2>
+                <p id="searchSummary">Search bundled offline texts</p>
+              </div>
+              <button id="toggleSearchSelect" class="text-button" type="button" aria-pressed="false">Select</button>
+            </div>
+            <div class="search-panel">
+              <input id="globalSearch" class="wide-search" type="search" placeholder="Search Quran, hadith, tafsir, Bible">
+              <select id="searchScope" aria-label="Search scope">
+                <option value="all">All texts</option>
+                <option value="quran">Quran</option>
+                <option value="tafsir">Tafsir</option>
+                <option value="hadith">Hadith</option>
+                <option value="bible">Bible</option>
+              </select>
+              <button id="runSearch" class="text-button primary" type="button">Search</button>
+            </div>
+            <div id="searchSelectionBar" class="selection-bar" hidden>
+              <strong id="searchSelectionCount">0 selected</strong>
+              <div>
+                <button id="selectAllSearch" class="text-button" type="button">Select all</button>
+                <button id="clearSearchSelection" class="text-button" type="button">Clear</button>
+                <button id="noteSearchSelection" class="text-button primary" type="button">Add to note</button>
+              </div>
+            </div>
+          </div>
+          <div id="searchResults" class="search-results"></div>
+        </section>
+
       </main>
 
       <nav class="bottom-nav" aria-label="Primary">
         <button class="nav-item active" type="button" data-view="readView"><span class="nav-icon">☰</span><span>Read</span></button>
+        <button class="nav-item" type="button" data-view="searchView"><span class="nav-icon">⌕</span><span>Search</span></button>
         <button class="nav-item" type="button" data-view="notesView"><span class="nav-icon">✎</span><span>Notes</span></button>
       </nav>
     </div>
+
+    <dialog id="readerSettingsSheet" class="sheet settings-sheet">
+      <form method="dialog" class="sheet-inner">
+        <div class="sheet-header">
+          <div>
+            <h2>Reader Settings</h2>
+            <p id="settingsSummary">Theme, fonts, and spacing</p>
+          </div>
+          <button class="icon-button" value="close" aria-label="Close reader settings">×</button>
+        </div>
+
+        <div class="settings-grid">
+          <div class="settings-actions">
+            <button id="translationButton" class="text-button" type="button">Translations</button>
+            <button id="tafsirButton" class="text-button" type="button">Tafsir</button>
+            <button id="themeButton" class="text-button" type="button">Dark mode</button>
+          </div>
+          <label class="field">
+            <span>Theme</span>
+            <select id="themeSelect">
+              <option value="light">Light</option>
+              <option value="dark">Dark</option>
+              <option value="sepia">Sepia</option>
+              <option value="midnight">Midnight</option>
+              <option value="emerald">Emerald</option>
+              <option value="contrast">High Contrast</option>
+              <option value="rose">Rose</option>
+              <option value="ocean">Ocean</option>
+              <option value="graphite">Graphite</option>
+              <option value="paper">Paper</option>
+              <option value="custom">Custom</option>
+            </select>
+          </label>
+          <label class="field">
+            <span>Reader width</span>
+            <select id="widthSelect">
+              <option value="comfortable">Comfortable</option>
+              <option value="narrow">Narrow</option>
+              <option value="wide">Wide</option>
+            </select>
+          </label>
+          <label class="field">
+            <span>Arabic font</span>
+            <select id="arabicFontSelect">
+              <option value="uthmani">Uthmani</option>
+              <option value="naskh">Naskh</option>
+              <option value="scheherazade">Scheherazade</option>
+              <option value="serif">Classic Serif</option>
+            </select>
+          </label>
+          <label class="field">
+            <span>Translation font</span>
+            <select id="translationFontSelect">
+              <option value="system">System</option>
+              <option value="serif">Serif</option>
+              <option value="humanist">Humanist</option>
+              <option value="mono">Mono</option>
+            </select>
+          </label>
+          <label class="check-field">
+            <input id="originalLanguageToggle" type="checkbox">
+            <span>Show Hebrew / Greek for Bible</span>
+          </label>
+          <label class="range-field">
+            <span>Arabic size</span>
+            <input id="arabicSizeRange" type="range" min="0.84" max="1.4" step="0.04">
+          </label>
+          <label class="range-field">
+            <span>Translation size</span>
+            <input id="translationSizeRange" type="range" min="0.9" max="1.22" step="0.04">
+          </label>
+          <label class="range-field">
+            <span>Line spacing</span>
+            <input id="lineHeightRange" type="range" min="1" max="1.24" step="0.04">
+          </label>
+          <label class="field">
+            <span>Card style</span>
+            <select id="cardStyleSelect">
+              <option value="soft">Soft</option>
+              <option value="flat">Flat</option>
+              <option value="outlined">Outlined</option>
+            </select>
+          </label>
+          <label class="field">
+            <span>Header style</span>
+            <select id="headerStyleSelect">
+              <option value="pattern">Pattern</option>
+              <option value="solid">Solid</option>
+              <option value="minimal">Minimal</option>
+            </select>
+          </label>
+          <div id="customThemeControls" class="custom-theme-controls">
+            <label class="color-field"><span>Background</span><input id="customPaper" type="color"></label>
+            <label class="color-field"><span>Background 2</span><input id="customPaper2" type="color"></label>
+            <label class="color-field"><span>Card</span><input id="customPanel" type="color"></label>
+            <label class="color-field"><span>Text</span><input id="customInk" type="color"></label>
+            <label class="color-field"><span>Muted text</span><input id="customMuted" type="color"></label>
+            <label class="color-field"><span>Lines</span><input id="customLine" type="color"></label>
+            <label class="color-field"><span>Accent</span><input id="customAccent" type="color"></label>
+            <label class="color-field"><span>Highlight</span><input id="customHighlight" type="color"></label>
+          </div>
+          <label class="check-field">
+            <input id="compactToggle" type="checkbox">
+            <span>Compact cards</span>
+          </label>
+          <div class="font-controls" aria-label="Arabic text size">
+            <button id="decreaseFont" class="mini-button" type="button" aria-label="Decrease Arabic text size">A-</button>
+            <button id="increaseFont" class="mini-button" type="button" aria-label="Increase Arabic text size">A+</button>
+          </div>
+        </div>
+      </form>
+    </dialog>
+
+    <dialog id="wordSheet" class="sheet word-sheet">
+      <form method="dialog" class="sheet-inner">
+        <div class="sheet-header">
+          <div>
+            <h2 id="wordTitle">Word</h2>
+            <p id="wordSubtitle">Translation</p>
+          </div>
+          <button class="icon-button" value="close" aria-label="Close word translation">×</button>
+        </div>
+        <article id="wordContent" class="word-content"></article>
+      </form>
+    </dialog>
 
     <dialog id="translationSheet" class="sheet">
       <form method="dialog" class="sheet-inner">
@@ -122,6 +312,15 @@
             <p id="noteSubtitle">Ayah note</p>
           </div>
           <button class="icon-button" value="close" aria-label="Close note">×</button>
+        </div>
+        <input id="noteTags" class="wide-search" type="text" placeholder="Tags: mercy, prayer, study">
+        <div class="cross-ref-panel">
+          <label class="field">
+            <span>Add cross-reference</span>
+            <input id="referenceSearch" type="search" placeholder="Search or enter: Quran 2:255, John 3:16">
+          </label>
+          <div id="referenceResults" class="reference-results"></div>
+          <div id="noteReferences" class="note-references"></div>
         </div>
         <textarea id="noteEditor" rows="9" placeholder="Write your reflection, question, reminder, or action..."></textarea>
         <div class="sheet-actions">

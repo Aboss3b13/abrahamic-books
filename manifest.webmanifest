@@ -1,0 +1,19 @@
+{
+  "name": "Abrahamic Books",
+  "short_name": "Books",
+  "description": "Quran, Bible, Hadith, notes, tafsir, and cross references.",
+  "start_url": "./",
+  "scope": "./",
+  "display": "standalone",
+  "background_color": "#f7edda",
+  "theme_color": "#36594c",
+  "orientation": "any",
+  "icons": [
+    {
+      "src": "./assets/geometric-header.webp",
+      "sizes": "512x512",
+      "type": "image/webp",
+      "purpose": "any maskable"
+    }
+  ]
+}

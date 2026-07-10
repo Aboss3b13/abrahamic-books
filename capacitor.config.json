@@ -1,0 +1,10 @@
+{
+  "appId": "com.aboss3b13.abrahamicbooks",
+  "appName": "Abrahamic Books",
+  "webDir": "dist",
+  "bundledWebRuntime": false,
+  "android": {
+    "backgroundColor": "#f7edda",
+    "allowMixedContent": true
+  }
+}
