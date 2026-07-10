@@ -80,7 +80,7 @@
 
           <div class="quick-actions">
             <button id="lastReadButton" class="pill-button muted" type="button">Last read</button>
-            <a class="pill-button apk-download" href="./downloads/abrahamic-books-offline.apk" download>Download APK</a>
+            <a class="pill-button apk-download" href="http://62.171.166.27/downloads/abrahamic-books-offline.apk" download>Download APK</a>
           </div>
 
           <div id="status" class="status">Preparing reader...</div>
@@ -88,43 +88,56 @@
         </section>
 
         <section id="notesView" class="view" aria-label="Notes">
-          <div class="notes-header">
-            <div>
-              <h2>Notes</h2>
-              <p id="notesCount">0 saved notes</p>
+          <div class="view-toolbar notes-toolbar">
+            <div class="notes-header">
+              <div>
+                <h2>Notes</h2>
+                <p id="notesCount">0 saved notes</p>
+              </div>
+              <div class="notes-actions">
+                <button id="newStudyNote" class="text-button primary" type="button">New note</button>
+                <button id="exportNotes" class="icon-button" type="button" aria-label="Export notes">⇩</button>
+                <label class="icon-button file-button" aria-label="Import notes">
+                  ⇧
+                  <input id="importNotes" type="file" accept="application/json">
+                </label>
+              </div>
             </div>
-            <div class="notes-actions">
-              <button id="newStudyNote" class="text-button primary" type="button">New note</button>
-              <button id="exportNotes" class="icon-button" type="button" aria-label="Export notes">⇩</button>
-              <label class="icon-button file-button" aria-label="Import notes">
-                ⇧
-                <input id="importNotes" type="file" accept="application/json">
-              </label>
-            </div>
+            <input id="notesSearch" class="wide-search" type="search" placeholder="Search notes, tags, or references">
+            <div id="tagFilters" class="tag-filters"></div>
           </div>
-          <input id="notesSearch" class="wide-search" type="search" placeholder="Search notes, tags, or references">
-          <div id="tagFilters" class="tag-filters"></div>
           <div id="notesVersePreview" class="verse-preview" hidden></div>
           <div id="notesList" class="notes-list"></div>
         </section>
 
         <section id="searchView" class="view" aria-label="Search texts">
-          <div class="notes-header">
-            <div>
-              <h2>Search</h2>
-              <p id="searchSummary">Search bundled offline texts</p>
+          <div class="view-toolbar search-toolbar">
+            <div class="notes-header">
+              <div>
+                <h2>Search</h2>
+                <p id="searchSummary">Search bundled offline texts</p>
+              </div>
+              <button id="toggleSearchSelect" class="text-button" type="button" aria-pressed="false">Select</button>
             </div>
-          </div>
-          <div class="search-panel">
-            <input id="globalSearch" class="wide-search" type="search" placeholder="Search Quran, hadith, tafsir, Bible">
-            <select id="searchScope" aria-label="Search scope">
-              <option value="all">All texts</option>
-              <option value="quran">Quran</option>
-              <option value="tafsir">Tafsir</option>
-              <option value="hadith">Hadith</option>
-              <option value="bible">Bible</option>
-            </select>
-            <button id="runSearch" class="text-button primary" type="button">Search</button>
+            <div class="search-panel">
+              <input id="globalSearch" class="wide-search" type="search" placeholder="Search Quran, hadith, tafsir, Bible">
+              <select id="searchScope" aria-label="Search scope">
+                <option value="all">All texts</option>
+                <option value="quran">Quran</option>
+                <option value="tafsir">Tafsir</option>
+                <option value="hadith">Hadith</option>
+                <option value="bible">Bible</option>
+              </select>
+              <button id="runSearch" class="text-button primary" type="button">Search</button>
+            </div>
+            <div id="searchSelectionBar" class="selection-bar" hidden>
+              <strong id="searchSelectionCount">0 selected</strong>
+              <div>
+                <button id="selectAllSearch" class="text-button" type="button">Select all</button>
+                <button id="clearSearchSelection" class="text-button" type="button">Clear</button>
+                <button id="noteSearchSelection" class="text-button primary" type="button">Add to note</button>
+              </div>
+            </div>
           </div>
           <div id="searchResults" class="search-results"></div>
         </section>

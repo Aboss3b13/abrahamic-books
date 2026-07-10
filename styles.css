@@ -20,6 +20,7 @@
   --translation-font: Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
   --shadow: 0 18px 44px rgba(28, 41, 35, 0.12);
   --soft-shadow: 0 8px 24px rgba(28, 41, 35, 0.07);
+  --topbar-height: 96px;
 }
 
 :root[data-theme="dark"] {
@@ -245,6 +246,20 @@ textarea {
 
 button {
   cursor: pointer;
+  -webkit-tap-highlight-color: transparent;
+}
+
+button,
+a,
+input,
+select,
+textarea {
+  transition: border-color 160ms ease, background-color 160ms ease, color 160ms ease, box-shadow 160ms ease, transform 160ms ease, opacity 160ms ease;
+}
+
+button:active,
+.pill-button:active {
+  transform: scale(0.97);
 }
 
 .app-shell {
@@ -255,7 +270,7 @@ button {
 .topbar {
   position: sticky;
   top: 0;
-  z-index: 4;
+  z-index: 10;
   display: flex;
   align-items: flex-start;
   justify-content: space-between;
@@ -265,7 +280,8 @@ button {
   background:
     linear-gradient(125deg, color-mix(in srgb, var(--green) 92%, black), color-mix(in srgb, var(--teal) 86%, black)),
     url("./assets/geometric-header.webp") center / cover;
-  border-bottom: 1px solid var(--line);
+  border-bottom: 1px solid color-mix(in srgb, var(--line) 72%, transparent);
+  box-shadow: 0 8px 30px rgba(12, 37, 30, 0.15);
 }
 
 :root[data-header-style="solid"] .topbar {
@@ -365,8 +381,8 @@ main {
 
 .reader-controls {
   position: sticky;
-  top: calc(76px + env(safe-area-inset-top));
-  z-index: 3;
+  top: calc(var(--topbar-height) + 8px);
+  z-index: 8;
   display: grid;
   grid-template-columns: minmax(0, 1fr);
   gap: 8px;
@@ -374,8 +390,8 @@ main {
   padding: 10px;
   min-height: 66px;
   border: 1px solid var(--line);
-  border-radius: 8px;
-  background: color-mix(in srgb, var(--paper) 92%, transparent);
+  border-radius: 14px;
+  background: color-mix(in srgb, var(--paper) 90%, transparent);
   box-shadow: var(--soft-shadow);
   backdrop-filter: blur(12px);
   transition: transform 160ms ease, padding 160ms ease, gap 160ms ease;
@@ -397,7 +413,7 @@ main {
 }
 
 body.filters-compact:not(.filters-expanded) .reader-controls {
-  top: calc(116px + env(safe-area-inset-top));
+  top: calc(var(--topbar-height) + 8px);
   grid-template-columns: 42px;
   width: max-content;
   min-height: 50px;
@@ -498,6 +514,17 @@ textarea:focus {
   overflow-wrap: anywhere;
 }
 
+.text-button.active {
+  color: #fff;
+  background: var(--green);
+  border-color: var(--green);
+}
+
+button:disabled {
+  cursor: default;
+  opacity: 0.48;
+}
+
 .pill-button {
   display: inline-grid;
   place-items: center;
@@ -580,6 +607,32 @@ textarea:focus {
   margin-top: 12px;
 }
 
+.view-toolbar {
+  position: sticky;
+  top: calc(var(--topbar-height) + 8px);
+  z-index: 8;
+  margin: 0 -4px 14px;
+  padding: 12px;
+  border: 1px solid var(--line);
+  border-radius: 14px;
+  background: color-mix(in srgb, var(--paper) 90%, transparent);
+  box-shadow: var(--soft-shadow);
+  backdrop-filter: blur(16px) saturate(1.15);
+}
+
+.view-toolbar .notes-header {
+  margin-bottom: 10px;
+}
+
+.view-toolbar .wide-search,
+.search-panel .wide-search {
+  margin-bottom: 0;
+}
+
+.notes-toolbar .tag-filters:empty {
+  display: none;
+}
+
 .search-panel {
   display: grid;
   grid-template-columns: minmax(0, 1fr) minmax(138px, 0.34fr) auto;
@@ -587,12 +640,103 @@ textarea:focus {
   align-items: center;
 }
 
+.selection-bar {
+  grid-column: 1 / -1;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  padding-top: 10px;
+  border-top: 1px solid var(--line);
+}
+
+.selection-bar[hidden] {
+  display: none;
+}
+
+.selection-bar > div {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: flex-end;
+  gap: 7px;
+}
+
+.selection-bar strong {
+  flex: 0 0 auto;
+  color: var(--green);
+  font-size: 0.83rem;
+}
+
 .search-result {
+  position: relative;
   border: 1px solid var(--line);
-  border-radius: 8px;
+  border-radius: 14px;
   background: var(--panel);
   box-shadow: var(--soft-shadow);
   overflow: hidden;
+}
+
+.search-result:hover,
+.ayah-card:hover,
+.note-card:hover {
+  border-color: color-mix(in srgb, var(--green-2) 42%, var(--line));
+  box-shadow: 0 12px 30px color-mix(in srgb, var(--green) 10%, transparent);
+}
+
+.search-result.selected {
+  border-color: var(--green-2);
+  background: color-mix(in srgb, var(--panel) 86%, var(--green-2));
+  box-shadow: 0 0 0 2px color-mix(in srgb, var(--green-2) 22%, transparent);
+}
+
+.search-check {
+  position: absolute;
+  top: 12px;
+  right: 12px;
+  z-index: 2;
+  display: none;
+  place-items: center;
+  width: 30px;
+  height: 30px;
+  cursor: pointer;
+}
+
+.search-results.selecting .search-check {
+  display: grid;
+}
+
+.search-check input {
+  position: absolute;
+  width: 1px;
+  min-height: 1px;
+  opacity: 0;
+}
+
+.search-check span {
+  display: grid;
+  place-items: center;
+  width: 24px;
+  height: 24px;
+  padding: 0;
+  border: 2px solid var(--line);
+  border-radius: 8px;
+  color: #fff;
+  background: var(--panel);
+}
+
+.search-check input:checked + span {
+  border-color: var(--green);
+  background: var(--green);
+}
+
+.search-check input:checked + span::after {
+  content: "✓";
+  font-size: 0.82rem;
+  font-weight: 900;
+}
+
+.search-results.selecting .search-result button {
+  padding-right: 52px;
 }
 
 .search-result button {
@@ -634,7 +778,7 @@ textarea:focus {
 .ayah-card,
 .note-card {
   border: 1px solid var(--line);
-  border-radius: 8px;
+  border-radius: 14px;
   background: var(--panel);
   box-shadow: var(--soft-shadow);
   overflow: hidden;
@@ -871,7 +1015,7 @@ textarea:focus {
 .nav-item {
   min-height: 50px;
   border: 1px solid transparent;
-  border-radius: 8px;
+  border-radius: 12px;
   color: var(--muted);
   background: transparent;
   font-size: 0.72rem;
@@ -893,6 +1037,7 @@ textarea:focus {
   color: #fff;
   background: var(--green);
   border-color: var(--green);
+  box-shadow: 0 6px 16px color-mix(in srgb, var(--green) 25%, transparent);
 }
 
 .sheet {
@@ -1323,8 +1468,7 @@ textarea:focus {
   }
 
   .notes-header {
-    align-items: stretch;
-    flex-direction: column;
+    align-items: center;
   }
 
   .notes-actions {
@@ -1361,5 +1505,19 @@ textarea:focus {
 
   .arabic {
     line-height: 2.15;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  html {
+    scroll-behavior: auto;
+  }
+
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
   }
 }

@@ -1,13 +1,10 @@
-const CACHE_VERSION = "abrahamic-books-v2";
+const CACHE_VERSION = "abrahamic-books-v3";
 const APP_CACHE = `${CACHE_VERSION}-app`;
 const DATA_CACHE = `${CACHE_VERSION}-data`;
 const APP_SHELL = [
   "./",
   "./index.html",
-  "./app.js",
-  "./styles.css",
-  "./manifest.webmanifest",
-  "./assets/geometric-header.webp"
+  "./manifest.webmanifest"
 ];
 
 self.addEventListener("install", (event) => {

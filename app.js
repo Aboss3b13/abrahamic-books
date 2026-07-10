@@ -90,9 +90,15 @@ const state = {
   currentNoteKey: null,
   searchIndex: null,
   searchAbort: 0,
+  currentView: "readView",
+  viewScrollPositions: { readView: 0, searchView: 0, notesView: 0 },
+  searchResults: [],
+  searchSelectMode: false,
+  selectedSearchResults: new Set(),
 };
 
 const els = {
+  topbar: document.querySelector(".topbar"),
   chapterTitle: document.querySelector("#chapterTitle"),
   chapterMeta: document.querySelector("#chapterMeta"),
   traditionSelect: document.querySelector("#traditionSelect"),
@@ -179,6 +185,12 @@ const els = {
   runSearch: document.querySelector("#runSearch"),
   searchSummary: document.querySelector("#searchSummary"),
   searchResults: document.querySelector("#searchResults"),
+  toggleSearchSelect: document.querySelector("#toggleSearchSelect"),
+  searchSelectionBar: document.querySelector("#searchSelectionBar"),
+  searchSelectionCount: document.querySelector("#searchSelectionCount"),
+  selectAllSearch: document.querySelector("#selectAllSearch"),
+  clearSearchSelection: document.querySelector("#clearSearchSelection"),
+  noteSearchSelection: document.querySelector("#noteSearchSelection"),
 };
 
 init();
@@ -191,6 +203,7 @@ let filtersExpandedAt = 0;
 async function init() {
   loadLocalState();
   bindEvents();
+  syncStickyOffset();
   setStatus("Loading chapters, translations, and tafsir sources...");
 
   try {
@@ -234,6 +247,8 @@ async function init() {
 }
 
 function bindEvents() {
+  if ("ResizeObserver" in window) new ResizeObserver(syncStickyOffset).observe(els.topbar);
+  window.addEventListener("resize", syncStickyOffset, { passive: true });
   els.traditionSelect.addEventListener("change", () => {
     state.tradition = els.traditionSelect.value;
     state.scripture = getAllowedScriptures()[0].value;
@@ -342,9 +357,13 @@ function bindEvents() {
   els.searchScope.addEventListener("change", () => {
     if (els.globalSearch.value.trim()) runGlobalSearch();
   });
+  els.toggleSearchSelect.addEventListener("click", toggleSearchSelectMode);
+  els.selectAllSearch.addEventListener("click", selectAllSearchResults);
+  els.clearSearchSelection.addEventListener("click", clearSearchSelection);
+  els.noteSearchSelection.addEventListener("click", createNoteFromSearchSelection);
 
   document.querySelectorAll(".nav-item").forEach((button) => {
-    button.addEventListener("click", () => switchView(button.dataset.view));
+    button.addEventListener("click", () => switchView(button.dataset.view, true));
   });
 
   document.querySelectorAll("dialog").forEach((dialog) => {
@@ -1292,11 +1311,23 @@ function importNotes(event) {
   event.target.value = "";
 }
 
-function switchView(viewId) {
+function switchView(viewId, reselectedFromNav = false) {
+  const isCurrentView = state.currentView === viewId;
+  if (isCurrentView) {
+    if (reselectedFromNav) {
+      state.viewScrollPositions[viewId] = 0;
+      window.scrollTo({ top: 0, behavior: "smooth" });
+    }
+    return;
+  }
+
+  state.viewScrollPositions[state.currentView] = window.scrollY;
   document.querySelectorAll(".view").forEach((view) => view.classList.toggle("active", view.id === viewId));
   document.querySelectorAll(".nav-item").forEach((button) => button.classList.toggle("active", button.dataset.view === viewId));
   if (viewId === "notesView") renderNotes();
-  window.scrollTo({ top: 0, behavior: "smooth" });
+  state.currentView = viewId;
+  document.body.classList.remove("filters-expanded");
+  requestAnimationFrame(() => window.scrollTo({ top: state.viewScrollPositions[viewId] || 0, behavior: "auto" }));
 }
 
 async function runGlobalSearch() {
@@ -1304,6 +1335,7 @@ async function runGlobalSearch() {
   const scope = els.searchScope.value;
   const token = Date.now();
   state.searchAbort = token;
+  clearSearchSelection();
 
   if (query.length < 2) {
     els.searchSummary.textContent = "Enter at least 2 characters";
@@ -1423,13 +1455,18 @@ async function searchOfflineTexts(query, scope, token) {
 }
 
 function renderSearchResults(results, query) {
+  state.searchResults = results.map((result, index) => ({ ...result, searchId: `${result.type}:${result.key}:${index}` }));
   els.searchSummary.textContent = results.length
     ? `${results.length} result${results.length === 1 ? "" : "s"} for "${query}"`
     : `No offline results for "${query}"`;
-  els.searchResults.innerHTML = results.length
-    ? results.map((result) => `
-      <article class="search-result">
-        <button type="button" data-key="${escapeHTML(result.key)}">
+  els.searchResults.innerHTML = state.searchResults.length
+    ? state.searchResults.map((result) => `
+      <article class="search-result" data-search-id="${escapeHTML(result.searchId)}">
+        <label class="search-check" aria-label="Select ${escapeHTML(result.title)}">
+          <input type="checkbox" ${state.selectedSearchResults.has(result.searchId) ? "checked" : ""}>
+          <span aria-hidden="true"></span>
+        </label>
+        <button type="button" data-key="${escapeHTML(result.key)}" data-type="${escapeHTML(result.type)}">
           <span>${escapeHTML(result.type)}</span>
           <strong>${escapeHTML(result.title)}</strong>
           <small>${escapeHTML(result.label || "")}</small>
@@ -1440,8 +1477,94 @@ function renderSearchResults(results, query) {
     : `<div class="status">No matching bundled text was found.</div>`;
 
   els.searchResults.querySelectorAll("button[data-key]").forEach((button) => {
-    button.addEventListener("click", () => jumpToReference(button.dataset.key));
+    button.addEventListener("click", () => {
+      const card = button.closest(".search-result");
+      if (state.searchSelectMode) {
+        toggleSearchResult(card.dataset.searchId);
+        return;
+      }
+      if (button.dataset.type === "Tafsir") openSearchTafsir(button.dataset.key);
+      else jumpToReference(button.dataset.key);
+    });
   });
+  els.searchResults.querySelectorAll(".search-check input").forEach((checkbox) => {
+    checkbox.addEventListener("change", () => toggleSearchResult(checkbox.closest(".search-result").dataset.searchId, checkbox.checked));
+  });
+  updateSearchSelectionUI();
+}
+
+async function openSearchTafsir(key) {
+  const parsed = parseReferenceKey(key);
+  if (parsed.type !== "quran") return;
+  state.scripture = "quran";
+  state.selectedChapter = parsed.chapter;
+  state.selectedTafsir = OFFLINE.defaultTafsir;
+  savePrefs();
+  await openTafsir(key);
+}
+
+function syncStickyOffset() {
+  const height = Math.ceil(els.topbar?.getBoundingClientRect().height || 0);
+  document.documentElement.style.setProperty("--topbar-height", `${height}px`);
+}
+
+function toggleSearchSelectMode() {
+  state.searchSelectMode = !state.searchSelectMode;
+  if (!state.searchSelectMode) state.selectedSearchResults.clear();
+  updateSearchSelectionUI();
+}
+
+function toggleSearchResult(searchId, force) {
+  const shouldSelect = force ?? !state.selectedSearchResults.has(searchId);
+  if (shouldSelect) state.selectedSearchResults.add(searchId);
+  else state.selectedSearchResults.delete(searchId);
+  updateSearchSelectionUI();
+}
+
+function selectAllSearchResults() {
+  if (!state.searchResults.length) return;
+  const allSelected = state.searchResults.every((result) => state.selectedSearchResults.has(result.searchId));
+  state.selectedSearchResults = allSelected ? new Set() : new Set(state.searchResults.map((result) => result.searchId));
+  updateSearchSelectionUI();
+}
+
+function clearSearchSelection() {
+  state.selectedSearchResults.clear();
+  updateSearchSelectionUI();
+}
+
+function updateSearchSelectionUI() {
+  const count = state.selectedSearchResults.size;
+  els.searchResults.classList.toggle("selecting", state.searchSelectMode);
+  els.searchSelectionBar.hidden = !state.searchSelectMode;
+  els.toggleSearchSelect.classList.toggle("active", state.searchSelectMode);
+  els.toggleSearchSelect.setAttribute("aria-pressed", String(state.searchSelectMode));
+  els.toggleSearchSelect.textContent = state.searchSelectMode ? "Done" : "Select";
+  els.searchSelectionCount.textContent = `${count} selected`;
+  els.noteSearchSelection.disabled = count === 0;
+  const allSelected = state.searchResults.length > 0 && state.searchResults.every((result) => state.selectedSearchResults.has(result.searchId));
+  els.selectAllSearch.textContent = allSelected ? "Deselect all" : "Select all";
+  els.searchResults.querySelectorAll(".search-result").forEach((card) => {
+    const checked = state.selectedSearchResults.has(card.dataset.searchId);
+    card.classList.toggle("selected", checked);
+    const input = card.querySelector(".search-check input");
+    if (input) input.checked = checked;
+  });
+}
+
+function createNoteFromSearchSelection() {
+  const selected = state.searchResults.filter((result) => state.selectedSearchResults.has(result.searchId));
+  if (!selected.length) return;
+  const key = `note:${Date.now()}`;
+  const references = [...new Set(selected.map((result) => result.key))];
+  const text = selected.map((result) => `${result.title}\n${makeSnippet(result.text || result.extra || "", els.globalSearch.value.trim())}`).join("\n\n");
+  state.notes[key] = { text, tags: ["search"], references, updatedAt: new Date().toISOString(), standalone: true };
+  saveNotes();
+  renderNotes();
+  openNote(key);
+  state.searchSelectMode = false;
+  state.selectedSearchResults.clear();
+  updateSearchSelectionUI();
 }
 
 function loadLocalState() {
