@@ -51,7 +51,7 @@ const manifest = {
   quran: { translationIds: [DEFAULT_TRANSLATION], chapters: 114 },
   tafsir: { ids: [DEFAULT_TAFSIR], ayahs: 0 },
   bible: { old: 0, new: 0, originals: ["hbo_wlc", "grc_sbl"] },
-  hadith: { metadata: true, sections: false, thaqalaynSections: false },
+  hadith: { metadata: true, sections: false, collections: [], thaqalaynSections: false },
 };
 
 const chapters = await fetchJSON(`${API}/chapters?language=en`);
@@ -127,6 +127,7 @@ async function writeHadithCollections(editions, info) {
 
   for (const book of books) {
     await mkdir(`${OUT_DIR}/hadith/${book.key}`, { recursive: true });
+    manifest.hadith.collections.push(book.key);
     for (const section of book.sectionIds) {
       const [english, arabic] = await Promise.all([
         fetchJSON(`https://cdn.jsdelivr.net/gh/fawazahmed0/hadith-api@1/editions/eng-${book.key}/sections/${section}.min.json`).catch(() => null),

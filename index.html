@@ -80,7 +80,6 @@
 
           <div class="quick-actions">
             <button id="lastReadButton" class="pill-button muted" type="button">Last read</button>
-            <a class="pill-button apk-download" href="http://62.171.166.27/downloads/abrahamic-books-offline.apk" download>Download APK</a>
           </div>
 
           <div id="status" class="status">Preparing reader...</div>
@@ -117,17 +116,14 @@
                 <h2>Search</h2>
                 <p id="searchSummary">Search bundled offline texts</p>
               </div>
-              <button id="toggleSearchSelect" class="text-button" type="button" aria-pressed="false">Select</button>
+              <button id="toggleSearchSelect" class="text-button" type="button" aria-pressed="false">Select results</button>
             </div>
             <div class="search-panel">
               <input id="globalSearch" class="wide-search" type="search" placeholder="Search Quran, hadith, tafsir, Bible">
-              <select id="searchScope" aria-label="Search scope">
-                <option value="all">All texts</option>
-                <option value="quran">Quran</option>
-                <option value="tafsir">Tafsir</option>
-                <option value="hadith">Hadith</option>
-                <option value="bible">Bible</option>
-              </select>
+              <button id="searchFilterButton" class="source-filter-button" type="button" aria-haspopup="dialog">
+                <span>Search in</span>
+                <strong id="searchFilterSummary">All downloaded books</strong>
+              </button>
               <button id="runSearch" class="text-button primary" type="button">Search</button>
             </div>
             <div id="searchSelectionBar" class="selection-bar" hidden>
@@ -161,11 +157,19 @@
           <button class="icon-button" value="close" aria-label="Close reader settings">×</button>
         </div>
 
-        <div class="settings-grid">
+          <div class="settings-grid">
           <div class="settings-actions">
             <button id="translationButton" class="text-button" type="button">Translations</button>
             <button id="tafsirButton" class="text-button" type="button">Tafsir</button>
             <button id="themeButton" class="text-button" type="button">Dark mode</button>
+          </div>
+          <div class="settings-download-card">
+            <div class="download-mark" aria-hidden="true">↓</div>
+            <div>
+              <strong>Offline Android app</strong>
+              <span>Quran, tafsir, Bible, and hadith included</span>
+            </div>
+            <a class="text-button primary apk-download" href="http://62.171.166.27/quran/downloads/abrahamic-books-offline.apk" download>Download APK</a>
           </div>
           <label class="field">
             <span>Theme</span>
@@ -260,6 +264,25 @@
             <button id="increaseFont" class="mini-button" type="button" aria-label="Increase Arabic text size">A+</button>
           </div>
         </div>
+      </form>
+    </dialog>
+
+    <dialog id="searchFilterSheet" class="sheet source-filter-sheet">
+      <form method="dialog" class="sheet-inner">
+        <div class="sheet-header">
+          <div>
+            <h2>Choose search books</h2>
+            <p id="sourceFilterSubtitle">Include several books and exclude the rest</p>
+          </div>
+          <button class="icon-button" value="close" aria-label="Close search filters">×</button>
+        </div>
+        <input id="sourceFilterSearch" class="wide-search" type="search" placeholder="Find a book or collection">
+        <div class="source-filter-actions">
+          <button id="selectAllSources" class="text-button" type="button">Select all</button>
+          <button id="clearAllSources" class="text-button" type="button">Clear all</button>
+        </div>
+        <div id="sourceFilterList" class="source-filter-list"></div>
+        <button class="text-button primary sheet-done" value="close">Done</button>
       </form>
     </dialog>
 
