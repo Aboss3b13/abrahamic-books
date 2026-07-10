@@ -295,6 +295,27 @@ button:active,
   box-shadow: 0 8px 30px rgba(12, 37, 30, 0.15);
 }
 
+.brand-lockup {
+  display: flex;
+  align-items: center;
+  min-width: 0;
+  gap: 11px;
+}
+
+.brand-lockup > div {
+  min-width: 0;
+}
+
+.app-logo {
+  width: 50px;
+  height: 50px;
+  flex: 0 0 50px;
+  border: 1px solid rgba(255, 227, 158, 0.46);
+  border-radius: 15px;
+  object-fit: cover;
+  box-shadow: 0 8px 18px rgba(0, 0, 0, 0.22);
+}
+
 :root[data-header-style="solid"] .topbar {
   background: linear-gradient(125deg, var(--green), var(--teal));
 }
@@ -605,6 +626,80 @@ button:disabled {
   backdrop-filter: blur(16px) saturate(1.15);
 }
 
+body.controls-collapsed .reader-controls,
+body.controls-collapsed .view-toolbar {
+  min-height: 54px;
+  padding: 8px 12px;
+  cursor: pointer;
+  border-color: color-mix(in srgb, var(--green-2) 32%, var(--line));
+  box-shadow: 0 8px 24px color-mix(in srgb, var(--ink) 9%, transparent);
+}
+
+body.controls-collapsed .reader-controls {
+  display: flex;
+  align-items: center;
+}
+
+body.controls-collapsed .reader-controls .field,
+body.controls-collapsed .reader-controls + .quick-actions {
+  display: none;
+}
+
+body.controls-collapsed .reader-controls::before {
+  content: "Reading filters";
+  flex: 1 1 auto;
+  color: var(--ink);
+  font-size: 0.86rem;
+  font-weight: 900;
+}
+
+body.controls-collapsed .reader-controls::after,
+body.controls-collapsed .view-toolbar::after {
+  content: "Filters  ▾";
+  flex: 0 0 auto;
+  padding: 7px 10px;
+  border-radius: 999px;
+  color: #fff;
+  background: linear-gradient(135deg, var(--green), var(--teal));
+  font-size: 0.7rem;
+  font-weight: 900;
+}
+
+body.controls-collapsed .view-toolbar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+}
+
+body.controls-collapsed .view-toolbar > :not(.notes-header) {
+  display: none;
+}
+
+body.controls-collapsed .view-toolbar .notes-header {
+  flex: 1 1 auto;
+  align-items: center;
+  min-width: 0;
+  margin: 0;
+}
+
+body.controls-collapsed .view-toolbar .notes-header > :not(:first-child) {
+  display: none;
+}
+
+body.controls-collapsed .view-toolbar .notes-header h2 {
+  margin: 0;
+  font-size: 0.95rem;
+}
+
+body.controls-collapsed .view-toolbar .notes-header p {
+  overflow: hidden;
+  margin-top: 2px;
+  font-size: 0.7rem;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
 .view-toolbar .notes-header {
   margin-bottom: 10px;
 }
@@ -767,6 +862,132 @@ button:disabled {
 
 .search-results.selecting .search-result button {
   padding-right: 52px;
+}
+
+.search-book-index {
+  display: grid;
+  gap: 7px;
+  margin: 0 -4px 12px;
+  padding: 9px 10px;
+  border: 1px solid var(--line);
+  border-radius: 13px;
+  background: color-mix(in srgb, var(--paper) 92%, transparent);
+  box-shadow: var(--soft-shadow);
+  backdrop-filter: blur(16px);
+}
+
+.search-book-index[hidden] {
+  display: none;
+}
+
+body.controls-collapsed .search-book-index {
+  position: sticky;
+  top: calc(var(--topbar-height) + 70px);
+  z-index: 7;
+}
+
+.book-index-title {
+  color: var(--muted);
+  font-size: 0.65rem;
+  font-weight: 900;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+}
+
+.search-book-index > div {
+  display: flex;
+  gap: 7px;
+  overflow-x: auto;
+  padding-bottom: 2px;
+  scrollbar-width: none;
+}
+
+.search-book-index > div::-webkit-scrollbar {
+  display: none;
+}
+
+.search-book-index button {
+  min-height: 34px;
+  flex: 0 0 auto;
+  padding: 0 10px;
+  border: 1px solid var(--line);
+  border-radius: 999px;
+  color: var(--ink);
+  background: var(--panel);
+  font-size: 0.72rem;
+  font-weight: 850;
+}
+
+.search-book-index button span {
+  margin-left: 4px;
+  color: var(--muted);
+  font-size: 0.66rem;
+}
+
+.search-book-index button.active {
+  color: #fff;
+  border-color: var(--green);
+  background: var(--green);
+}
+
+.search-book-index button.active span {
+  color: inherit;
+}
+
+.search-book-group {
+  display: grid;
+  gap: 9px;
+  scroll-margin-top: calc(var(--topbar-height) + 138px);
+}
+
+.search-book-group + .search-book-group {
+  margin-top: 8px;
+}
+
+.search-book-heading {
+  position: sticky;
+  top: calc(var(--topbar-height) + 132px);
+  z-index: 4;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  padding: 9px 11px;
+  border: 1px solid var(--line);
+  border-radius: 11px;
+  background: color-mix(in srgb, var(--panel) 94%, transparent);
+  box-shadow: 0 5px 16px color-mix(in srgb, var(--ink) 7%, transparent);
+  backdrop-filter: blur(12px);
+}
+
+.search-book-heading div > span,
+.search-book-heading div > strong {
+  display: block;
+}
+
+.search-book-heading div > span {
+  color: var(--muted);
+  font-size: 0.6rem;
+  font-weight: 900;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+}
+
+.search-book-heading div > strong {
+  margin-top: 1px;
+  color: var(--green);
+  font-size: 0.9rem;
+}
+
+.search-book-heading small {
+  color: var(--muted);
+  font-size: 0.7rem;
+  font-weight: 800;
+}
+
+.search-book-results {
+  display: grid;
+  gap: 9px;
 }
 
 .search-result button {
