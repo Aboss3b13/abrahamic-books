@@ -4,10 +4,7 @@ const DATA_CACHE = `${CACHE_VERSION}-data`;
 const APP_SHELL = [
   "./",
   "./index.html",
-  "./app.js",
-  "./styles.css",
-  "./manifest.webmanifest",
-  "./assets/geometric-header.webp"
+  "./manifest.webmanifest"
 ];
 
 self.addEventListener("install", (event) => {
