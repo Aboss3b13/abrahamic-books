@@ -233,6 +233,17 @@ body {
   overflow-y: auto;
 }
 
+body::before {
+  content: "";
+  position: fixed;
+  inset: 0;
+  z-index: -1;
+  pointer-events: none;
+  background:
+    radial-gradient(circle at 14% 8%, color-mix(in srgb, var(--gold) 10%, transparent), transparent 27rem),
+    radial-gradient(circle at 88% 38%, color-mix(in srgb, var(--teal) 8%, transparent), transparent 30rem);
+}
+
 body.modal-open {
   overflow: hidden;
 }
@@ -275,7 +286,7 @@ button:active,
   align-items: flex-start;
   justify-content: space-between;
   gap: 16px;
-  padding: calc(18px + env(safe-area-inset-top)) 18px 22px;
+  padding: calc(16px + env(safe-area-inset-top)) 18px 18px;
   color: #f8f3e8;
   background:
     linear-gradient(125deg, color-mix(in srgb, var(--green) 92%, black), color-mix(in srgb, var(--teal) 86%, black)),
@@ -334,7 +345,8 @@ h2 {
 main {
   width: min(100%, var(--reader-width));
   margin: 0 auto;
-  padding: 14px 14px 28px;
+  padding: 16px 14px 32px;
+  overflow: visible;
 }
 
 .view {
@@ -343,6 +355,7 @@ main {
 
 .view.active {
   display: block;
+  min-height: calc(100svh - var(--topbar-height) - 90px);
 }
 
 .reading-dashboard {
@@ -410,34 +423,6 @@ main {
 
 .field[hidden] {
   display: none;
-}
-
-body.filters-compact:not(.filters-expanded) .reader-controls {
-  top: calc(var(--topbar-height) + 8px);
-  grid-template-columns: 42px;
-  width: max-content;
-  min-height: 50px;
-  gap: 6px;
-  padding: 6px;
-  cursor: pointer;
-}
-
-body.filters-compact:not(.filters-expanded) .reader-controls .field {
-  display: none;
-}
-
-body.filters-compact:not(.filters-expanded) .reader-controls::before {
-  content: "⌄";
-  display: grid;
-  place-items: center;
-  width: 36px;
-  height: 36px;
-  border-radius: 10px;
-  color: #fff;
-  background: linear-gradient(135deg, var(--green), var(--teal));
-  font-weight: 900;
-  font-size: 1.25rem;
-  transform: rotate(90deg);
 }
 
 select,
@@ -635,9 +620,43 @@ button:disabled {
 
 .search-panel {
   display: grid;
-  grid-template-columns: minmax(0, 1fr) minmax(138px, 0.34fr) auto;
+  grid-template-columns: minmax(0, 1fr) minmax(190px, 0.42fr) auto;
   gap: 8px;
   align-items: center;
+}
+
+.source-filter-button {
+  display: grid;
+  gap: 2px;
+  min-height: 46px;
+  padding: 7px 38px 7px 12px;
+  border: 1px solid var(--line);
+  border-radius: 10px;
+  color: var(--ink);
+  background:
+    linear-gradient(45deg, transparent 50%, var(--muted) 50%) calc(100% - 17px) 50% / 6px 6px no-repeat,
+    linear-gradient(135deg, var(--muted) 50%, transparent 50%) calc(100% - 11px) 50% / 6px 6px no-repeat,
+    var(--panel);
+  text-align: left;
+}
+
+.source-filter-button span {
+  color: var(--muted);
+  font-size: 0.66rem;
+  font-weight: 800;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+}
+
+.source-filter-button strong {
+  overflow: hidden;
+  font-size: 0.8rem;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.source-filter-button.empty {
+  border-color: var(--rose);
 }
 
 .selection-bar {
@@ -674,6 +693,17 @@ button:disabled {
   background: var(--panel);
   box-shadow: var(--soft-shadow);
   overflow: hidden;
+}
+
+.search-result::after,
+.ayah-card::after,
+.note-card::after {
+  content: "";
+  position: absolute;
+  inset: 0 auto 0 0;
+  width: 3px;
+  background: linear-gradient(180deg, var(--gold), var(--green-2));
+  opacity: 0.72;
 }
 
 .search-result:hover,
@@ -777,6 +807,7 @@ button:disabled {
 
 .ayah-card,
 .note-card {
+  position: relative;
   border: 1px solid var(--line);
   border-radius: 14px;
   background: var(--panel);
@@ -1007,9 +1038,10 @@ button:disabled {
   width: min(100%, var(--reader-width));
   margin: 0 auto;
   padding: 8px 10px calc(8px + env(safe-area-inset-bottom));
-  background: color-mix(in srgb, var(--paper) 88%, transparent);
+  background: color-mix(in srgb, var(--paper) 82%, transparent);
   border-top: 1px solid var(--line);
-  backdrop-filter: blur(14px);
+  backdrop-filter: blur(20px) saturate(1.25);
+  box-shadow: 0 -10px 32px color-mix(in srgb, var(--ink) 8%, transparent);
 }
 
 .nav-item {
@@ -1035,7 +1067,7 @@ button:disabled {
 
 .nav-item.active {
   color: #fff;
-  background: var(--green);
+  background: linear-gradient(135deg, var(--green), color-mix(in srgb, var(--green) 70%, var(--teal)));
   border-color: var(--green);
   box-shadow: 0 6px 16px color-mix(in srgb, var(--green) 25%, transparent);
 }
@@ -1084,6 +1116,170 @@ button:disabled {
   display: grid;
   grid-template-columns: repeat(3, minmax(0, 1fr));
   gap: 8px;
+}
+
+.settings-download-card {
+  grid-column: 1 / -1;
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr) auto;
+  align-items: center;
+  gap: 12px;
+  padding: 12px;
+  border: 1px solid color-mix(in srgb, var(--green-2) 35%, var(--line));
+  border-radius: 14px;
+  background: linear-gradient(135deg, color-mix(in srgb, var(--green-2) 12%, var(--panel)), var(--panel));
+}
+
+.download-mark {
+  display: grid;
+  place-items: center;
+  width: 42px;
+  height: 42px;
+  border-radius: 12px;
+  color: #fff;
+  background: linear-gradient(135deg, var(--green), var(--teal));
+  font-size: 1.35rem;
+  font-weight: 900;
+}
+
+.settings-download-card strong,
+.settings-download-card span {
+  display: block;
+}
+
+.settings-download-card span {
+  margin-top: 3px;
+  color: var(--muted);
+  font-size: 0.73rem;
+  line-height: 1.35;
+}
+
+.source-filter-actions {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 8px;
+}
+
+.source-filter-list {
+  display: grid;
+  gap: 12px;
+}
+
+.source-group {
+  overflow: hidden;
+  border: 1px solid var(--line);
+  border-radius: 14px;
+  background: color-mix(in srgb, var(--panel) 92%, transparent);
+}
+
+.source-group-heading {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 11px 12px;
+  border-bottom: 1px solid var(--line);
+  background: color-mix(in srgb, var(--green-2) 7%, var(--panel));
+}
+
+.source-group-heading strong,
+.source-group-heading span {
+  display: block;
+}
+
+.source-group-heading span {
+  margin-top: 2px;
+  color: var(--muted);
+  font-size: 0.7rem;
+}
+
+.source-group-toggle {
+  min-height: 32px;
+  padding: 0 10px;
+  border: 1px solid var(--line);
+  border-radius: 999px;
+  color: var(--green);
+  background: var(--panel);
+  font-size: 0.72rem;
+  font-weight: 850;
+}
+
+.source-options {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 1px;
+  background: var(--line);
+}
+
+.source-option {
+  position: relative;
+  display: grid;
+  grid-template-columns: 24px minmax(0, 1fr);
+  align-items: center;
+  gap: 9px;
+  min-width: 0;
+  min-height: 62px;
+  padding: 9px 10px;
+  cursor: pointer;
+  background: var(--panel);
+}
+
+.source-option.selected {
+  background: color-mix(in srgb, var(--green-2) 9%, var(--panel));
+}
+
+.source-option input {
+  position: absolute;
+  width: 1px;
+  min-height: 1px;
+  opacity: 0;
+}
+
+.source-checkmark {
+  display: grid;
+  place-items: center;
+  width: 23px;
+  height: 23px;
+  border: 2px solid var(--line);
+  border-radius: 7px;
+  background: var(--panel);
+}
+
+.source-option input:checked + .source-checkmark {
+  color: #fff;
+  border-color: var(--green);
+  background: var(--green);
+}
+
+.source-option input:checked + .source-checkmark::after {
+  content: "✓";
+  font-size: 0.78rem;
+  font-weight: 900;
+}
+
+.source-option strong,
+.source-option small {
+  display: block;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.source-option strong {
+  font-size: 0.82rem;
+}
+
+.source-option small {
+  margin-top: 3px;
+  color: var(--muted);
+  font-size: 0.67rem;
+}
+
+.sheet-done {
+  position: sticky;
+  bottom: -14px;
+  z-index: 2;
+  box-shadow: 0 -10px 22px color-mix(in srgb, var(--paper) 88%, transparent);
 }
 
 .settings-grid {
@@ -1456,7 +1652,11 @@ button:disabled {
 
 @media (max-width: 760px) {
   .search-panel {
-    grid-template-columns: minmax(0, 1fr);
+    grid-template-columns: minmax(0, 1fr) auto;
+  }
+
+  .search-panel #globalSearch {
+    grid-column: 1 / -1;
   }
 
   .reader-controls {
@@ -1489,8 +1689,8 @@ button:disabled {
     grid-template-columns: 1fr;
   }
 
-  .field {
-    grid-template-columns: 1fr;
+  .reader-controls .field {
+    grid-template-columns: 82px minmax(0, 1fr);
   }
 
   .settings-grid {
@@ -1500,6 +1700,18 @@ button:disabled {
   .settings-actions,
   .custom-theme-controls,
   .bible-controls {
+    grid-template-columns: 1fr;
+  }
+
+  .settings-download-card {
+    grid-template-columns: auto minmax(0, 1fr);
+  }
+
+  .settings-download-card .apk-download {
+    grid-column: 1 / -1;
+  }
+
+  .source-options {
     grid-template-columns: 1fr;
   }
 

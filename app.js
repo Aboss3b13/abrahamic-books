@@ -44,6 +44,11 @@ const BOOK_IDS = {
   "Jude": "JUD", "Revelation": "REV",
 };
 
+const BUNDLED_HADITH_COLLECTIONS = new Set([
+  "abudawud", "bukhari", "dehlawi", "ibnmajah", "malik",
+  "muslim", "nasai", "nawawi", "qudsi", "tirmidhi",
+]);
+
 const state = {
   chapters: [],
   translations: [],
@@ -95,6 +100,8 @@ const state = {
   searchResults: [],
   searchSelectMode: false,
   selectedSearchResults: new Set(),
+  selectedSearchSources: new Set(),
+  savedSearchSources: null,
 };
 
 const els = {
@@ -181,7 +188,14 @@ const els = {
   exportNotes: document.querySelector("#exportNotes"),
   importNotes: document.querySelector("#importNotes"),
   globalSearch: document.querySelector("#globalSearch"),
-  searchScope: document.querySelector("#searchScope"),
+  searchFilterButton: document.querySelector("#searchFilterButton"),
+  searchFilterSummary: document.querySelector("#searchFilterSummary"),
+  searchFilterSheet: document.querySelector("#searchFilterSheet"),
+  sourceFilterSearch: document.querySelector("#sourceFilterSearch"),
+  sourceFilterSubtitle: document.querySelector("#sourceFilterSubtitle"),
+  sourceFilterList: document.querySelector("#sourceFilterList"),
+  selectAllSources: document.querySelector("#selectAllSources"),
+  clearAllSources: document.querySelector("#clearAllSources"),
   runSearch: document.querySelector("#runSearch"),
   searchSummary: document.querySelector("#searchSummary"),
   searchResults: document.querySelector("#searchResults"),
@@ -222,6 +236,7 @@ async function init() {
     state.tafsirs = sortResources(tafsirs.tafsirs || []);
     state.hadithInfo = hadithInfo || {};
     state.hadithBooks = parseHadithBooks(hadithEditions, state.offlineManifest?.hadith?.thaqalaynSections ? shiaHadithBooks : []);
+    initializeSearchSources();
 
     if (!state.translations.some((item) => item.id === state.selectedTranslations[0])) {
       const english = state.translations.find((item) => item.language_name === "english");
@@ -354,8 +369,15 @@ function bindEvents() {
       runGlobalSearch();
     }
   });
-  els.searchScope.addEventListener("change", () => {
-    if (els.globalSearch.value.trim()) runGlobalSearch();
+  els.searchFilterButton.addEventListener("click", () => {
+    renderSearchSourceFilters();
+    openDialog(els.searchFilterSheet);
+  });
+  els.sourceFilterSearch.addEventListener("input", renderSearchSourceFilters);
+  els.selectAllSources.addEventListener("click", () => setAllSearchSources(true));
+  els.clearAllSources.addEventListener("click", () => setAllSearchSources(false));
+  els.searchFilterSheet.addEventListener("close", () => {
+    if (els.globalSearch.value.trim().length >= 2) runGlobalSearch();
   });
   els.toggleSearchSelect.addEventListener("click", toggleSearchSelectMode);
   els.selectAllSearch.addEventListener("click", selectAllSearchResults);
@@ -369,13 +391,6 @@ function bindEvents() {
   document.querySelectorAll("dialog").forEach((dialog) => {
     dialog.addEventListener("close", syncModalState);
     dialog.addEventListener("cancel", syncModalState);
-  });
-
-  window.addEventListener("scroll", updateFilterBarState, { passive: true });
-  document.querySelector(".reader-controls")?.addEventListener("click", () => {
-    if (!document.body.classList.contains("filters-compact")) return;
-    document.body.classList.add("filters-expanded");
-    filtersExpandedAt = window.scrollY;
   });
 
   els.verses.addEventListener("click", (event) => {
@@ -399,24 +414,6 @@ function bindEvents() {
     const word = event.target.closest(".original-word");
     if (!word) return;
     openOriginalWordTranslation(word.dataset.word, word.dataset.lang, word.closest(".ayah-card")?.dataset.key);
-  });
-}
-
-function updateFilterBarState() {
-  if (filterFramePending) return;
-  filterFramePending = true;
-  requestAnimationFrame(() => {
-    const y = window.scrollY;
-    if (!filtersAreCompact && y > 340) filtersAreCompact = true;
-    if (filtersAreCompact && y < 120) {
-      filtersAreCompact = false;
-      document.body.classList.remove("filters-expanded");
-    }
-    if (filtersAreCompact && document.body.classList.contains("filters-expanded") && Math.abs(y - filtersExpandedAt) > 70) {
-      document.body.classList.remove("filters-expanded");
-    }
-    document.body.classList.toggle("filters-compact", filtersAreCompact);
-    filterFramePending = false;
   });
 }
 
@@ -1326,13 +1323,12 @@ function switchView(viewId, reselectedFromNav = false) {
   document.querySelectorAll(".nav-item").forEach((button) => button.classList.toggle("active", button.dataset.view === viewId));
   if (viewId === "notesView") renderNotes();
   state.currentView = viewId;
-  document.body.classList.remove("filters-expanded");
   requestAnimationFrame(() => window.scrollTo({ top: state.viewScrollPositions[viewId] || 0, behavior: "auto" }));
 }
 
 async function runGlobalSearch() {
   const query = els.globalSearch.value.trim();
-  const scope = els.searchScope.value;
+  const selectedSources = new Set(state.selectedSearchSources);
   const token = Date.now();
   state.searchAbort = token;
   clearSearchSelection();
@@ -1343,12 +1339,18 @@ async function runGlobalSearch() {
     return;
   }
 
+  if (!selectedSources.size) {
+    els.searchSummary.textContent = "Choose at least one book to search";
+    els.searchResults.innerHTML = `<div class="status">Open “Search in” and select one or more downloaded books.</div>`;
+    return;
+  }
+
   els.runSearch.disabled = true;
   els.searchSummary.textContent = "Searching offline bundle...";
   els.searchResults.innerHTML = `<div class="status">Searching bundled texts...</div>`;
 
   try {
-    const results = await searchOfflineTexts(query, scope, token);
+    const results = await searchOfflineTexts(query, selectedSources, token);
     if (state.searchAbort !== token) return;
     renderSearchResults(results, query);
   } catch (error) {
@@ -1359,60 +1361,69 @@ async function runGlobalSearch() {
   }
 }
 
-async function searchOfflineTexts(query, scope, token) {
+async function searchOfflineTexts(query, selectedSources, token) {
   const needle = normalizeSearchText(query);
-  const results = [];
-  const maxResults = 120;
-  const include = (name) => scope === "all" || scope === name;
-  const pushResult = (result) => {
-    if (results.length >= maxResults) return;
+  const buckets = new Map();
+  const maxPerSource = 30;
+  const maxResults = 240;
+  const pushResult = (sourceId, result) => {
+    const bucket = buckets.get(sourceId) || [];
+    if (bucket.length >= maxPerSource) return;
     const haystack = normalizeSearchText(`${result.title} ${result.label} ${result.text} ${result.extra || ""}`);
-    if (haystack.includes(needle)) results.push(result);
+    if (haystack.includes(needle)) {
+      bucket.push(result);
+      buckets.set(sourceId, bucket);
+    }
   };
-  const shouldStop = () => state.searchAbort !== token || results.length >= maxResults;
+  const sourceFull = (sourceId) => (buckets.get(sourceId)?.length || 0) >= maxPerSource;
+  const shouldStop = () => state.searchAbort !== token;
 
-  if (include("quran")) {
+  if (selectedSources.has("quran")) {
     for (let chapter = 1; chapter <= 114 && !shouldStop(); chapter += 1) {
       const data = await getOfflineJSON(`quran/chapter-${chapter}.json`).catch(() => null);
       for (const verse of data?.verses || []) {
-        pushResult({
+        pushResult("quran", {
           key: verse.verse_key,
           type: "Quran",
           title: `Quran ${verse.verse_key}`,
           label: getChapter(chapter)?.name_simple || `Surah ${chapter}`,
           text: [verse.text_uthmani, ...(verse.translations || []).map((item) => stripHTML(item.text))].filter(Boolean).join(" "),
         });
-        if (shouldStop()) break;
+        if (shouldStop() || sourceFull("quran")) break;
       }
+      if (sourceFull("quran")) break;
     }
   }
 
-  if (include("tafsir")) {
+  if (selectedSources.has("tafsir")) {
     for (let chapter = 1; chapter <= 114 && !shouldStop(); chapter += 1) {
       const data = await getOfflineJSON(`tafsir/${OFFLINE.defaultTafsir}/chapter-${chapter}.json`).catch(() => null);
       for (const [key, item] of Object.entries(data || {})) {
-        pushResult({
+        pushResult("tafsir", {
           key,
           type: "Tafsir",
           title: `Tafsir ${key}`,
           label: getChapter(chapter)?.name_simple || `Surah ${chapter}`,
           text: stripHTML(item?.tafsir?.text || ""),
         });
-        if (shouldStop()) break;
+        if (shouldStop() || sourceFull("tafsir")) break;
       }
+      if (sourceFull("tafsir")) break;
     }
   }
 
-  if (include("bible")) {
+  if ([...selectedSources].some((id) => id.startsWith("bible:"))) {
     const groups = [["old", OLD_TESTAMENT], ["new", NEW_TESTAMENT]];
     for (const [testament, books] of groups) {
       for (const [book, chapters] of books) {
         const bookId = BOOK_IDS[book];
+        const sourceId = `bible:${testament}:${bookId}`;
+        if (!selectedSources.has(sourceId)) continue;
         for (let chapter = 1; chapter <= chapters && !shouldStop(); chapter += 1) {
           const data = await getOfflineJSON(`bible/${testament}-${bookId}-${chapter}.json`).catch(() => null);
           const originalByVerse = new Map(extractBibleVerses(data?.original).map((verse) => [verse.number, verse.text]));
           for (const verse of extractBibleVerses(data?.english)) {
-            pushResult({
+            pushResult(sourceId, {
               key: bibleKey(book, chapter, verse.number),
               type: testament === "old" ? "Old Testament" : "New Testament",
               title: `${book} ${chapter}:${verse.number}`,
@@ -1420,16 +1431,18 @@ async function searchOfflineTexts(query, scope, token) {
               text: verse.text,
               extra: originalByVerse.get(verse.number) || "",
             });
-            if (shouldStop()) break;
+            if (shouldStop() || sourceFull(sourceId)) break;
           }
+          if (sourceFull(sourceId)) break;
         }
       }
     }
   }
 
-  if (include("hadith")) {
+  if ([...selectedSources].some((id) => id.startsWith("hadith:"))) {
     for (const book of state.hadithBooks) {
-      if (book.source === "thaqalayn") continue;
+      const sourceId = `hadith:${book.key}`;
+      if (book.source === "thaqalayn" || !selectedSources.has(sourceId)) continue;
       const sectionMap = state.hadithInfo?.[book.key]?.metadata?.sections || {};
       const sectionIds = Object.keys(sectionMap).map(Number).filter((item) => item > 0).sort((a, b) => a - b);
       for (const section of sectionIds) {
@@ -1437,7 +1450,7 @@ async function searchOfflineTexts(query, scope, token) {
         const data = await getOfflineJSON(`hadith/${book.key}/section-${section}.json`).catch(() => null);
         const arabicByNumber = new Map((data?.arabic?.hadiths || []).map((item) => [Number(item.hadithnumber), item.text]));
         for (const item of data?.english?.hadiths || []) {
-          pushResult({
+          pushResult(sourceId, {
             key: hadithKey(book.key, section, item.hadithnumber),
             type: "Hadith",
             title: `${book.name} ${item.hadithnumber}`,
@@ -1445,12 +1458,20 @@ async function searchOfflineTexts(query, scope, token) {
             text: item.text || "",
             extra: arabicByNumber.get(Number(item.hadithnumber)) || "",
           });
-          if (shouldStop()) break;
+          if (shouldStop() || sourceFull(sourceId)) break;
         }
+        if (sourceFull(sourceId)) break;
       }
     }
   }
 
+  const sourceBuckets = [...buckets.values()].map((bucket) => [...bucket]);
+  const results = [];
+  while (results.length < maxResults && sourceBuckets.some((bucket) => bucket.length)) {
+    sourceBuckets.forEach((bucket) => {
+      if (bucket.length && results.length < maxResults) results.push(bucket.shift());
+    });
+  }
   return results;
 }
 
@@ -1508,6 +1529,105 @@ function syncStickyOffset() {
   document.documentElement.style.setProperty("--topbar-height", `${height}px`);
 }
 
+function getSearchSourceGroups() {
+  const tafsir = state.tafsirs.find((item) => item.id === OFFLINE.defaultTafsir);
+  const bibleItems = (type, books) => books.map(([book]) => ({
+    id: `bible:${type}:${BOOK_IDS[book]}`,
+    label: book,
+    meta: type === "old" ? "Old Testament" : "New Testament",
+  }));
+  const hadithItems = state.hadithBooks
+    .filter((book) => book.source !== "thaqalayn" && BUNDLED_HADITH_COLLECTIONS.has(book.key))
+    .map((book) => ({ id: `hadith:${book.key}`, label: book.name, meta: `${book.tradition} hadith` }));
+  return [
+    { id: "quran", label: "Quran & commentary", items: [
+      { id: "quran", label: "Quran", meta: "Arabic and translation" },
+      { id: "tafsir", label: tafsir?.name || "Tafsir", meta: "Downloaded commentary" },
+    ] },
+    { id: "old", label: "Old Testament", items: bibleItems("old", OLD_TESTAMENT) },
+    { id: "new", label: "New Testament", items: bibleItems("new", NEW_TESTAMENT) },
+    { id: "hadith", label: "Hadith collections", items: hadithItems },
+  ];
+}
+
+function initializeSearchSources() {
+  const available = new Set(getSearchSourceGroups().flatMap((group) => group.items.map((item) => item.id)));
+  state.selectedSearchSources = state.savedSearchSources === null
+    ? new Set(available)
+    : new Set(state.savedSearchSources.filter((id) => available.has(id)));
+  updateSearchSourceSummary();
+}
+
+function renderSearchSourceFilters() {
+  const query = els.sourceFilterSearch.value.trim().toLowerCase();
+  const groups = getSearchSourceGroups();
+  els.sourceFilterList.innerHTML = groups.map((group) => {
+    const visible = group.items.filter((item) => !query || `${item.label} ${item.meta}`.toLowerCase().includes(query));
+    if (!visible.length) return "";
+    const selectedInGroup = group.items.filter((item) => state.selectedSearchSources.has(item.id)).length;
+    return `
+      <section class="source-group">
+        <div class="source-group-heading">
+          <div><strong>${escapeHTML(group.label)}</strong><span>${selectedInGroup} of ${group.items.length}</span></div>
+          <button class="source-group-toggle" type="button" data-group="${escapeHTML(group.id)}">${selectedInGroup === group.items.length ? "Clear" : "Select all"}</button>
+        </div>
+        <div class="source-options">
+          ${visible.map((item) => `
+            <label class="source-option ${state.selectedSearchSources.has(item.id) ? "selected" : ""}">
+              <input type="checkbox" value="${escapeHTML(item.id)}" ${state.selectedSearchSources.has(item.id) ? "checked" : ""}>
+              <span class="source-checkmark" aria-hidden="true"></span>
+              <span><strong>${escapeHTML(item.label)}</strong><small>${escapeHTML(item.meta)}</small></span>
+            </label>
+          `).join("")}
+        </div>
+      </section>
+    `;
+  }).join("") || `<div class="status">No downloaded book matches that name.</div>`;
+
+  els.sourceFilterList.querySelectorAll('input[type="checkbox"]').forEach((input) => {
+    input.addEventListener("change", () => {
+      if (input.checked) state.selectedSearchSources.add(input.value);
+      else state.selectedSearchSources.delete(input.value);
+      savePrefs();
+      renderSearchSourceFilters();
+      updateSearchSourceSummary();
+    });
+  });
+  els.sourceFilterList.querySelectorAll("[data-group]").forEach((button) => {
+    button.addEventListener("click", () => toggleSearchSourceGroup(button.dataset.group));
+  });
+  updateSearchSourceSummary();
+}
+
+function toggleSearchSourceGroup(groupId) {
+  const group = getSearchSourceGroups().find((item) => item.id === groupId);
+  if (!group) return;
+  const allSelected = group.items.every((item) => state.selectedSearchSources.has(item.id));
+  group.items.forEach((item) => allSelected ? state.selectedSearchSources.delete(item.id) : state.selectedSearchSources.add(item.id));
+  savePrefs();
+  renderSearchSourceFilters();
+}
+
+function setAllSearchSources(selected) {
+  state.selectedSearchSources = selected
+    ? new Set(getSearchSourceGroups().flatMap((group) => group.items.map((item) => item.id)))
+    : new Set();
+  savePrefs();
+  renderSearchSourceFilters();
+}
+
+function updateSearchSourceSummary() {
+  const all = getSearchSourceGroups().flatMap((group) => group.items);
+  const selected = all.filter((item) => state.selectedSearchSources.has(item.id));
+  els.searchFilterSummary.textContent = selected.length === all.length
+    ? `All ${all.length} downloaded books`
+    : selected.length === 0
+      ? "No books selected"
+      : `${selected.length} of ${all.length} books`;
+  els.sourceFilterSubtitle.textContent = `${selected.length} selected · ${all.length - selected.length} excluded`;
+  els.searchFilterButton.classList.toggle("empty", selected.length === 0);
+}
+
 function toggleSearchSelectMode() {
   state.searchSelectMode = !state.searchSelectMode;
   if (!state.searchSelectMode) state.selectedSearchResults.clear();
@@ -1539,7 +1659,7 @@ function updateSearchSelectionUI() {
   els.searchSelectionBar.hidden = !state.searchSelectMode;
   els.toggleSearchSelect.classList.toggle("active", state.searchSelectMode);
   els.toggleSearchSelect.setAttribute("aria-pressed", String(state.searchSelectMode));
-  els.toggleSearchSelect.textContent = state.searchSelectMode ? "Done" : "Select";
+  els.toggleSearchSelect.textContent = state.searchSelectMode ? "Done selecting" : "Select results";
   els.searchSelectionCount.textContent = `${count} selected`;
   els.noteSearchSelection.disabled = count === 0;
   const allSelected = state.searchResults.length > 0 && state.searchResults.every((result) => state.selectedSearchResults.has(result.searchId));
@@ -1586,6 +1706,7 @@ function loadLocalState() {
     state.selectedChapter = Number(prefs.selectedChapter) || state.selectedChapter;
     state.selectedTranslations = Array.isArray(prefs.selectedTranslations) ? prefs.selectedTranslations : state.selectedTranslations;
     state.selectedTafsir = Number(prefs.selectedTafsir) || state.selectedTafsir;
+    state.savedSearchSources = Array.isArray(prefs.selectedSearchSources) ? prefs.selectedSearchSources : null;
     state.theme = ["light", "dark", "sepia", "midnight", "emerald", "contrast", "rose", "ocean", "graphite", "paper", "custom"].includes(prefs.theme) ? prefs.theme : state.theme;
     state.width = ["comfortable", "narrow", "wide"].includes(prefs.width) ? prefs.width : state.width;
     state.arabicFont = ["uthmani", "naskh", "scheherazade", "serif"].includes(prefs.arabicFont) ? prefs.arabicFont : state.arabicFont;
@@ -1618,6 +1739,7 @@ function savePrefs() {
     selectedChapter: state.selectedChapter,
     selectedTranslations: state.selectedTranslations,
     selectedTafsir: state.selectedTafsir,
+    selectedSearchSources: [...state.selectedSearchSources],
     theme: state.theme,
     width: state.width,
     arabicFont: state.arabicFont,
