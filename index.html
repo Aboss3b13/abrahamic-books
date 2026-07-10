@@ -80,6 +80,7 @@
 
           <div class="quick-actions">
             <button id="lastReadButton" class="pill-button muted" type="button">Last read</button>
+            <a class="pill-button apk-download" href="./downloads/abrahamic-books-offline.apk" download>Download APK</a>
           </div>
 
           <div id="status" class="status">Preparing reader...</div>
@@ -107,10 +108,32 @@
           <div id="notesList" class="notes-list"></div>
         </section>
 
+        <section id="searchView" class="view" aria-label="Search texts">
+          <div class="notes-header">
+            <div>
+              <h2>Search</h2>
+              <p id="searchSummary">Search bundled offline texts</p>
+            </div>
+          </div>
+          <div class="search-panel">
+            <input id="globalSearch" class="wide-search" type="search" placeholder="Search Quran, hadith, tafsir, Bible">
+            <select id="searchScope" aria-label="Search scope">
+              <option value="all">All texts</option>
+              <option value="quran">Quran</option>
+              <option value="tafsir">Tafsir</option>
+              <option value="hadith">Hadith</option>
+              <option value="bible">Bible</option>
+            </select>
+            <button id="runSearch" class="text-button primary" type="button">Search</button>
+          </div>
+          <div id="searchResults" class="search-results"></div>
+        </section>
+
       </main>
 
       <nav class="bottom-nav" aria-label="Primary">
         <button class="nav-item active" type="button" data-view="readView"><span class="nav-icon">☰</span><span>Read</span></button>
+        <button class="nav-item" type="button" data-view="searchView"><span class="nav-icon">⌕</span><span>Search</span></button>
         <button class="nav-item" type="button" data-view="notesView"><span class="nav-icon">✎</span><span>Notes</span></button>
       </nav>
     </div>

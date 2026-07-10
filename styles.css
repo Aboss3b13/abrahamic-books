@@ -499,11 +499,14 @@ textarea:focus {
 }
 
 .pill-button {
+  display: inline-grid;
+  place-items: center;
   min-height: 40px;
   flex: 0 0 auto;
   padding: 0 13px;
   border-radius: 999px;
   font-weight: 800;
+  text-decoration: none;
 }
 
 .pill-button:hover,
@@ -570,10 +573,62 @@ textarea:focus {
 }
 
 .verses,
-.notes-list {
+.notes-list,
+.search-results {
   display: grid;
   gap: 12px;
   margin-top: 12px;
+}
+
+.search-panel {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(138px, 0.34fr) auto;
+  gap: 8px;
+  align-items: center;
+}
+
+.search-result {
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: var(--panel);
+  box-shadow: var(--soft-shadow);
+  overflow: hidden;
+}
+
+.search-result button {
+  display: grid;
+  width: 100%;
+  gap: 5px;
+  padding: 13px;
+  border: 0;
+  color: inherit;
+  background: transparent;
+  text-align: left;
+}
+
+.search-result span {
+  width: max-content;
+  max-width: 100%;
+  padding: 3px 8px;
+  border-radius: 999px;
+  color: #6d4d13;
+  background: var(--gold-soft);
+  font-size: 0.72rem;
+  font-weight: 900;
+}
+
+.search-result strong {
+  line-height: 1.25;
+}
+
+.search-result small {
+  color: var(--muted);
+}
+
+.search-result p {
+  margin: 0;
+  color: var(--muted);
+  line-height: 1.5;
 }
 
 .ayah-card,
@@ -803,7 +858,7 @@ textarea:focus {
   left: 0;
   z-index: 5;
   display: grid;
-  grid-template-columns: repeat(2, 1fr);
+  grid-template-columns: repeat(3, 1fr);
   gap: 6px;
   width: min(100%, var(--reader-width));
   margin: 0 auto;
@@ -1255,6 +1310,10 @@ textarea:focus {
 }
 
 @media (max-width: 760px) {
+  .search-panel {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
   .reader-controls {
     grid-template-columns: minmax(0, 1fr);
   }

@@ -1,4 +1,9 @@
 const API = "https://api.quran.com/api/v4";
+const OFFLINE = {
+  base: "./offline",
+  defaultTranslation: 85,
+  defaultTafsir: 169,
+};
 const STORE = {
   notes: "quran-reader-notes-v1",
   prefs: "quran-reader-prefs-v1",
@@ -46,6 +51,7 @@ const state = {
   hadithBooks: [],
   hadithInfo: {},
   hadithSections: {},
+  offlineManifest: null,
   tradition: "islam",
   scripture: "quran",
   selectedBibleBook: "Genesis",
@@ -82,6 +88,8 @@ const state = {
   noteTagFilter: "",
   originalWordCache: {},
   currentNoteKey: null,
+  searchIndex: null,
+  searchAbort: 0,
 };
 
 const els = {
@@ -166,6 +174,11 @@ const els = {
   newStudyNote: document.querySelector("#newStudyNote"),
   exportNotes: document.querySelector("#exportNotes"),
   importNotes: document.querySelector("#importNotes"),
+  globalSearch: document.querySelector("#globalSearch"),
+  searchScope: document.querySelector("#searchScope"),
+  runSearch: document.querySelector("#runSearch"),
+  searchSummary: document.querySelector("#searchSummary"),
+  searchResults: document.querySelector("#searchResults"),
 };
 
 init();
@@ -181,20 +194,21 @@ async function init() {
   setStatus("Loading chapters, translations, and tafsir sources...");
 
   try {
+    state.offlineManifest = await getOfflineJSON("manifest.json").catch(() => null);
     const [chapters, translations, tafsirs, hadithEditions, hadithInfo, shiaHadithBooks] = await Promise.all([
-      getJSON(`${API}/chapters?language=en`),
-      getJSON(`${API}/resources/translations`),
-      getJSON(`${API}/resources/tafsirs`),
-      getJSON("https://cdn.jsdelivr.net/gh/fawazahmed0/hadith-api@1/editions.min.json").catch(() => ({})),
-      getJSON("https://cdn.jsdelivr.net/gh/fawazahmed0/hadith-api@1/info.min.json").catch(() => ({})),
-      getJSON("https://www.thaqalayn-api.net/api/v2/allbooks").catch(() => []),
+      getOfflineJSON("quran/chapters.json").catch(() => getJSON(`${API}/chapters?language=en`)),
+      getOfflineJSON("quran/translations.json").catch(() => getJSON(`${API}/resources/translations`)),
+      getOfflineJSON("quran/tafsirs.json").catch(() => getJSON(`${API}/resources/tafsirs`)),
+      getOfflineJSON("hadith/editions.json").catch(() => getJSON("https://cdn.jsdelivr.net/gh/fawazahmed0/hadith-api@1/editions.min.json")).catch(() => ({})),
+      getOfflineJSON("hadith/info.json").catch(() => getJSON("https://cdn.jsdelivr.net/gh/fawazahmed0/hadith-api@1/info.min.json")).catch(() => ({})),
+      getOfflineJSON("hadith/thaqalayn-books.json").catch(() => getJSON("https://www.thaqalayn-api.net/api/v2/allbooks")).catch(() => []),
     ]);
 
     state.chapters = chapters.chapters || [];
     state.translations = sortResources(translations.translations || []);
     state.tafsirs = sortResources(tafsirs.tafsirs || []);
     state.hadithInfo = hadithInfo || {};
-    state.hadithBooks = parseHadithBooks(hadithEditions, shiaHadithBooks);
+    state.hadithBooks = parseHadithBooks(hadithEditions, state.offlineManifest?.hadith?.thaqalaynSections ? shiaHadithBooks : []);
 
     if (!state.translations.some((item) => item.id === state.selectedTranslations[0])) {
       const english = state.translations.find((item) => item.language_name === "english");
@@ -318,6 +332,16 @@ function bindEvents() {
   els.notesSearch.addEventListener("input", renderNotes);
   els.exportNotes.addEventListener("click", exportNotes);
   els.importNotes.addEventListener("change", importNotes);
+  els.runSearch.addEventListener("click", runGlobalSearch);
+  els.globalSearch.addEventListener("keydown", (event) => {
+    if (event.key === "Enter") {
+      event.preventDefault();
+      runGlobalSearch();
+    }
+  });
+  els.searchScope.addEventListener("change", () => {
+    if (els.globalSearch.value.trim()) runGlobalSearch();
+  });
 
   document.querySelectorAll(".nav-item").forEach((button) => {
     button.addEventListener("click", () => switchView(button.dataset.view));
@@ -389,7 +413,9 @@ async function loadChapter(chapterNumber) {
 
   try {
     const ids = state.selectedTranslations.join(",");
-    const data = await getJSON(`${API}/verses/by_chapter/${chapterNumber}?language=en&words=true&translations=${ids}&per_page=300&word_fields=text_uthmani,translation,transliteration`);
+    const data = shouldUseOfflineQuran(ids)
+      ? await getOfflineJSON(`quran/chapter-${chapterNumber}.json`).catch(() => getJSON(`${API}/verses/by_chapter/${chapterNumber}?language=en&words=true&translations=${ids}&per_page=300&word_fields=text_uthmani,translation,transliteration`))
+      : await getJSON(`${API}/verses/by_chapter/${chapterNumber}?language=en&words=true&translations=${ids}&per_page=300&word_fields=text_uthmani,translation,transliteration`);
     state.verses = data.verses || [];
 
     renderVerses();
@@ -421,10 +447,13 @@ async function loadBibleChapter() {
 
   try {
     const originalTranslation = state.scripture === "old" ? "hbo_wlc" : "grc_sbl";
-    const [englishData, originalData] = await Promise.all([
-      getJSON(`https://bible.helloao.org/api/eng_web/${bookId}/${chapter}.json`),
-      getJSON(`https://bible.helloao.org/api/${originalTranslation}/${bookId}/${chapter}.json`).catch(() => null),
-    ]);
+    const bundled = await getOfflineJSON(`bible/${state.scripture}-${bookId}-${chapter}.json`).catch(() => null);
+    const [englishData, originalData] = bundled
+      ? [bundled.english, bundled.original]
+      : await Promise.all([
+          getJSON(`https://bible.helloao.org/api/eng_web/${bookId}/${chapter}.json`),
+          getJSON(`https://bible.helloao.org/api/${originalTranslation}/${bookId}/${chapter}.json`).catch(() => null),
+        ]);
     const originalByVerse = new Map(extractBibleVerses(originalData).map((verse) => [verse.number, verse.text]));
     state.verses = extractBibleVerses(englishData).map((verse) => ({
       scripture: state.scripture,
@@ -545,10 +574,13 @@ async function loadHadithSection() {
       await loadThaqalaynHadithSection(info, section);
       return;
     }
-    const [engData, araData] = await Promise.all([
-      getJSON(`https://cdn.jsdelivr.net/gh/fawazahmed0/hadith-api@1/editions/eng-${book}/sections/${section}.min.json`),
-      getJSON(`https://cdn.jsdelivr.net/gh/fawazahmed0/hadith-api@1/editions/ara-${book}/sections/${section}.min.json`).catch(() => null),
-    ]);
+    const bundled = await getOfflineJSON(`hadith/${book}/section-${section}.json`).catch(() => null);
+    const [engData, araData] = bundled
+      ? [bundled.english, bundled.arabic]
+      : await Promise.all([
+          getJSON(`https://cdn.jsdelivr.net/gh/fawazahmed0/hadith-api@1/editions/eng-${book}/sections/${section}.min.json`),
+          getJSON(`https://cdn.jsdelivr.net/gh/fawazahmed0/hadith-api@1/editions/ara-${book}/sections/${section}.min.json`).catch(() => null),
+        ]);
     const arabicByNumber = new Map((araData?.hadiths || []).map((item) => [Number(item.hadithnumber), item.text]));
     const sectionName = engData.metadata?.section?.[String(section)] || `Section ${section}`;
     state.verses = (engData.hadiths || []).map((item) => ({
@@ -579,7 +611,8 @@ async function loadThaqalaynHadithSection(info, section) {
   if (!selected) throw new Error("No hadith range is available for this collection.");
 
   const ids = Array.from({ length: selected.end - selected.start + 1 }, (_, index) => selected.start + index);
-  const records = await Promise.all(
+  const bundled = await getOfflineJSON(`hadith/${info.key}/section-${section}.json`).catch(() => null);
+  const records = bundled?.records || await Promise.all(
     ids.map((id) => getJSON(`https://www.thaqalayn-api.net/api/v2/${info.apiId}/${id}`).catch(() => null))
   );
   state.verses = records.filter(Boolean).map((item) => ({
@@ -927,7 +960,7 @@ async function openTafsir(key) {
   openDialog(els.tafsirContentSheet);
 
   try {
-    const data = await getJSON(`${API}/tafsirs/${state.selectedTafsir}/by_ayah/${key}`);
+    const data = await getBundledTafsir(key).catch(() => getJSON(`${API}/tafsirs/${state.selectedTafsir}/by_ayah/${key}`));
     els.tafsirContent.innerHTML = sanitizeHTML(data.tafsir?.text || "<p>No tafsir returned for this ayah.</p>");
   } catch (error) {
     els.tafsirContent.innerHTML = `<p>${escapeHTML(error.message)}</p>`;
@@ -1264,6 +1297,151 @@ function switchView(viewId) {
   document.querySelectorAll(".nav-item").forEach((button) => button.classList.toggle("active", button.dataset.view === viewId));
   if (viewId === "notesView") renderNotes();
   window.scrollTo({ top: 0, behavior: "smooth" });
+}
+
+async function runGlobalSearch() {
+  const query = els.globalSearch.value.trim();
+  const scope = els.searchScope.value;
+  const token = Date.now();
+  state.searchAbort = token;
+
+  if (query.length < 2) {
+    els.searchSummary.textContent = "Enter at least 2 characters";
+    els.searchResults.innerHTML = "";
+    return;
+  }
+
+  els.runSearch.disabled = true;
+  els.searchSummary.textContent = "Searching offline bundle...";
+  els.searchResults.innerHTML = `<div class="status">Searching bundled texts...</div>`;
+
+  try {
+    const results = await searchOfflineTexts(query, scope, token);
+    if (state.searchAbort !== token) return;
+    renderSearchResults(results, query);
+  } catch (error) {
+    els.searchResults.innerHTML = `<div class="status">${escapeHTML(error.message)}</div>`;
+    els.searchSummary.textContent = "Search failed";
+  } finally {
+    if (state.searchAbort === token) els.runSearch.disabled = false;
+  }
+}
+
+async function searchOfflineTexts(query, scope, token) {
+  const needle = normalizeSearchText(query);
+  const results = [];
+  const maxResults = 120;
+  const include = (name) => scope === "all" || scope === name;
+  const pushResult = (result) => {
+    if (results.length >= maxResults) return;
+    const haystack = normalizeSearchText(`${result.title} ${result.label} ${result.text} ${result.extra || ""}`);
+    if (haystack.includes(needle)) results.push(result);
+  };
+  const shouldStop = () => state.searchAbort !== token || results.length >= maxResults;
+
+  if (include("quran")) {
+    for (let chapter = 1; chapter <= 114 && !shouldStop(); chapter += 1) {
+      const data = await getOfflineJSON(`quran/chapter-${chapter}.json`).catch(() => null);
+      for (const verse of data?.verses || []) {
+        pushResult({
+          key: verse.verse_key,
+          type: "Quran",
+          title: `Quran ${verse.verse_key}`,
+          label: getChapter(chapter)?.name_simple || `Surah ${chapter}`,
+          text: [verse.text_uthmani, ...(verse.translations || []).map((item) => stripHTML(item.text))].filter(Boolean).join(" "),
+        });
+        if (shouldStop()) break;
+      }
+    }
+  }
+
+  if (include("tafsir")) {
+    for (let chapter = 1; chapter <= 114 && !shouldStop(); chapter += 1) {
+      const data = await getOfflineJSON(`tafsir/${OFFLINE.defaultTafsir}/chapter-${chapter}.json`).catch(() => null);
+      for (const [key, item] of Object.entries(data || {})) {
+        pushResult({
+          key,
+          type: "Tafsir",
+          title: `Tafsir ${key}`,
+          label: getChapter(chapter)?.name_simple || `Surah ${chapter}`,
+          text: stripHTML(item?.tafsir?.text || ""),
+        });
+        if (shouldStop()) break;
+      }
+    }
+  }
+
+  if (include("bible")) {
+    const groups = [["old", OLD_TESTAMENT], ["new", NEW_TESTAMENT]];
+    for (const [testament, books] of groups) {
+      for (const [book, chapters] of books) {
+        const bookId = BOOK_IDS[book];
+        for (let chapter = 1; chapter <= chapters && !shouldStop(); chapter += 1) {
+          const data = await getOfflineJSON(`bible/${testament}-${bookId}-${chapter}.json`).catch(() => null);
+          const originalByVerse = new Map(extractBibleVerses(data?.original).map((verse) => [verse.number, verse.text]));
+          for (const verse of extractBibleVerses(data?.english)) {
+            pushResult({
+              key: bibleKey(book, chapter, verse.number),
+              type: testament === "old" ? "Old Testament" : "New Testament",
+              title: `${book} ${chapter}:${verse.number}`,
+              label: "World English Bible",
+              text: verse.text,
+              extra: originalByVerse.get(verse.number) || "",
+            });
+            if (shouldStop()) break;
+          }
+        }
+      }
+    }
+  }
+
+  if (include("hadith")) {
+    for (const book of state.hadithBooks) {
+      if (book.source === "thaqalayn") continue;
+      const sectionMap = state.hadithInfo?.[book.key]?.metadata?.sections || {};
+      const sectionIds = Object.keys(sectionMap).map(Number).filter((item) => item > 0).sort((a, b) => a - b);
+      for (const section of sectionIds) {
+        if (shouldStop()) break;
+        const data = await getOfflineJSON(`hadith/${book.key}/section-${section}.json`).catch(() => null);
+        const arabicByNumber = new Map((data?.arabic?.hadiths || []).map((item) => [Number(item.hadithnumber), item.text]));
+        for (const item of data?.english?.hadiths || []) {
+          pushResult({
+            key: hadithKey(book.key, section, item.hadithnumber),
+            type: "Hadith",
+            title: `${book.name} ${item.hadithnumber}`,
+            label: sectionMap[section] || `Section ${section}`,
+            text: item.text || "",
+            extra: arabicByNumber.get(Number(item.hadithnumber)) || "",
+          });
+          if (shouldStop()) break;
+        }
+      }
+    }
+  }
+
+  return results;
+}
+
+function renderSearchResults(results, query) {
+  els.searchSummary.textContent = results.length
+    ? `${results.length} result${results.length === 1 ? "" : "s"} for "${query}"`
+    : `No offline results for "${query}"`;
+  els.searchResults.innerHTML = results.length
+    ? results.map((result) => `
+      <article class="search-result">
+        <button type="button" data-key="${escapeHTML(result.key)}">
+          <span>${escapeHTML(result.type)}</span>
+          <strong>${escapeHTML(result.title)}</strong>
+          <small>${escapeHTML(result.label || "")}</small>
+          <p>${escapeHTML(makeSnippet(result.text || result.extra || "", query))}</p>
+        </button>
+      </article>
+    `).join("")
+    : `<div class="status">No matching bundled text was found.</div>`;
+
+  els.searchResults.querySelectorAll("button[data-key]").forEach((button) => {
+    button.addEventListener("click", () => jumpToReference(button.dataset.key));
+  });
 }
 
 function loadLocalState() {
@@ -1646,10 +1824,65 @@ function sortResources(resources) {
   });
 }
 
+function normalizeSearchText(value) {
+  return stripHTML(value)
+    .toLowerCase()
+    .normalize("NFKD")
+    .replace(/[\u064B-\u065F\u0670\u06D6-\u06ED]/g, "")
+    .replace(/[^\p{L}\p{N}\s:]/gu, " ")
+    .replace(/\s+/g, " ")
+    .trim();
+}
+
+function stripHTML(value) {
+  return String(value || "")
+    .replace(/<[^>]*>/g, " ")
+    .replace(/&nbsp;/g, " ")
+    .replace(/&amp;/g, "&")
+    .replace(/&quot;/g, "\"")
+    .replace(/&#039;/g, "'")
+    .replace(/&lt;/g, "<")
+    .replace(/&gt;/g, ">")
+    .replace(/\s+/g, " ")
+    .trim();
+}
+
+function makeSnippet(text, query) {
+  const clean = stripHTML(text);
+  const lower = clean.toLowerCase();
+  const index = lower.indexOf(String(query).toLowerCase());
+  const start = index > 40 ? index - 40 : 0;
+  const snippet = clean.slice(start, start + 190);
+  return `${start > 0 ? "... " : ""}${snippet}${clean.length > start + 190 ? " ..." : ""}`;
+}
+
 async function getJSON(url) {
   const response = await fetch(url);
   if (!response.ok) throw new Error(`Request failed with ${response.status}`);
   return response.json();
+}
+
+async function getOfflineJSON(path) {
+  const response = await fetch(`${OFFLINE.base}/${path}`);
+  if (!response.ok) throw new Error(`Offline data missing: ${path}`);
+  return response.json();
+}
+
+function shouldUseOfflineQuran(ids) {
+  const selected = String(ids || "")
+    .split(",")
+    .map(Number)
+    .filter(Boolean);
+  return selected.length === 1 && selected[0] === OFFLINE.defaultTranslation;
+}
+
+async function getBundledTafsir(key) {
+  if (state.selectedTafsir !== OFFLINE.defaultTafsir) throw new Error("Selected tafsir is not bundled.");
+  const chapter = Number(String(key).split(":")[0]);
+  const data = await getOfflineJSON(`tafsir/${OFFLINE.defaultTafsir}/chapter-${chapter}.json`);
+  const tafsir = data?.[key];
+  if (!tafsir) throw new Error(`Bundled tafsir missing for ${key}.`);
+  return tafsir;
 }
 
 function registerServiceWorker() {
