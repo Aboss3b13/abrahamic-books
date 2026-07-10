@@ -1,0 +1,7 @@
+<?xml version='1.0' encoding='utf-8'?>
+<resources>
+    <string name="app_name">Abrahamic Books</string>
+    <string name="title_activity_main">Abrahamic Books</string>
+    <string name="package_name">com.aboss3b13.abrahamicbooks</string>
+    <string name="custom_url_scheme">com.aboss3b13.abrahamicbooks</string>
+</resources>

@@ -6,6 +6,7 @@
     <meta name="theme-color" content="#173f35">
     <title>Quran Reader</title>
     <link rel="preconnect" href="https://api.quran.com">
+    <link rel="manifest" href="./manifest.webmanifest">
     <link rel="stylesheet" href="./styles.css">
   </head>
   <body>
@@ -38,11 +39,16 @@
 
           <div class="reader-controls">
             <label class="field">
-              <span>Book</span>
+              <span>Tradition</span>
+              <select id="traditionSelect">
+                <option value="islam">Islam</option>
+                <option value="christianity">Christianity</option>
+              </select>
+            </label>
+            <label class="field">
+              <span>Text</span>
               <select id="scriptureSelect">
                 <option value="quran">Quran</option>
-                <option value="old">Old Testament</option>
-                <option value="new">New Testament</option>
                 <option value="hadith">Hadith</option>
               </select>
             </label>
@@ -67,7 +73,7 @@
               <select id="hadithSectionSelect"></select>
             </label>
             <label class="field">
-              <span>Verse</span>
+              <span id="verseControlLabel">Verse</span>
               <input id="ayahSearch" type="search" placeholder="2:255, 255, John 3:16">
             </label>
           </div>

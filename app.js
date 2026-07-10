@@ -46,6 +46,7 @@ const state = {
   hadithBooks: [],
   hadithInfo: {},
   hadithSections: {},
+  tradition: "islam",
   scripture: "quran",
   selectedBibleBook: "Genesis",
   selectedBibleChapter: 1,
@@ -86,12 +87,15 @@ const state = {
 const els = {
   chapterTitle: document.querySelector("#chapterTitle"),
   chapterMeta: document.querySelector("#chapterMeta"),
+  traditionSelect: document.querySelector("#traditionSelect"),
   scriptureSelect: document.querySelector("#scriptureSelect"),
   chapterSelect: document.querySelector("#chapterSelect"),
+  chapterControlLabel: document.querySelector("#chapterControlLabel"),
   bibleBookSelect: document.querySelector("#bibleBookSelect"),
   bibleChapterSelect: document.querySelector("#bibleChapterSelect"),
   hadithCollectionSelect: document.querySelector("#hadithCollectionSelect"),
   hadithSectionSelect: document.querySelector("#hadithSectionSelect"),
+  verseControlLabel: document.querySelector("#verseControlLabel"),
   ayahSearch: document.querySelector("#ayahSearch"),
   dashboardSurah: document.querySelector("#dashboardSurah"),
   dashboardProgress: document.querySelector("#dashboardProgress"),
@@ -165,6 +169,11 @@ const els = {
 };
 
 init();
+registerServiceWorker();
+
+let filtersAreCompact = false;
+let filterFramePending = false;
+let filtersExpandedAt = 0;
 
 async function init() {
   loadLocalState();
@@ -172,19 +181,20 @@ async function init() {
   setStatus("Loading chapters, translations, and tafsir sources...");
 
   try {
-    const [chapters, translations, tafsirs, hadithEditions, hadithInfo] = await Promise.all([
+    const [chapters, translations, tafsirs, hadithEditions, hadithInfo, shiaHadithBooks] = await Promise.all([
       getJSON(`${API}/chapters?language=en`),
       getJSON(`${API}/resources/translations`),
       getJSON(`${API}/resources/tafsirs`),
       getJSON("https://cdn.jsdelivr.net/gh/fawazahmed0/hadith-api@1/editions.min.json").catch(() => ({})),
       getJSON("https://cdn.jsdelivr.net/gh/fawazahmed0/hadith-api@1/info.min.json").catch(() => ({})),
+      getJSON("https://www.thaqalayn-api.net/api/v2/allbooks").catch(() => []),
     ]);
 
     state.chapters = chapters.chapters || [];
     state.translations = sortResources(translations.translations || []);
     state.tafsirs = sortResources(tafsirs.tafsirs || []);
     state.hadithInfo = hadithInfo || {};
-    state.hadithBooks = parseHadithBooks(hadithEditions);
+    state.hadithBooks = parseHadithBooks(hadithEditions, shiaHadithBooks);
 
     if (!state.translations.some((item) => item.id === state.selectedTranslations[0])) {
       const english = state.translations.find((item) => item.language_name === "english");
@@ -199,6 +209,7 @@ async function init() {
     renderChapterOptions();
     renderBibleBookOptions();
     renderHadithBookOptions();
+    renderScriptureOptions();
     renderScriptureControls();
     renderResourceLists();
     renderNotes();
@@ -209,9 +220,20 @@ async function init() {
 }
 
 function bindEvents() {
+  els.traditionSelect.addEventListener("change", () => {
+    state.tradition = els.traditionSelect.value;
+    state.scripture = getAllowedScriptures()[0].value;
+    savePrefs();
+    renderScriptureOptions();
+    renderScriptureControls();
+    loadCurrentScripture();
+  });
+
   els.scriptureSelect.addEventListener("change", () => {
     state.scripture = els.scriptureSelect.value;
+    state.tradition = getTraditionForScripture(state.scripture);
     savePrefs();
+    renderScriptureOptions();
     renderScriptureControls();
     loadCurrentScripture();
   });
@@ -308,7 +330,9 @@ function bindEvents() {
 
   window.addEventListener("scroll", updateFilterBarState, { passive: true });
   document.querySelector(".reader-controls")?.addEventListener("click", () => {
+    if (!document.body.classList.contains("filters-compact")) return;
     document.body.classList.add("filters-expanded");
+    filtersExpandedAt = window.scrollY;
   });
 
   els.verses.addEventListener("click", (event) => {
@@ -336,9 +360,21 @@ function bindEvents() {
 }
 
 function updateFilterBarState() {
-  const compact = window.scrollY > 150;
-  document.body.classList.toggle("filters-compact", compact);
-  if (!compact) document.body.classList.remove("filters-expanded");
+  if (filterFramePending) return;
+  filterFramePending = true;
+  requestAnimationFrame(() => {
+    const y = window.scrollY;
+    if (!filtersAreCompact && y > 340) filtersAreCompact = true;
+    if (filtersAreCompact && y < 120) {
+      filtersAreCompact = false;
+      document.body.classList.remove("filters-expanded");
+    }
+    if (filtersAreCompact && document.body.classList.contains("filters-expanded") && Math.abs(y - filtersExpandedAt) > 70) {
+      document.body.classList.remove("filters-expanded");
+    }
+    document.body.classList.toggle("filters-compact", filtersAreCompact);
+    filterFramePending = false;
+  });
 }
 
 async function loadChapter(chapterNumber) {
@@ -411,24 +447,62 @@ async function loadBibleChapter() {
 }
 
 function renderScriptureControls() {
+  state.tradition = getTraditionForScripture(state.scripture);
+  renderScriptureOptions();
+  els.traditionSelect.value = state.tradition;
   els.scriptureSelect.value = state.scripture;
   const isQuran = state.scripture === "quran";
   const isHadith = state.scripture === "hadith";
+  const isBible = !isQuran && !isHadith;
+
+  els.chapterControlLabel.textContent = "Surah";
   els.chapterSelect.closest(".field").hidden = !isQuran;
   document.querySelectorAll(".bible-field").forEach((field) => {
-    field.hidden = isQuran || isHadith;
+    field.hidden = !isBible;
   });
   document.querySelectorAll(".hadith-field").forEach((field) => {
     field.hidden = !isHadith;
   });
   els.tafsirButton.hidden = !isQuran;
   els.translationButton.hidden = !isQuran;
-  els.ayahSearch.placeholder = isQuran ? "2:255 or 255" : isHadith ? "Hadith number" : `${state.selectedBibleBook} ${state.selectedBibleChapter}:1`;
-  if (!isQuran && !isHadith) {
+
+  if (isQuran) {
+    els.verseControlLabel.textContent = "Ayah";
+    els.ayahSearch.placeholder = "2:255 or 255";
+  } else if (isHadith) {
+    els.verseControlLabel.textContent = "Hadith";
+    els.ayahSearch.placeholder = "Hadith number";
+  } else {
+    els.verseControlLabel.textContent = "Verse";
+    els.ayahSearch.placeholder = `${state.selectedBibleBook} ${state.selectedBibleChapter}:1`;
+  }
+
+  if (isBible) {
     renderBibleBookOptions();
     renderBibleChapterOptions();
   }
   if (isHadith) renderHadithSectionOptions();
+}
+
+function renderScriptureOptions() {
+  const allowed = getAllowedScriptures();
+  if (!allowed.some((item) => item.value === state.scripture)) {
+    state.scripture = allowed[0].value;
+  }
+  els.scriptureSelect.innerHTML = allowed
+    .map((item) => `<option value="${item.value}">${escapeHTML(item.label)}</option>`)
+    .join("");
+  els.scriptureSelect.value = state.scripture;
+}
+
+function getAllowedScriptures() {
+  return state.tradition === "christianity"
+    ? [{ value: "old", label: "Old Testament" }, { value: "new", label: "New Testament" }]
+    : [{ value: "quran", label: "Quran" }, { value: "hadith", label: "Hadith" }];
+}
+
+function getTraditionForScripture(scripture) {
+  return scripture === "old" || scripture === "new" ? "christianity" : "islam";
 }
 
 function renderBibleBookOptions() {
@@ -467,6 +541,10 @@ async function loadHadithSection() {
   els.verses.innerHTML = "";
 
   try {
+    if (info?.source === "thaqalayn") {
+      await loadThaqalaynHadithSection(info, section);
+      return;
+    }
     const [engData, araData] = await Promise.all([
       getJSON(`https://cdn.jsdelivr.net/gh/fawazahmed0/hadith-api@1/editions/eng-${book}/sections/${section}.min.json`),
       getJSON(`https://cdn.jsdelivr.net/gh/fawazahmed0/hadith-api@1/editions/ara-${book}/sections/${section}.min.json`).catch(() => null),
@@ -495,6 +573,40 @@ async function loadHadithSection() {
   }
 }
 
+async function loadThaqalaynHadithSection(info, section) {
+  const ranges = buildHadithRanges(info);
+  const selected = ranges.find((item) => item.id === section) || ranges[0];
+  if (!selected) throw new Error("No hadith range is available for this collection.");
+
+  const ids = Array.from({ length: selected.end - selected.start + 1 }, (_, index) => selected.start + index);
+  const records = await Promise.all(
+    ids.map((id) => getJSON(`https://www.thaqalayn-api.net/api/v2/${info.apiId}/${id}`).catch(() => null))
+  );
+  state.verses = records.filter(Boolean).map((item) => ({
+    scripture: "hadith",
+    verse_key: hadithKey(info.key, section, item.id),
+    bible_reference: `${info.name} ${item.id}`,
+    text: item.englishText || item.frenchText || "",
+    originalText: item.arabicText || "",
+    originalLanguage: "Arabic",
+    book_name: item.book || info.name,
+    chapter: section,
+    sectionName: item.chapter || item.category || selected.label,
+    verse_number: Number(item.id),
+    grades: buildThaqalaynGrades(item),
+    reference: { book: item.book || info.name, hadith: item.id },
+    metadata: [
+      item.author ? `Author: ${item.author}` : "",
+      item.translator ? `Translator: ${item.translator}` : "",
+      item.category ? `Category: ${item.category}` : "",
+      item.chapter ? `Chapter: ${item.chapter}` : "",
+    ].filter(Boolean),
+  }));
+  renderVerses();
+  updateDashboard();
+  setStatus("");
+}
+
 function renderHadithBookOptions() {
   const books = state.hadithBooks.length ? state.hadithBooks : [{ key: "bukhari", name: "Sahih al Bukhari", sections: 97, tradition: "Sunni" }];
   if (!books.some((item) => item.key === state.selectedHadithBook)) state.selectedHadithBook = books[0].key;
@@ -505,6 +617,15 @@ function renderHadithBookOptions() {
 
 function renderHadithSectionOptions() {
   const book = state.hadithBooks.find((item) => item.key === state.selectedHadithBook);
+  if (book?.source === "thaqalayn") {
+    const ranges = buildHadithRanges(book);
+    if (!ranges.some((item) => item.id === state.selectedHadithSection)) state.selectedHadithSection = ranges[0]?.id || 1;
+    els.hadithSectionSelect.innerHTML = ranges
+      .map((range) => `<option value="${range.id}">${escapeHTML(range.label)}</option>`)
+      .join("");
+    els.hadithSectionSelect.value = String(state.selectedHadithSection);
+    return;
+  }
   const sectionMap = state.hadithInfo?.[state.selectedHadithBook]?.metadata?.sections || {};
   const sectionIds = Object.keys(sectionMap).map(Number).filter((item) => item > 0).sort((a, b) => a - b);
   const sections = sectionIds.length ? sectionIds : Array.from({ length: book?.sections || 80 }, (_, index) => index + 1);
@@ -538,16 +659,17 @@ function renderVerses() {
 
 function renderVerse(verse) {
   const noteData = state.notes[verse.verse_key];
-  const note = noteData && !verse.scripture ? noteData.text?.trim() : "";
+  const note = noteData ? noteData.text?.trim() : "";
   const isQuran = !verse.scripture || verse.scripture === "quran";
   const isHadith = verse.scripture === "hadith";
-  const tags = isQuran ? state.notes[verse.verse_key]?.tags || [] : [];
-  const translations = verse.translations.length
-    ? verse.translations.map(renderTranslation).join("")
+  const tags = noteData?.tags || [];
+  const verseTranslations = verse.translations || [];
+  const translations = verseTranslations.length
+    ? verseTranslations.map(renderTranslation).join("")
     : `<div class="translation"><p>No selected translation returned for this ayah.</p></div>`;
 
   return `
-    <article class="ayah-card" id="ayah-${verse.verse_key.replace(":", "-")}" data-key="${verse.verse_key}">
+    <article class="ayah-card" id="ayah-${verse.verse_key.replaceAll(":", "-")}" data-key="${verse.verse_key}">
       <div class="ayah-top">
         <div class="ayah-key">${escapeHTML(displayKey(verse))}</div>
         <div class="ayah-actions">
@@ -590,6 +712,7 @@ function renderVerseMeta(verse) {
       verse.reference?.book ? `Book ${verse.reference.book}` : "",
       verse.reference?.hadith ? `Hadith ${verse.reference.hadith}` : `Hadith ${verse.verse_number}`,
       verse.grades?.[0]?.grade ? `Grade: ${verse.grades[0].grade}` : "",
+      ...(verse.metadata || []),
     ].filter(Boolean).map((item) => `<span>${escapeHTML(item)}</span>`).join("");
   }
 
@@ -1048,7 +1171,7 @@ async function ensureReferenceLoaded(key) {
 }
 
 function scrollToKey(key) {
-  const target = document.querySelector(`#ayah-${CSS.escape(key.replace(":", "-"))}`);
+  const target = document.querySelector(`#ayah-${CSS.escape(key.replaceAll(":", "-"))}`);
   if (!target) {
     setStatus(`Ayah ${key} was not found in this surah.`);
     return;
@@ -1152,7 +1275,9 @@ function loadLocalState() {
 
   try {
     const prefs = JSON.parse(localStorage.getItem(STORE.prefs)) || {};
+    state.tradition = ["islam", "christianity"].includes(prefs.tradition) ? prefs.tradition : state.tradition;
     state.scripture = ["quran", "old", "new", "hadith"].includes(prefs.scripture) ? prefs.scripture : state.scripture;
+    state.tradition = getTraditionForScripture(state.scripture);
     state.selectedBibleBook = typeof prefs.selectedBibleBook === "string" ? prefs.selectedBibleBook : state.selectedBibleBook;
     state.selectedBibleChapter = Number(prefs.selectedBibleChapter) || state.selectedBibleChapter;
     state.selectedHadithBook = typeof prefs.selectedHadithBook === "string" ? prefs.selectedHadithBook : state.selectedHadithBook;
@@ -1183,6 +1308,7 @@ function loadLocalState() {
 
 function savePrefs() {
   localStorage.setItem(STORE.prefs, JSON.stringify({
+    tradition: state.tradition,
     scripture: state.scripture,
     selectedBibleBook: state.selectedBibleBook,
     selectedBibleChapter: state.selectedBibleChapter,
@@ -1336,19 +1462,56 @@ function getBibleBooks() {
   return state.scripture === "new" ? NEW_TESTAMENT : OLD_TESTAMENT;
 }
 
-function parseHadithBooks(editions) {
-  const books = Object.entries(editions || {}).map(([key, value]) => {
+function parseHadithBooks(editions, thaqalaynBooks = []) {
+  const sunniBooks = Object.entries(editions || {}).map(([key, value]) => {
     const english = value.collection?.find((item) => item.name === `eng-${key}`) || value.collection?.find((item) => item.language === "English");
     if (!english) return null;
     return {
       key,
+      apiId: key,
       name: value.name || key,
       sections: Object.keys(state.hadithInfo?.[key]?.metadata?.sections || {}).filter((item) => Number(item) > 0).length || (english.has_sections ? 80 : 1),
       tradition: classifyHadithTradition(key, value.name),
+      source: "hadith-api",
     };
   }).filter(Boolean);
 
-  return books.sort((a, b) => a.name.localeCompare(b.name));
+  const shiaBooks = (Array.isArray(thaqalaynBooks) ? thaqalaynBooks : []).map((book) => ({
+    key: `thaqalayn-${book.bookId}`,
+    apiId: book.bookId,
+    name: book.volume ? `${book.BookName || book.englishName || book.bookId}, Vol. ${book.volume}` : book.BookName || book.englishName || book.bookId,
+    sections: Math.max(1, Math.ceil(((Number(book.idRangeMax) || 1) - (Number(book.idRangeMin) || 1) + 1) / 25)),
+    tradition: "Shia",
+    source: "thaqalayn",
+    idRangeMin: Number(book.idRangeMin) || 1,
+    idRangeMax: Number(book.idRangeMax) || 1,
+    author: book.author || "",
+    translator: book.translator || "",
+  }));
+
+  return [...sunniBooks, ...shiaBooks].sort((a, b) => {
+    const tradition = a.tradition.localeCompare(b.tradition);
+    return tradition || a.name.localeCompare(b.name);
+  });
+}
+
+function buildHadithRanges(book) {
+  const min = Number(book?.idRangeMin) || 1;
+  const max = Math.max(min, Number(book?.idRangeMax) || min);
+  const size = 25;
+  return Array.from({ length: Math.ceil((max - min + 1) / size) }, (_, index) => {
+    const start = min + index * size;
+    const end = Math.min(max, start + size - 1);
+    return { id: index + 1, start, end, label: `${start}-${end}` };
+  });
+}
+
+function buildThaqalaynGrades(item) {
+  return [
+    item.majlisiGrading ? { name: "Majlisi", grade: item.majlisiGrading } : null,
+    item.mohseniGrading ? { name: "Mohseni", grade: item.mohseniGrading } : null,
+    item.behbudiGrading ? { name: "Behbudi", grade: item.behbudiGrading } : null,
+  ].filter(Boolean);
 }
 
 function classifyHadithTradition(key, name = "") {
@@ -1487,6 +1650,13 @@ async function getJSON(url) {
   const response = await fetch(url);
   if (!response.ok) throw new Error(`Request failed with ${response.status}`);
   return response.json();
+}
+
+function registerServiceWorker() {
+  if (!("serviceWorker" in navigator)) return;
+  window.addEventListener("load", () => {
+    navigator.serviceWorker.register("./sw.js").catch(() => {});
+  });
 }
 
 function openDialog(dialog) {
