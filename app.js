@@ -100,6 +100,7 @@ const state = {
   searchResults: [],
   searchSelectMode: false,
   selectedSearchResults: new Set(),
+  activeSearchGroup: -1,
   selectedSearchSources: new Set(),
   savedSearchSources: null,
 };
@@ -199,6 +200,7 @@ const els = {
   runSearch: document.querySelector("#runSearch"),
   searchSummary: document.querySelector("#searchSummary"),
   searchResults: document.querySelector("#searchResults"),
+  searchBookIndex: document.querySelector("#searchBookIndex"),
   toggleSearchSelect: document.querySelector("#toggleSearchSelect"),
   searchSelectionBar: document.querySelector("#searchSelectionBar"),
   searchSelectionCount: document.querySelector("#searchSelectionCount"),
@@ -388,6 +390,16 @@ function bindEvents() {
     button.addEventListener("click", () => switchView(button.dataset.view, true));
   });
 
+  window.addEventListener("scroll", handleToolbarScroll, { passive: true });
+  document.querySelectorAll(".reader-controls, .view-toolbar").forEach((toolbar) => {
+    toolbar.addEventListener("click", (event) => {
+      if (!document.body.classList.contains("controls-collapsed")) return;
+      event.preventDefault();
+      event.stopPropagation();
+      expandActiveToolbar();
+    });
+  });
+
   document.querySelectorAll("dialog").forEach((dialog) => {
     dialog.addEventListener("close", syncModalState);
     dialog.addEventListener("cancel", syncModalState);
@@ -415,6 +427,34 @@ function bindEvents() {
     if (!word) return;
     openOriginalWordTranslation(word.dataset.word, word.dataset.lang, word.closest(".ayah-card")?.dataset.key);
   });
+}
+
+let toolbarScrollFrame = false;
+let controlsExpandedAt = 0;
+
+function handleToolbarScroll() {
+  if (toolbarScrollFrame) return;
+  toolbarScrollFrame = true;
+  requestAnimationFrame(() => {
+    const y = window.scrollY;
+    const manuallyExpanded = document.body.classList.contains("controls-manually-expanded");
+    if (y < 80) {
+      document.body.classList.remove("controls-collapsed", "controls-manually-expanded");
+    } else if (manuallyExpanded && Math.abs(y - controlsExpandedAt) > 56) {
+      document.body.classList.add("controls-collapsed");
+      document.body.classList.remove("controls-manually-expanded");
+    } else if (!manuallyExpanded && y > 160) {
+      document.body.classList.add("controls-collapsed");
+    }
+    updateSearchJumpActive();
+    toolbarScrollFrame = false;
+  });
+}
+
+function expandActiveToolbar() {
+  document.body.classList.remove("controls-collapsed");
+  document.body.classList.add("controls-manually-expanded");
+  controlsExpandedAt = window.scrollY;
 }
 
 async function loadChapter(chapterNumber) {
@@ -1387,6 +1427,7 @@ async function searchOfflineTexts(query, selectedSources, token) {
           type: "Quran",
           title: `Quran ${verse.verse_key}`,
           label: getChapter(chapter)?.name_simple || `Surah ${chapter}`,
+          book: "Quran",
           text: [verse.text_uthmani, ...(verse.translations || []).map((item) => stripHTML(item.text))].filter(Boolean).join(" "),
         });
         if (shouldStop() || sourceFull("quran")) break;
@@ -1404,6 +1445,7 @@ async function searchOfflineTexts(query, selectedSources, token) {
           type: "Tafsir",
           title: `Tafsir ${key}`,
           label: getChapter(chapter)?.name_simple || `Surah ${chapter}`,
+          book: "Tafsir",
           text: stripHTML(item?.tafsir?.text || ""),
         });
         if (shouldStop() || sourceFull("tafsir")) break;
@@ -1428,6 +1470,7 @@ async function searchOfflineTexts(query, selectedSources, token) {
               type: testament === "old" ? "Old Testament" : "New Testament",
               title: `${book} ${chapter}:${verse.number}`,
               label: "World English Bible",
+              book,
               text: verse.text,
               extra: originalByVerse.get(verse.number) || "",
             });
@@ -1455,6 +1498,7 @@ async function searchOfflineTexts(query, selectedSources, token) {
             type: "Hadith",
             title: `${book.name} ${item.hadithnumber}`,
             label: sectionMap[section] || `Section ${section}`,
+            book: book.name,
             text: item.text || "",
             extra: arabicByNumber.get(Number(item.hadithnumber)) || "",
           });
@@ -1477,25 +1521,52 @@ async function searchOfflineTexts(query, selectedSources, token) {
 
 function renderSearchResults(results, query) {
   state.searchResults = results.map((result, index) => ({ ...result, searchId: `${result.type}:${result.key}:${index}` }));
+  const groups = new Map();
+  state.searchResults.forEach((result) => {
+    const book = result.book || result.type;
+    if (!groups.has(book)) groups.set(book, []);
+    groups.get(book).push(result);
+  });
   els.searchSummary.textContent = results.length
     ? `${results.length} result${results.length === 1 ? "" : "s"} for "${query}"`
     : `No offline results for "${query}"`;
   els.searchResults.innerHTML = state.searchResults.length
-    ? state.searchResults.map((result) => `
-      <article class="search-result" data-search-id="${escapeHTML(result.searchId)}">
-        <label class="search-check" aria-label="Select ${escapeHTML(result.title)}">
-          <input type="checkbox" ${state.selectedSearchResults.has(result.searchId) ? "checked" : ""}>
-          <span aria-hidden="true"></span>
-        </label>
-        <button type="button" data-key="${escapeHTML(result.key)}" data-type="${escapeHTML(result.type)}">
-          <span>${escapeHTML(result.type)}</span>
-          <strong>${escapeHTML(result.title)}</strong>
-          <small>${escapeHTML(result.label || "")}</small>
-          <p>${escapeHTML(makeSnippet(result.text || result.extra || "", query))}</p>
-        </button>
-      </article>
+    ? [...groups.entries()].map(([book, bookResults], groupIndex) => `
+      <section class="search-book-group" id="search-book-${groupIndex}" data-book="${escapeHTML(book)}">
+        <div class="search-book-heading">
+          <div><span>Book</span><strong>${escapeHTML(book)}</strong></div>
+          <small>${bookResults.length} result${bookResults.length === 1 ? "" : "s"}</small>
+        </div>
+        <div class="search-book-results">
+          ${bookResults.map((result) => `
+            <article class="search-result" data-search-id="${escapeHTML(result.searchId)}">
+              <label class="search-check" aria-label="Select ${escapeHTML(result.title)}">
+                <input type="checkbox" ${state.selectedSearchResults.has(result.searchId) ? "checked" : ""}>
+                <span aria-hidden="true"></span>
+              </label>
+              <button type="button" data-key="${escapeHTML(result.key)}" data-type="${escapeHTML(result.type)}">
+                <span>${escapeHTML(result.type)}</span>
+                <strong>${escapeHTML(result.title)}</strong>
+                <small>${escapeHTML(result.label || "")}</small>
+                <p>${escapeHTML(makeSnippet(result.text || result.extra || "", query))}</p>
+              </button>
+            </article>
+          `).join("")}
+        </div>
+      </section>
     `).join("")
     : `<div class="status">No matching bundled text was found.</div>`;
+
+  els.searchBookIndex.hidden = groups.size === 0;
+  els.searchBookIndex.innerHTML = groups.size ? `
+    <span class="book-index-title">Jump to</span>
+    <div>${[...groups.entries()].map(([book, bookResults], index) => `
+      <button type="button" data-group-index="${index}">${escapeHTML(book)} <span>${bookResults.length}</span></button>
+    `).join("")}</div>
+  ` : "";
+  els.searchBookIndex.querySelectorAll("[data-group-index]").forEach((button) => {
+    button.addEventListener("click", () => scrollToSearchBook(Number(button.dataset.groupIndex)));
+  });
 
   els.searchResults.querySelectorAll("button[data-key]").forEach((button) => {
     button.addEventListener("click", () => {
@@ -1512,6 +1583,36 @@ function renderSearchResults(results, query) {
     checkbox.addEventListener("change", () => toggleSearchResult(checkbox.closest(".search-result").dataset.searchId, checkbox.checked));
   });
   updateSearchSelectionUI();
+  updateSearchJumpActive();
+}
+
+function scrollToSearchBook(index) {
+  const target = document.querySelector(`#search-book-${index}`);
+  if (!target) return;
+  const topbar = els.topbar?.getBoundingClientRect().height || 0;
+  const toolbar = document.querySelector("#searchView .view-toolbar")?.getBoundingClientRect().height || 0;
+  const indexHeight = els.searchBookIndex.getBoundingClientRect().height || 0;
+  const top = target.getBoundingClientRect().top + window.scrollY - topbar - toolbar - indexHeight - 18;
+  window.scrollTo({ top: Math.max(0, top), behavior: "smooth" });
+}
+
+function updateSearchJumpActive() {
+  if (state.currentView !== "searchView" || els.searchBookIndex.hidden) return;
+  const offset = (els.topbar?.getBoundingClientRect().height || 0)
+    + (document.querySelector("#searchView .view-toolbar")?.getBoundingClientRect().height || 0)
+    + (els.searchBookIndex.getBoundingClientRect().height || 0) + 26;
+  const groups = [...els.searchResults.querySelectorAll(".search-book-group")];
+  let active = 0;
+  groups.forEach((group, index) => {
+    if (group.getBoundingClientRect().top <= offset) active = index;
+  });
+  els.searchBookIndex.querySelectorAll("[data-group-index]").forEach((button, index) => {
+    button.classList.toggle("active", index === active);
+    if (index === active && state.activeSearchGroup !== active) {
+      button.scrollIntoView({ behavior: "smooth", block: "nearest", inline: "center" });
+    }
+  });
+  state.activeSearchGroup = active;
 }
 
 async function openSearchTafsir(key) {

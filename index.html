@@ -4,18 +4,23 @@
     <meta charset="utf-8">
     <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
     <meta name="theme-color" content="#173f35">
-    <title>Quran Reader</title>
+    <title>Abrahamic Books Offline</title>
     <link rel="preconnect" href="https://api.quran.com">
     <link rel="manifest" href="./manifest.webmanifest">
+    <link rel="icon" type="image/png" sizes="192x192" href="./icons/app-icon-192.png">
+    <link rel="apple-touch-icon" href="./icons/app-icon-192.png">
     <link rel="stylesheet" href="./styles.css">
   </head>
   <body>
     <div class="app-shell">
       <header class="topbar">
-        <div>
-          <p class="eyebrow">Quran Reader</p>
-          <h1 id="chapterTitle">Loading...</h1>
-          <p id="chapterMeta" class="meta">Arabic, translations, tafsir, notes</p>
+        <div class="brand-lockup">
+          <img class="app-logo" src="./icons/app-icon-192.png" alt="">
+          <div>
+            <p class="eyebrow">Abrahamic Books</p>
+            <h1 id="chapterTitle">Loading...</h1>
+            <p id="chapterMeta" class="meta">Arabic, translations, tafsir, notes</p>
+          </div>
         </div>
         <button id="settingsButton" class="icon-button" type="button" aria-label="Reader settings" title="Reader settings">⚙</button>
       </header>
@@ -135,6 +140,7 @@
               </div>
             </div>
           </div>
+          <nav id="searchBookIndex" class="search-book-index" aria-label="Jump to result book" hidden></nav>
           <div id="searchResults" class="search-results"></div>
         </section>
 
