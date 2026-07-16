@@ -7,7 +7,7 @@
     <title>Abrahamic Books Offline</title>
     <link rel="preconnect" href="https://api.quran.com">
     <link rel="manifest" href="./manifest.webmanifest">
-    <link rel="icon" type="image/png" sizes="192x192" href="./icons/app-icon-192.png">
+    <link rel="icon" type="image/svg+xml" href="./icons/abrahamic-mark.svg">
     <link rel="apple-touch-icon" href="./icons/app-icon-192.png">
     <link rel="stylesheet" href="./styles.css">
   </head>
@@ -15,14 +15,14 @@
     <div class="app-shell">
       <header class="topbar">
         <div class="brand-lockup">
-          <img class="app-logo" src="./icons/app-icon-192.png" alt="">
+          <img class="app-logo" src="./icons/abrahamic-mark.svg" alt="">
           <div>
             <p class="eyebrow">Abrahamic Books</p>
             <h1 id="chapterTitle">Loading...</h1>
             <p id="chapterMeta" class="meta">Arabic, translations, tafsir, notes</p>
           </div>
         </div>
-        <button id="settingsButton" class="icon-button" type="button" aria-label="Reader settings" title="Reader settings">⚙</button>
+        <button id="settingsButton" class="icon-button" type="button" aria-label="Reader settings" title="Reader settings"><i class="ti ti-settings" aria-hidden="true"></i></button>
       </header>
 
       <main>
@@ -43,6 +43,16 @@
           </div>
 
           <div class="reader-controls">
+            <div class="filter-toolbar-heading">
+              <div>
+                <span>Reading options</span>
+                <strong>Choose a text and passage</strong>
+              </div>
+              <button id="lastReadButton" class="last-read-filter-button" type="button">
+                <i class="ti ti-bookmark" aria-hidden="true"></i>
+                <span>Last read</span>
+              </button>
+            </div>
             <label class="field">
               <span>Tradition</span>
               <select id="traditionSelect">
@@ -83,35 +93,73 @@
             </label>
           </div>
 
-          <div class="quick-actions">
-            <button id="lastReadButton" class="pill-button muted" type="button">Last read</button>
-          </div>
-
           <div id="status" class="status">Preparing reader...</div>
+          <div id="focusedVerseBar" class="focused-verse-bar" hidden>
+            <div>
+              <span>Focused verse</span>
+              <strong id="focusedVerseLabel">Reference</strong>
+            </div>
+            <button id="continueReading" class="text-button primary" type="button">Continue reading</button>
+          </div>
+          <div id="readSelectionBar" class="selection-bar read-selection-bar" hidden>
+            <strong id="readSelectionCount">0 selected</strong>
+            <div>
+              <button id="selectAllRead" class="text-button" type="button">Select all</button>
+              <button id="clearReadSelection" class="text-button" type="button">Clear</button>
+              <button id="noteReadSelection" class="text-button primary" type="button">Add to note</button>
+              <button id="doneReadSelection" class="text-button" type="button">Done</button>
+            </div>
+          </div>
           <div id="verses" class="verses" aria-live="polite"></div>
         </section>
 
         <section id="notesView" class="view" aria-label="Notes">
           <div class="view-toolbar notes-toolbar">
-            <div class="notes-header">
-              <div>
+            <div class="notes-header notes-heading-row">
+              <div class="notes-title-block">
                 <h2>Notes</h2>
                 <p id="notesCount">0 saved notes</p>
               </div>
-              <div class="notes-actions">
-                <button id="newStudyNote" class="text-button primary" type="button">New note</button>
-                <button id="exportNotes" class="icon-button" type="button" aria-label="Export notes">⇩</button>
-                <label class="icon-button file-button" aria-label="Import notes">
-                  ⇧
-                  <input id="importNotes" type="file" accept="application/json">
+              <div class="notes-utility-row">
+                <span id="notesSyncStatus" class="sync-status-badge" role="status" aria-live="polite" data-state="saved locally">
+                  <i id="notesSyncIcon" class="ti ti-device-floppy" aria-hidden="true"></i>
+                  <span id="notesSyncLabel">Saved locally</span>
+                </span>
+                <label class="notes-sort-control" for="notesSort">
+                  <i class="ti ti-arrows-sort" aria-hidden="true"></i>
+                  <span class="notes-sort-label">Sort</span>
+                  <select id="notesSort" aria-label="Sort notes">
+                    <option value="updated-desc">Recently updated</option>
+                    <option value="created-desc">Newest created</option>
+                    <option value="title-asc">Title A–Z</option>
+                    <option value="updated-asc">Oldest updated</option>
+                  </select>
+                  <i class="ti ti-chevron-down sort-chevron" aria-hidden="true"></i>
                 </label>
               </div>
             </div>
-            <input id="notesSearch" class="wide-search" type="search" placeholder="Search notes, tags, or references">
-            <div id="tagFilters" class="tag-filters"></div>
+            <div class="notes-actions notes-primary-actions">
+              <button id="newStudyNote" class="text-button primary notes-new-button" type="button"><i class="ti ti-file-plus" aria-hidden="true"></i><span>New note</span></button>
+              <button id="toggleNoteSelect" class="text-button notes-select-button" type="button" aria-pressed="false"><i class="ti ti-square-dashed" aria-hidden="true"></i><span>Select</span></button>
+            </div>
+            <div id="noteSelectionBar" class="selection-bar" hidden><strong id="noteSelectionCount">0 selected</strong><div><button id="selectAllNotes" class="text-button" type="button">Select all</button><button id="shareSelectedNotes" class="text-button" type="button">Share</button><button id="deleteSelectedNotes" class="text-button danger" type="button">Delete</button><button id="doneNoteSelection" class="text-button" type="button">Done</button></div></div>
+            <div class="notes-discovery-zone">
+              <div class="notes-search-wrap">
+                <i class="ti ti-search" aria-hidden="true"></i>
+                <input id="notesSearch" class="wide-search" type="search" autocomplete="off" placeholder="Search notes, verses, or phrases">
+                <button id="notesSearchHelpButton" class="search-help-button" type="button" aria-label="Search syntax help" aria-controls="notesSearchHelp" aria-expanded="false"><i class="ti ti-help-circle" aria-hidden="true"></i></button>
+              </div>
+              <p id="notesSearchHelp" class="search-syntax-hint search-help-panel" hidden><strong>Search tips:</strong> words find any match, <code>"exact phrase"</code> keeps words together, and <code>mercy + prayer</code> requires both.</p>
+              <div class="tag-filters notes-filter-row" role="tablist" aria-label="Filter notes">
+                <button id="privateNotesTab" class="tag-chip active" type="button" role="tab" aria-selected="true">All</button>
+                <button id="sharedNotesTab" class="tag-chip" type="button" role="tab" aria-selected="false">Shared <span id="sharedNotesBadge">0</span></button>
+                <div id="tagFilters" class="custom-tag-filters"></div>
+              </div>
+            </div>
           </div>
           <div id="notesVersePreview" class="verse-preview" hidden></div>
           <div id="notesList" class="notes-list"></div>
+          <div id="sharedNotesLocked" class="shared-notes-locked" hidden><i class="ti ti-cloud-lock" aria-hidden="true"></i><h3>Shared notes require an account</h3><p>Sign in to securely view or edit notes shared across accounts.</p><button id="sharedNotesSignIn" class="text-button primary" type="button">Sign in or create account</button></div>
         </section>
 
         <section id="searchView" class="view" aria-label="Search texts">
@@ -124,10 +172,11 @@
               <button id="toggleSearchSelect" class="text-button" type="button" aria-pressed="false">Select results</button>
             </div>
             <div class="search-panel">
-              <input id="globalSearch" class="wide-search" type="search" placeholder="Search Quran, hadith, tafsir, Bible">
+              <input id="globalSearch" class="wide-search" type="search" inputmode="search" enterkeyhint="search" autocomplete="off" placeholder='Try mercy, "eternal life", or mercy + forgiveness'>
+              <p class="search-syntax-hint"><strong>Syntax:</strong> words find any match; <code>"eternal life"</code> finds that exact phrase; <code>mercy + forgiveness</code> requires both in the same verse, hadith, or passage.</p>
               <button id="searchFilterButton" class="source-filter-button" type="button" aria-haspopup="dialog">
                 <span>Search in</span>
-                <strong id="searchFilterSummary">All downloaded books</strong>
+                <strong id="searchFilterSummary">Quran, Shia hadith & more</strong>
               </button>
               <button id="runSearch" class="text-button primary" type="button">Search</button>
             </div>
@@ -147,36 +196,42 @@
       </main>
 
       <nav class="bottom-nav" aria-label="Primary">
-        <button class="nav-item active" type="button" data-view="readView"><span class="nav-icon">☰</span><span>Read</span></button>
-        <button class="nav-item" type="button" data-view="searchView"><span class="nav-icon">⌕</span><span>Search</span></button>
-        <button class="nav-item" type="button" data-view="notesView"><span class="nav-icon">✎</span><span>Notes</span></button>
+        <button class="nav-item active" type="button" data-view="readView"><i class="ti ti-book-2 nav-icon" aria-hidden="true"></i><span>Read</span></button>
+        <button class="nav-item" type="button" data-view="searchView"><i class="ti ti-search nav-icon" aria-hidden="true"></i><span>Search</span></button>
+        <button class="nav-item" type="button" data-view="notesView"><i class="ti ti-notebook nav-icon" aria-hidden="true"></i><span>Notes</span></button>
       </nav>
     </div>
 
     <dialog id="readerSettingsSheet" class="sheet settings-sheet">
       <form method="dialog" class="sheet-inner">
         <div class="sheet-header">
-          <div>
+          <div class="settings-title">
+            <span class="settings-title-icon" aria-hidden="true">Aa</span>
+            <div>
             <h2>Reader Settings</h2>
-            <p id="settingsSummary">Theme, fonts, and spacing</p>
+            <p id="settingsSummary">Personalize your reading experience</p>
+            </div>
           </div>
-          <button class="icon-button" value="close" aria-label="Close reader settings">×</button>
+          <button class="icon-button" value="close" aria-label="Close reader settings"><i class="ti ti-x" aria-hidden="true"></i></button>
         </div>
 
           <div class="settings-grid">
           <div class="settings-actions">
-            <button id="translationButton" class="text-button" type="button">Translations</button>
-            <button id="tafsirButton" class="text-button" type="button">Tafsir</button>
-            <button id="themeButton" class="text-button" type="button">Dark mode</button>
+            <button id="translationButton" class="settings-shortcut" type="button"><i class="ti ti-language" aria-hidden="true"></i><strong>Translations</strong><small>Choose editions</small><i class="ti ti-chevron-right settings-chevron" aria-hidden="true"></i></button>
+            <button id="tafsirButton" class="settings-shortcut" type="button"><i class="ti ti-books" aria-hidden="true"></i><strong>Tafsir</strong><small>Commentary sources</small><i class="ti ti-chevron-right settings-chevron" aria-hidden="true"></i></button>
+            <button id="themeButton" class="settings-shortcut" type="button"><i class="ti ti-moon-stars" aria-hidden="true"></i><strong>Dark mode</strong><small>Quick theme switch</small><i class="ti ti-chevron-right settings-chevron" aria-hidden="true"></i></button>
+            <button id="accountSettingsButton" class="settings-shortcut" type="button"><i class="ti ti-user-shield" aria-hidden="true"></i><strong>Notes & account</strong><small>Private sync</small><i class="ti ti-chevron-right settings-chevron" aria-hidden="true"></i></button>
           </div>
+          <label class="field"><span>App language</span><select id="appLanguageSelect"><option value="en">English</option><option value="ar">العربية</option><option value="de">Deutsch</option><option value="fr">Français</option><option value="tr">Türkçe</option><option value="ur">اردو</option></select></label>
           <div class="settings-download-card">
-            <div class="download-mark" aria-hidden="true">↓</div>
+            <div class="download-mark" aria-hidden="true"><i class="ti ti-download"></i></div>
             <div>
               <strong>Offline Android app</strong>
               <span>Quran, tafsir, Bible, and hadith included</span>
             </div>
-            <a class="text-button primary apk-download" href="http://62.171.166.27/quran/downloads/abrahamic-books-offline.apk" download>Download APK</a>
+            <a class="text-button primary apk-download" href="./downloads/abrahamic-books-offline.apk" download>Download APK</a>
           </div>
+          <div class="settings-section-label"><span>Appearance</span><small>Colors and reading width</small></div>
           <label class="field">
             <span>Theme</span>
             <select id="themeSelect">
@@ -190,6 +245,18 @@
               <option value="ocean">Ocean</option>
               <option value="graphite">Graphite</option>
               <option value="paper">Paper</option>
+              <option value="lavender">Lavender</option>
+              <option value="desert">Desert</option>
+              <option value="forest">Forest</option>
+              <option value="nord">Nord</option>
+              <option value="sunset">Sunset</option>
+              <option value="coffee">Coffee</option>
+              <option value="slate">Slate</option>
+              <option value="aurora">Aurora</option>
+              <option value="indigo">Indigo</option>
+              <option value="mint">Mint</option>
+              <option value="sand">Sand</option>
+              <option value="amoled">AMOLED Black</option>
               <option value="custom">Custom</option>
             </select>
           </label>
@@ -201,6 +268,7 @@
               <option value="wide">Wide</option>
             </select>
           </label>
+          <div class="settings-section-label"><span>Typography</span><small>Fonts, sizes, and rhythm</small></div>
           <label class="field">
             <span>Arabic font</span>
             <select id="arabicFontSelect">
@@ -223,6 +291,10 @@
             <input id="originalLanguageToggle" type="checkbox">
             <span>Show Hebrew / Greek for Bible</span>
           </label>
+          <label class="check-field">
+            <input id="arabicTextToggle" type="checkbox">
+            <span>Show Arabic text in Quran</span>
+          </label>
           <label class="range-field">
             <span>Arabic size</span>
             <input id="arabicSizeRange" type="range" min="0.84" max="1.4" step="0.04">
@@ -235,6 +307,7 @@
             <span>Line spacing</span>
             <input id="lineHeightRange" type="range" min="1" max="1.24" step="0.04">
           </label>
+          <div class="settings-section-label"><span>Reader layout</span><small>Cards and content display</small></div>
           <label class="field">
             <span>Card style</span>
             <select id="cardStyleSelect">
@@ -273,6 +346,76 @@
       </form>
     </dialog>
 
+    <dialog id="verseCopySheet" class="sheet verse-copy-sheet">
+      <form method="dialog" class="sheet-inner">
+        <div class="sheet-header">
+          <div>
+            <h2>Copy verse</h2>
+            <p id="verseCopySubtitle">Choose the text to copy</p>
+          </div>
+          <button class="icon-button" value="close" aria-label="Close copy options"><i class="ti ti-x" aria-hidden="true"></i></button>
+        </div>
+        <div class="copy-presets" aria-label="Quick copy choices">
+          <button id="copyOriginalOnly" class="text-button" type="button"><i class="ti ti-language" aria-hidden="true"></i>Original only</button>
+          <button id="copyTranslationOnly" class="text-button" type="button"><i class="ti ti-writing" aria-hidden="true"></i>Translation only</button>
+        </div>
+        <fieldset id="verseCopyOptions" class="verse-copy-options">
+          <legend>Select original text and translations</legend>
+        </fieldset>
+        <div class="sheet-actions copy-sheet-actions">
+          <button id="copySelectedVerse" class="text-button primary" type="button"><i class="ti ti-copy" aria-hidden="true"></i>Copy selected text</button>
+          <button id="shareVerseLink" class="text-button" type="button"><i class="ti ti-link" aria-hidden="true"></i>Copy verse link</button>
+        </div>
+      </form>
+    </dialog>
+
+    <dialog id="notesSyncSheet" class="sheet notes-sync-sheet">
+      <form method="dialog" class="sheet-inner">
+        <div class="sheet-header">
+          <div><h2>Private notes & sync</h2><p id="syncAccountStatus">Local-only · no account required</p></div>
+          <button class="icon-button" value="close" aria-label="Close notes sync settings"><i class="ti ti-x" aria-hidden="true"></i></button>
+        </div>
+        <div class="privacy-callout"><span class="privacy-icon" aria-hidden="true"><i class="ti ti-shield-lock"></i></span><div>
+          <strong>Your notes are private</strong>
+          <p>Notes always work offline on this device. If you choose Firebase, they also sync privately to your Abrahamic Books account.</p>
+        </div></div>
+        <section class="settings-section">
+          <div class="section-heading"><span>1</span><div><h3>Choose where notes are saved</h3><p>You can change this later without losing local notes.</p></div></div>
+          <fieldset class="sync-modes">
+          <label><input type="radio" name="notesMode" value="local"> <span><strong>Local only</strong><small>Offline on this device; no account required.</small></span></label>
+          <label><input type="radio" name="notesMode" value="firebase"> <span><strong>Firebase sync</strong><small>Keep notes in sync across the website and APK.</small></span></label>
+          </fieldset>
+        </section>
+        <section class="settings-section">
+          <div class="section-heading"><span>2</span><div><h3>Connect and sync</h3><p>Use the same account on the website and APK.</p></div></div>
+          <div class="firebase-account-fields">
+            <label class="note-field"><span>Email</span><input id="firebaseEmail" type="email" autocomplete="email" placeholder="you@example.com"></label>
+            <label class="note-field"><span>Password</span><input id="firebasePassword" type="password" autocomplete="current-password" placeholder="At least 6 characters"></label>
+          </div>
+          <div class="button-grid sync-actions"><button id="connectFirebase" class="text-button primary" type="button">Sign in</button><button id="createFirebaseAccount" class="text-button" type="button">Create account</button><button id="syncNow" class="text-button" type="button">Sync notes now</button><button id="disconnectFirebase" class="text-button danger" type="button">Sign out and use local</button></div>
+        </section>
+        <section class="settings-section">
+          <div class="section-heading"><span>3</span><div><h3>Backup and restore</h3><p>Keep a portable encrypted copy of all notes.</p></div></div>
+          <div class="button-grid backup-actions">
+            <button id="exportNotes" class="text-button" type="button"><i class="ti ti-download" aria-hidden="true"></i> Export notes</button>
+            <label class="text-button file-button full-label"><i class="ti ti-upload" aria-hidden="true"></i> Import notes<input id="importNotes" type="file" accept="application/json"></label>
+            <button id="exportEncryptedBackup" class="text-button" type="button"><i class="ti ti-lock" aria-hidden="true"></i> Export encrypted backup</button>
+            <label class="text-button file-button full-label"><i class="ti ti-lock-open" aria-hidden="true"></i> Import encrypted backup<input id="importEncryptedBackup" type="file" accept="application/json,.abbackup"></label>
+          </div>
+        </section>
+        <p id="syncHelp" class="fine-print">Automatic Firebase sync runs when the app opens, comes online, or a note changes. Concurrent edits are preserved as conflict copies.</p>
+      </form>
+    </dialog>
+
+    <dialog id="shareNoteSheet" class="sheet share-note-sheet">
+      <form method="dialog" class="sheet-inner">
+        <div class="sheet-header"><div><h2>Share note</h2><p>Choose what recipients can access</p></div><button class="icon-button" value="close">×</button></div>
+        <button id="shareSnapshot" class="share-mode" type="button"><span class="share-number">1</span><span><strong>Share a fixed snapshot</strong><small>Quick read-only link. It shows the note as it is now and will not update.</small></span></button>
+        <button id="shareCollaborative" class="share-mode" type="button"><span class="share-number">2</span><span><strong>Invite people to edit</strong><small>Account-only collaboration with live updates across the website and APK.</small></span></button>
+        <p class="fine-print">Shared snapshots contain only the note you choose and do not grant access to your local or Firebase notes.</p>
+      </form>
+    </dialog>
+
     <dialog id="searchFilterSheet" class="sheet source-filter-sheet">
       <form method="dialog" class="sheet-inner">
         <div class="sheet-header">
@@ -280,7 +423,7 @@
             <h2>Choose search books</h2>
             <p id="sourceFilterSubtitle">Include several books and exclude the rest</p>
           </div>
-          <button class="icon-button" value="close" aria-label="Close search filters">×</button>
+          <button class="icon-button" value="close" aria-label="Close search filters"><i class="ti ti-x" aria-hidden="true"></i></button>
         </div>
         <input id="sourceFilterSearch" class="wide-search" type="search" placeholder="Find a book or collection">
         <div class="source-filter-actions">
@@ -315,6 +458,7 @@
           <button class="icon-button" value="close" aria-label="Close translations">×</button>
         </div>
         <input id="translationSearch" class="wide-search" type="search" placeholder="Search language, author, name">
+        <p class="resource-download-hint">Translations are streamed when online. Use the download button beside an edition to keep it available in the website and APK.</p>
         <div id="translationList" class="resource-list"></div>
       </form>
     </dialog>
@@ -329,7 +473,26 @@
           <button class="icon-button" value="close" aria-label="Close tafsir">×</button>
         </div>
         <input id="tafsirSearch" class="wide-search" type="search" placeholder="Search tafsir, language, author">
+        <p class="resource-download-hint">More tafsir editions can be added and downloaded here without reinstalling the app.</p>
         <div id="tafsirList" class="resource-list compact"></div>
+      </form>
+    </dialog>
+
+    <dialog id="commentarySheet" class="sheet">
+      <form method="dialog" class="sheet-inner">
+        <div class="sheet-header"><div><h2>Bible commentaries</h2><p id="commentarySummary">Matthew Henry · included</p></div><button class="icon-button" value="close" aria-label="Close Bible commentaries">×</button></div>
+        <input id="commentarySearch" class="wide-search" type="search" placeholder="Search commentary or language">
+        <p class="resource-download-hint">Matthew Henry is included by default. Download as many additional public-domain commentaries as you want for offline reading.</p>
+        <div id="commentaryList" class="resource-list compact"></div>
+      </form>
+    </dialog>
+
+    <dialog id="collaborateSheet" class="sheet share-note-sheet">
+      <form method="dialog" class="sheet-inner">
+        <div class="sheet-header"><div><h2>Collaborative note</h2><p>Everyone invited can edit this note</p></div><button class="icon-button" value="close" aria-label="Close">×</button></div>
+        <label class="note-field"><span>Invite by email</span><input id="collaboratorEmails" type="text" inputmode="email" placeholder="friend@example.com, study@example.com"></label>
+        <p class="fine-print">Only signed-in accounts whose email is invited can view this note.</p>
+        <button id="createCollaborativeNote" class="text-button primary" type="button">Create and share</button>
       </form>
     </dialog>
 
@@ -337,25 +500,55 @@
       <form method="dialog" class="sheet-inner">
         <div class="sheet-header">
           <div>
-            <h2 id="noteTitle">Note</h2>
+            <h2 id="noteTitle">Edit note</h2>
             <p id="noteSubtitle">Ayah note</p>
           </div>
-          <button class="icon-button" value="close" aria-label="Close note">×</button>
+          <button class="icon-button" value="close" aria-label="Close note"><i class="ti ti-x" aria-hidden="true"></i></button>
         </div>
-        <input id="noteTags" class="wide-search" type="text" placeholder="Tags: mercy, prayer, study">
+        <label class="note-field">
+          <span>Title</span>
+          <input id="noteName" type="text" maxlength="120" placeholder="Give this note a name">
+        </label>
+        <label class="note-field">
+          <span>Tags</span>
+          <input id="noteTags" type="text" placeholder="mercy, prayer, study">
+        </label>
         <div class="cross-ref-panel">
           <label class="field">
             <span>Add cross-reference</span>
-            <input id="referenceSearch" type="search" placeholder="Search or enter: Quran 2:255, John 3:16">
+            <input id="referenceSearch" type="search" placeholder="Surah, Bible or hadith book; e.g. Bukhari 1:1">
           </label>
           <div id="referenceResults" class="reference-results"></div>
           <div id="noteReferences" class="note-references"></div>
         </div>
-        <textarea id="noteEditor" rows="9" placeholder="Write your reflection, question, reminder, or action..."></textarea>
+        <label class="note-field">
+          <span>Note</span>
+          <textarea id="noteEditor" rows="9" placeholder="Write your reflection, question, reminder, or action..."></textarea>
+        </label>
         <div class="sheet-actions">
           <button id="deleteNote" class="text-button danger" type="button">Delete</button>
-          <button class="text-button primary" value="close">Done</button>
+          <div class="note-window-actions">
+            <button id="openReferences" class="text-button" type="button">View references</button>
+            <button id="shareNote" class="text-button share-text-button" type="button">
+              <i class="ti ti-share" aria-hidden="true"></i>
+              <span>Share note</span>
+            </button>
+            <button class="text-button primary" value="close">Done</button>
+          </div>
         </div>
+      </form>
+    </dialog>
+
+    <dialog id="referenceOverviewSheet" class="sheet reference-overview-sheet">
+      <form method="dialog" class="sheet-inner">
+        <div class="sheet-header">
+          <div>
+            <h2>Cross-reference overview</h2>
+            <p id="referenceOverviewSubtitle">Compare referenced verses</p>
+          </div>
+          <button class="icon-button" value="close" aria-label="Close cross-reference overview">×</button>
+        </div>
+        <div id="referenceOverviewContent" class="reference-overview-content"></div>
       </form>
     </dialog>
 

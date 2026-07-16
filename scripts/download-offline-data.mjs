@@ -71,7 +71,12 @@ for (const chapter of chapters.chapters || []) {
 
 for (const chapter of chapters.chapters || []) {
   const entries = {};
-  const data = await fetchJSON(`${API}/tafsirs/${DEFAULT_TAFSIR}/by_chapter/${chapter.id}?per_page=300`);
+  const existing = await readJSON(`${OUT_DIR}/tafsir/${DEFAULT_TAFSIR}/chapter-${chapter.id}.json`).catch(() => null);
+  const data = existing ? null : await fetchJSON(`${API}/tafsirs/${DEFAULT_TAFSIR}/by_chapter/${chapter.id}?per_page=300`);
+  if (existing) {
+    manifest.tafsir.ayahs += Object.keys(existing).length;
+    continue;
+  }
   for (const tafsir of data.tafsirs || []) {
     entries[tafsir.verse_key] = { tafsir };
     manifest.tafsir.ayahs += 1;
@@ -90,6 +95,7 @@ await writeJSON(`${OUT_DIR}/hadith/editions.json`, hadithEditions);
 await writeJSON(`${OUT_DIR}/hadith/info.json`, hadithInfo);
 await writeJSON(`${OUT_DIR}/hadith/thaqalayn-books.json`, thaqalaynBooks);
 await writeHadithCollections(hadithEditions, hadithInfo);
+await writeThaqalaynCollections(thaqalaynBooks);
 
 await writeJSON(`${OUT_DIR}/manifest.json`, manifest);
 
@@ -112,6 +118,47 @@ async function writeBible(type, books, originalTranslation) {
   }
 }
 
+async function writeThaqalaynCollections(books) {
+  const sectionSize = 25;
+  manifest.hadith.thaqalaynSections = 0;
+  for (const book of books || []) {
+    const key = `thaqalayn-${book.bookId}`;
+    const min = Number(book.idRangeMin) || 1;
+    const max = Math.max(min, Number(book.idRangeMax) || min);
+    const sections = Math.ceil((max - min + 1) / sectionSize);
+    await mkdir(`${OUT_DIR}/hadith/${key}`, { recursive: true });
+    await mkdir(`${OUT_DIR}/hadith-search`, { recursive: true });
+    manifest.hadith.collections.push(key);
+    const searchRecords = [];
+    const writeSection = async (section) => {
+      const path = `${OUT_DIR}/hadith/${key}/section-${section}.json`;
+      const start = min + (section - 1) * sectionSize;
+      const end = Math.min(max, start + sectionSize - 1);
+      const cached = await readJSON(path).catch(() => null);
+      const records = cached?.records?.length
+        ? cached.records
+        : (await Promise.all(Array.from({ length: end - start + 1 }, (_, offset) =>
+            fetchJSON(`https://www.thaqalayn-api.net/api/v2/${book.bookId}/${start + offset}`).catch(() => null)
+          ))).filter(Boolean);
+      await writeJSON(path, { records });
+      searchRecords.push(...records.map((item) => ({
+        id: item.id,
+        section,
+        chapter: item.chapter || item.category || "",
+        text: item.englishText || item.frenchText || "",
+        arabic: item.arabicText || "",
+      })));
+      manifest.hadith.thaqalaynSections += 1;
+      console.log(`Shia hadith ${book.BookName} ${book.volume || ""} · ${section}/${sections}`);
+    };
+    for (let section = 1; section <= sections; section += 6) {
+      await Promise.all(Array.from({ length: Math.min(6, sections - section + 1) }, (_, offset) => writeSection(section + offset)));
+    }
+    searchRecords.sort((a, b) => Number(a.id) - Number(b.id));
+    await writeJSON(`${OUT_DIR}/hadith-search/${key}.json`, searchRecords);
+  }
+}
+
 async function writeHadithCollections(editions, info) {
   const books = Object.entries(editions || {})
     .map(([key, value]) => {
@@ -129,12 +176,18 @@ async function writeHadithCollections(editions, info) {
     await mkdir(`${OUT_DIR}/hadith/${book.key}`, { recursive: true });
     manifest.hadith.collections.push(book.key);
     for (const section of book.sectionIds) {
+      const path = `${OUT_DIR}/hadith/${book.key}/section-${section}.json`;
+      const existing = await readJSON(path).catch(() => null);
+      if (existing) {
+        manifest.hadith.sections += 1;
+        continue;
+      }
       const [english, arabic] = await Promise.all([
         fetchJSON(`https://cdn.jsdelivr.net/gh/fawazahmed0/hadith-api@1/editions/eng-${book.key}/sections/${section}.min.json`).catch(() => null),
         fetchJSON(`https://cdn.jsdelivr.net/gh/fawazahmed0/hadith-api@1/editions/ara-${book.key}/sections/${section}.min.json`).catch(() => null),
       ]);
       if (!english && !arabic) continue;
-      await writeJSON(`${OUT_DIR}/hadith/${book.key}/section-${section}.json`, { english, arabic });
+      await writeJSON(path, { english, arabic });
       manifest.hadith.sections += 1;
       console.log(`Hadith ${book.key} section ${section}`);
     }

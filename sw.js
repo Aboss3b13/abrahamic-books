@@ -1,10 +1,11 @@
-const CACHE_VERSION = "abrahamic-books-v5";
+const CACHE_VERSION = "abrahamic-books-v35";
 const APP_CACHE = `${CACHE_VERSION}-app`;
 const DATA_CACHE = `${CACHE_VERSION}-data`;
 const APP_SHELL = [
   "./",
   "./index.html",
-  "./manifest.webmanifest"
+  "./manifest.webmanifest",
+  "./icons/abrahamic-mark.svg"
 ];
 
 self.addEventListener("install", (event) => {
@@ -42,9 +43,20 @@ self.addEventListener("fetch", (event) => {
   }
 
   if (isAppAsset) {
-    event.respondWith(cacheFirst(request));
+    event.respondWith(request.mode === "navigate" ? networkFirstApp(request) : cacheFirst(request));
   }
 });
+
+async function networkFirstApp(request) {
+  const cache = await caches.open(APP_CACHE);
+  try {
+    const response = await fetch(request, { cache: "no-store" });
+    if (response.ok) cache.put(request, response.clone());
+    return response;
+  } catch {
+    return (await cache.match(request)) || (await cache.match("./index.html"));
+  }
+}
 
 async function cacheFirst(request) {
   const cached = await caches.match(request);

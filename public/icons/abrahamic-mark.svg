@@ -1,0 +1,7 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64" role="img" aria-label="Abrahamic Books">
+  <rect x="3" y="3" width="58" height="58" rx="15" fill="#173f35"/>
+  <path d="M12 23.5 32 12l20 11.5v24L32 57 12 47.5v-24Z" fill="#fff8ea"/>
+  <path d="M17 24.5c6.8-.7 11.8 1 15 5v20c-3.2-4-8.2-5.7-15-5V24.5Zm30 0c-6.8-.7-11.8 1-15 5v20c3.2-4 8.2-5.7 15-5V24.5Z" fill="#e9d8b5"/>
+  <path d="M32 29.5v20M17 24.5c6.8-.7 11.8 1 15 5 3.2-4 8.2-5.7 15-5" fill="none" stroke="#b78d3e" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"/>
+  <path d="m32 7 2.1 4.3 4.7.7-3.4 3.3.8 4.7-4.2-2.2-4.2 2.2.8-4.7-3.4-3.3 4.7-.7L32 7Z" fill="#d7ad58"/>
+</svg>
