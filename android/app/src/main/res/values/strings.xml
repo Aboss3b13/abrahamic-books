@@ -4,4 +4,12 @@
     <string name="title_activity_main">Abrahamic Books</string>
     <string name="package_name">com.aboss3b13.abrahamicbooks</string>
     <string name="custom_url_scheme">com.aboss3b13.abrahamicbooks</string>
+    <string name="widget_daily_name">Daily Reading</string>
+    <string name="widget_continue_name">Last Read</string>
+    <string name="widget_shortcuts_name">Study Shortcuts</string>
+    <string name="widget_notes_name">Study Notes</string>
+    <string name="widget_quran_name">Quran Reader</string>
+    <string name="widget_bible_name">Bible Reader</string>
+    <string name="widget_hadith_name">Hadith Explorer</string>
+    <string name="widget_search_name">Library Search</string>
 </resources>

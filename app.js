@@ -1,4 +1,5 @@
 import { Capacitor, registerPlugin } from "@capacitor/core";
+import { App as CapacitorApp } from "@capacitor/app";
 import { Directory, Encoding, Filesystem } from "@capacitor/filesystem";
 import { Share } from "@capacitor/share";
 import "@tabler/icons-webfont/dist/tabler-icons.min.css";
@@ -17,9 +18,10 @@ const STORE = {
   downloadedTafsirs: "quran-downloaded-tafsirs",
   downloadedCommentaries: "bible-downloaded-commentaries",
 };
-const PUBLIC_APP_URL = "https://abbas2.ali-raza.net/quran/";
+const PUBLIC_APP_URL = "https://abbas2.ali-raza.net/AbrahamicBooks/";
 let notesSystem;
 const NotesFiles = registerPlugin("NotesFiles");
+const WidgetData = registerPlugin("WidgetData");
 
 const OLD_TESTAMENT = [
   ["Genesis", 50], ["Exodus", 40], ["Leviticus", 27], ["Numbers", 36], ["Deuteronomy", 34],
@@ -348,9 +350,24 @@ async function init() {
     renderNotes();
     await loadCurrentScripture();
     await openSharedLink();
+    await setupAppLinks();
   } catch (error) {
     setStatus(`Could not load Quran data. ${error.message}`);
   }
+}
+
+async function setupAppLinks() {
+  if (!Capacitor.isNativePlatform()) return;
+  const openAppUrl = async (url) => {
+    const incoming = new URL(url);
+    const supportedPath = incoming.pathname.startsWith("/AbrahamicBooks") || incoming.pathname.startsWith("/quran");
+    if (incoming.hostname !== "abbas2.ali-raza.net" || !supportedPath) return;
+    history.replaceState(null, "", `${location.pathname}${incoming.search}${incoming.hash}`);
+    await openSharedLink();
+  };
+  await CapacitorApp.addListener("appUrlOpen", ({ url }) => openAppUrl(url));
+  const launch = await CapacitorApp.getLaunchUrl();
+  if (launch?.url) await openAppUrl(launch.url);
 }
 
 function bindEvents() {
@@ -555,6 +572,7 @@ function bindEvents() {
   document.querySelectorAll(".nav-item").forEach((button) => {
     button.addEventListener("click", () => switchView(button.dataset.view, true));
   });
+  setupSwipeNavigation();
 
   window.addEventListener("scroll", handleToolbarScroll, { passive: true });
   document.querySelectorAll(".reader-controls, .view-toolbar").forEach((toolbar) => {
@@ -608,6 +626,52 @@ function bindEvents() {
     if (!word) return;
     openOriginalWordTranslation(word.dataset.word, word.dataset.lang, word.closest(".ayah-card")?.dataset.key);
   });
+}
+
+function setupSwipeNavigation() {
+  const views = [...document.querySelectorAll(".bottom-nav .nav-item")].map((item) => item.dataset.view);
+  const main = document.querySelector("main");
+  let startX = 0;
+  let startY = 0;
+  let startedAt = 0;
+  let blocked = false;
+  let axis = "";
+  let transitioning = false;
+  const isHorizontalScroller = (target) => {
+    if (target.closest("input, textarea, select, dialog, .sheet, .bottom-nav, .search-book-index, .quick-actions, .notes-tabs, .notes-filter-row, .tag-filters, .ayah-actions, .selection-bar, .search-check")) return true;
+    for (let node = target; node && node !== main; node = node.parentElement) {
+      const style = getComputedStyle(node);
+      if (node.scrollWidth > node.clientWidth + 4 && ["auto", "scroll"].includes(style.overflowX)) return true;
+    }
+    return false;
+  };
+  main?.addEventListener("touchstart", (event) => {
+    if (event.touches.length !== 1) return;
+    blocked = transitioning || isLandscapeWorkspace() || isHorizontalScroller(event.target);
+    axis = "";
+    startX = event.touches[0].clientX;
+    startY = event.touches[0].clientY;
+    startedAt = performance.now();
+  }, { passive: true });
+  main?.addEventListener("touchmove", (event) => {
+    if (blocked || event.touches.length !== 1 || axis === "vertical") return;
+    const deltaX = event.touches[0].clientX - startX;
+    const deltaY = event.touches[0].clientY - startY;
+    if (!axis && Math.max(Math.abs(deltaX), Math.abs(deltaY)) > 12) axis = Math.abs(deltaX) > Math.abs(deltaY) * 1.25 ? "horizontal" : "vertical";
+    if (axis === "horizontal" && event.cancelable) event.preventDefault();
+  }, { passive: false });
+  main?.addEventListener("touchend", (event) => {
+    if (blocked || event.changedTouches.length !== 1 || performance.now() - startedAt > 650) return;
+    const deltaX = event.changedTouches[0].clientX - startX;
+    const deltaY = event.changedTouches[0].clientY - startY;
+    if (axis === "vertical" || Math.abs(deltaX) < 72 || Math.abs(deltaX) < Math.abs(deltaY) * 1.5) return;
+    const current = views.indexOf(state.currentView);
+    const next = current + (deltaX < 0 ? 1 : -1);
+    if (current < 0 || next < 0 || next >= views.length) return;
+    transitioning = true;
+    switchView(views[next], false, null, deltaX < 0 ? "swipe-left" : "swipe-right");
+    setTimeout(() => { transitioning = false; }, 320);
+  }, { passive: true });
 }
 
 let toolbarScrollFrame = false;
@@ -1915,6 +1979,11 @@ function refreshVerse(key) {
 
 function saveLastRead(key) {
   localStorage.setItem("quran-reader-last-read-v1", key);
+  if (Capacitor.isNativePlatform()) {
+    const verse = state.verses.find((item) => item.verse_key === key);
+    const text = stripHTML(verse?.translations?.[0]?.text || verse?.text || verse?.english?.text || verse?.text_uthmani || "");
+    WidgetData.setLastRead({ reference: key, label: formatReferenceLabel(key), text: text.slice(0, 320) }).catch(() => {});
+  }
   updateDashboard(key);
   setStatus(`Saved ${key} as last read.`);
   setTimeout(() => setStatus(""), 1600);
@@ -2258,6 +2327,8 @@ function decodeBase64Url(value) {
 async function openSharedLink() {
   const queryParams = new URLSearchParams(location.search);
   const hashParams = new URLSearchParams(location.hash.slice(1));
+  const requestedView = queryParams.get("view");
+  if (["readView", "notesView", "searchView"].includes(requestedView)) switchView(requestedView);
   const reference = queryParams.get("ref") || hashParams.get("ref");
   if (reference) {
     await jumpToReference(reference, "auto");
@@ -2317,7 +2388,7 @@ async function importNotes(event) {
   event.target.value = "";
 }
 
-function switchView(viewId, reselectedFromNav = false, currentScrollOverride = null) {
+function switchView(viewId, reselectedFromNav = false, currentScrollOverride = null, transition = "section") {
   if (isLandscapeWorkspace()) {
     if (viewId === "notesView" || viewId === "searchView") {
       setWorkspaceTool(viewId);
@@ -2340,7 +2411,15 @@ function switchView(viewId, reselectedFromNav = false, currentScrollOverride = n
   const leavingTop = currentScrollOverride ?? window.scrollY;
   state.viewScrollPositions[state.currentView] = leavingTop;
   document.querySelector(`#${state.currentView}`)?.setAttribute("data-saved-scroll", String(leavingTop));
-  document.querySelectorAll(".view").forEach((view) => view.classList.toggle("active", view.id === viewId));
+  document.querySelectorAll(".view").forEach((view) => {
+    view.classList.remove("view-enter", "swipe-left", "swipe-right");
+    view.classList.toggle("active", view.id === viewId);
+  });
+  const destinationView = document.querySelector(`#${viewId}`);
+  destinationView?.classList.add("view-enter", transition);
+  const finishTransition = () => destinationView?.classList.remove("view-enter", "section", "swipe-left", "swipe-right");
+  destinationView?.addEventListener("animationend", finishTransition, { once: true });
+  setTimeout(finishTransition, 440);
   document.querySelectorAll(".nav-item").forEach((button) => button.classList.toggle("active", button.dataset.view === viewId));
   if (viewId === "notesView") renderNotes();
   state.currentView = viewId;
@@ -2351,13 +2430,10 @@ function switchView(viewId, reselectedFromNav = false, currentScrollOverride = n
   previousToolbarScrollY = 0;
   const savedOnView = Number(document.querySelector(`#${viewId}`)?.getAttribute("data-saved-scroll"));
   const restoreTop = Number.isFinite(savedOnView) ? savedOnView : state.viewScrollPositions[viewId] || 0;
-  requestAnimationFrame(() => requestAnimationFrame(() => {
+  requestAnimationFrame(() => {
     window.scrollTo({ top: restoreTop, behavior: "auto" });
     previousToolbarScrollY = restoreTop;
-    setTimeout(() => {
-      if (state.currentView === viewId) window.scrollTo({ top: restoreTop, behavior: "auto" });
-    }, 80);
-  }));
+  });
 }
 
 function isLandscapeWorkspace() {
@@ -2519,24 +2595,30 @@ async function runGlobalSearch() {
   if (query.length < 2) {
     els.searchSummary.textContent = "Enter at least 2 characters";
     els.searchResults.innerHTML = "";
+    renderSearchBookIndex([], "Enter a search to see matching books");
     return;
   }
 
   if (!selectedSources.size) {
     els.searchSummary.textContent = "Choose at least one book to search";
     els.searchResults.innerHTML = `<div class="status">Open “Search in” and select one or more downloaded books.</div>`;
+    renderSearchBookIndex([], "Choose one or more books");
     return;
   }
 
   els.runSearch.disabled = true;
   els.searchSummary.textContent = "Searching offline bundle...";
-  els.searchResults.innerHTML = `<div class="status">Searching bundled texts...</div>`;
+  els.searchResults.innerHTML = `<div class="status live-search-status"><span aria-hidden="true"></span>Searching bundled texts...</div>`;
+  renderSearchBookIndex([], "Searching selected books…");
+  const liveRenderer = createLiveSearchRenderer(query, token);
 
   try {
-    const results = await searchOfflineTexts(query, selectedSources, token);
+    const results = await searchOfflineTexts(query, selectedSources, token, (result) => liveRenderer.add(result));
     if (state.searchAbort !== token) return;
+    liveRenderer.stop();
     renderSearchResults(results, query);
   } catch (error) {
+    liveRenderer.stop();
     els.searchResults.innerHTML = `<div class="status">${escapeHTML(error.message)}</div>`;
     els.searchSummary.textContent = "Search failed";
   } finally {
@@ -2544,12 +2626,15 @@ async function runGlobalSearch() {
   }
 }
 
-async function searchOfflineTexts(query, selectedSources, token) {
+async function searchOfflineTexts(query, selectedSources, token, onResult) {
   const expression = parseSearchExpression(query);
   const results = [];
   const pushResult = (_sourceId, result) => {
     const haystack = normalizeSearchText(`${result.title} ${result.label} ${result.text} ${result.extra || ""}`);
-    if (expression.matches(haystack)) results.push(result);
+    if (expression.matches(haystack)) {
+      results.push(result);
+      onResult?.(result);
+    }
   };
   const shouldStop = () => state.searchAbort !== token;
 
@@ -2732,7 +2817,59 @@ async function searchOfflineTexts(query, selectedSources, token) {
   return results;
 }
 
-function renderSearchResults(results, query) {
+function createLiveSearchRenderer(query, token) {
+  const queue = [];
+  const groups = new Map();
+  let frame = 0;
+  let count = 0;
+  let started = false;
+  const flush = () => {
+    frame = 0;
+    if (state.searchAbort !== token) return;
+    if (!started) {
+      els.searchResults.innerHTML = `<div class="live-search-grid" aria-live="polite"></div>`;
+      started = true;
+    }
+    const batch = queue.splice(0, 100);
+    const grid = els.searchResults.querySelector(".live-search-grid");
+    batch.forEach((result) => {
+      const book = result.book || result.type;
+      if (!groups.has(book)) {
+        const index = groups.size;
+        grid?.insertAdjacentHTML("beforeend", `<section class="search-book-group" id="search-book-${index}" data-book="${escapeHTML(book)}"><div class="search-book-results"></div></section>`);
+        groups.set(book, { index, count: 0 });
+      }
+      const group = groups.get(book);
+      group.count += 1;
+      grid?.querySelector(`#search-book-${group.index} .search-book-results`)?.insertAdjacentHTML("beforeend", `
+        <article class="search-result live-result" data-search-id="${escapeHTML(result.searchId)}">
+          <button type="button" tabindex="-1" aria-hidden="true">
+            <span>${escapeHTML(result.type)}</span>
+            <strong>${highlightSearchText(result.title, query)}</strong>
+            <small>${highlightSearchText(result.label || "", query)}</small>
+            <p>${highlightSearchText(makeSnippet(result.text || result.extra || "", query), query)}</p>
+          </button>
+        </article>`);
+    });
+    renderSearchBookIndex([...groups].map(([book, group]) => [book, group.count]), "Searching selected books…", true);
+    if (queue.length) frame = requestAnimationFrame(flush);
+  };
+  return {
+    add(result) {
+      count += 1;
+      queue.push({ ...result, searchId: `${result.type}:${result.key}:${count - 1}` });
+      els.searchSummary.textContent = `${count} result${count === 1 ? "" : "s"} so far for "${query}"`;
+      if (!frame) frame = requestAnimationFrame(flush);
+    },
+    stop() {
+      if (frame) cancelAnimationFrame(frame);
+      frame = 0;
+      queue.length = 0;
+    },
+  };
+}
+
+function renderSearchResults(results, query, searching = false) {
   results = Array.isArray(results) ? results.filter((result) => result && result.key) : [];
   state.searchResults = results.map((result, index) => ({ ...result, searchId: `${result.type}:${result.key}:${index}` }));
   const groups = new Map();
@@ -2742,7 +2879,7 @@ function renderSearchResults(results, query) {
     groups.get(book).push(result);
   });
   els.searchSummary.textContent = results.length
-    ? `${results.length} result${results.length === 1 ? "" : "s"} for "${query}"`
+    ? `${results.length} result${results.length === 1 ? "" : "s"}${searching ? " so far" : ""} for "${query}"`
     : `No offline results for "${query}"`;
   els.searchResults.innerHTML = state.searchResults.length
     ? [...groups.entries()].map(([book, bookResults], groupIndex) => `
@@ -2769,19 +2906,44 @@ function renderSearchResults(results, query) {
         </div>
       </section>
     `).join("")
-    : `<div class="search-empty" role="status"><span aria-hidden="true">⌕</span><strong>No matches yet</strong><p>Try a shorter phrase, another spelling, or choose more downloaded books in “Search in”.</p></div>`;
+    : searching
+      ? `<div class="status live-search-status"><span aria-hidden="true"></span>Searching bundled texts...</div>`
+      : `<div class="search-empty" role="status"><span aria-hidden="true">⌕</span><strong>No matches yet</strong><p>Try a shorter phrase, another spelling, or choose more downloaded books in “Search in”.</p></div>`;
 
-  els.searchBookIndex.hidden = groups.size === 0;
-  els.searchBookIndex.innerHTML = groups.size ? `
+  renderSearchBookIndex([...groups.entries()].map(([book, bookResults]) => [book, bookResults.length]), results.length ? "" : "No matching books");
+  bindRenderedSearchResults();
+  updateSearchSelectionUI();
+  updateSearchJumpActive();
+}
+
+function renderSearchBookIndex(entries, placeholder = "Matching books will appear here", preservePosition = false) {
+  els.searchBookIndex.hidden = false;
+  if (preservePosition && entries.length) {
+    const rail = els.searchBookIndex.querySelector(":scope > div");
+    rail?.querySelector(".book-index-placeholder")?.remove();
+    entries.forEach(([book, resultCount], index) => {
+      let button = rail?.querySelector(`[data-group-index="${index}"]`);
+      if (!button) {
+        rail?.insertAdjacentHTML("beforeend", `<button type="button" data-group-index="${index}">${escapeHTML(book)} <span>${resultCount}</span></button>`);
+        button = rail?.querySelector(`[data-group-index="${index}"]`);
+        button?.addEventListener("click", () => scrollToSearchBook(index));
+      } else {
+        button.querySelector("span").textContent = String(resultCount);
+      }
+    });
+    return;
+  }
+  els.searchBookIndex.innerHTML = `
     <span class="book-index-title">Jump to</span>
-    <div>${[...groups.entries()].map(([book, bookResults], index) => `
-      <button type="button" data-group-index="${index}">${escapeHTML(book)} <span>${bookResults.length}</span></button>
-    `).join("")}</div>
-  ` : "";
+    <div>${entries.length ? entries.map(([book, resultCount], index) => `
+      <button type="button" data-group-index="${index}">${escapeHTML(book)} <span>${resultCount}</span></button>
+    `).join("") : `<span class="book-index-placeholder">${escapeHTML(placeholder)}</span>`}</div>`;
   els.searchBookIndex.querySelectorAll("[data-group-index]").forEach((button) => {
     button.addEventListener("click", () => scrollToSearchBook(Number(button.dataset.groupIndex)));
   });
+}
 
+function bindRenderedSearchResults() {
   els.searchResults.querySelectorAll("button[data-key]").forEach((button) => {
     button.addEventListener("click", () => {
       const card = button.closest(".search-result");
@@ -2797,8 +2959,6 @@ function renderSearchResults(results, query) {
   els.searchResults.querySelectorAll(".search-check input").forEach((checkbox) => {
     checkbox.addEventListener("change", () => toggleSearchResult(checkbox.closest(".search-result").dataset.searchId, checkbox.checked));
   });
-  updateSearchSelectionUI();
-  updateSearchJumpActive();
 }
 
 function scrollToSearchBook(index) {

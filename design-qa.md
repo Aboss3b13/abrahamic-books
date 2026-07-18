@@ -1,12 +1,12 @@
 # Design QA — Mobile Notes Refresh
 
-- Source visual truth: `/home/abbas/quran-mobile/tmp/design-capture/source-option-2.png`
-- Browser-rendered implementation: `/home/abbas/quran-mobile/tmp/design-capture/implementation-notes-390x844.png`
-- Combined comparison evidence: `/home/abbas/quran-mobile/tmp/design-capture/qa-comparison-final.png`
+- Source visual truth: `/home/abbas/Abrahamic Books/tmp/design-capture/source-option-2.png`
+- Browser-rendered implementation: `/home/abbas/Abrahamic Books/tmp/design-capture/implementation-notes-390x844.png`
+- Combined comparison evidence: `/home/abbas/Abrahamic Books/tmp/design-capture/qa-comparison-final.png`
 - Additional evidence: `implementation-settings-390x844.png`, `implementation-search-filters-390x844.png`, `implementation-notes-account-390x844.png`, and `implementation-note-editor-390x844.png` in the same capture directory
 - Viewport: 390 × 844, mobile; responsive overflow checks at 320 × 844 and 768 × 844
 - State: Notes selected, three realistic local notes, sepia theme, system UI font, default recently-updated sort
-- Production URL tested: `https://abbas2.ali-raza.net/quran/`
+- Production URL tested: `https://abbas2.ali-raza.net/AbrahamicBooks/`
 
 ## Full-view comparison evidence
 
