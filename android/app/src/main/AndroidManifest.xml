@@ -62,29 +62,13 @@
             <intent-filter><action android:name="android.appwidget.action.APPWIDGET_UPDATE" /></intent-filter>
             <meta-data android:name="android.appwidget.provider" android:resource="@xml/continue_widget_info" />
         </receiver>
-        <receiver android:name=".ShortcutsWidgetProvider" android:label="@string/widget_shortcuts_name" android:exported="true">
-            <intent-filter><action android:name="android.appwidget.action.APPWIDGET_UPDATE" /></intent-filter>
-            <meta-data android:name="android.appwidget.provider" android:resource="@xml/shortcuts_widget_info" />
-        </receiver>
         <receiver android:name=".NotesWidgetProvider" android:label="@string/widget_notes_name" android:exported="true">
             <intent-filter><action android:name="android.appwidget.action.APPWIDGET_UPDATE" /></intent-filter>
             <meta-data android:name="android.appwidget.provider" android:resource="@xml/notes_widget_info" />
         </receiver>
-        <receiver android:name=".QuranWidgetProvider" android:label="@string/widget_quran_name" android:exported="true">
-            <intent-filter><action android:name="android.appwidget.action.APPWIDGET_UPDATE" /></intent-filter>
-            <meta-data android:name="android.appwidget.provider" android:resource="@xml/daily_widget_info" />
-        </receiver>
-        <receiver android:name=".BibleWidgetProvider" android:label="@string/widget_bible_name" android:exported="true">
-            <intent-filter><action android:name="android.appwidget.action.APPWIDGET_UPDATE" /></intent-filter>
-            <meta-data android:name="android.appwidget.provider" android:resource="@xml/daily_widget_info" />
-        </receiver>
-        <receiver android:name=".HadithWidgetProvider" android:label="@string/widget_hadith_name" android:exported="true">
-            <intent-filter><action android:name="android.appwidget.action.APPWIDGET_UPDATE" /></intent-filter>
-            <meta-data android:name="android.appwidget.provider" android:resource="@xml/daily_widget_info" />
-        </receiver>
         <receiver android:name=".SearchWidgetProvider" android:label="@string/widget_search_name" android:exported="true">
             <intent-filter><action android:name="android.appwidget.action.APPWIDGET_UPDATE" /></intent-filter>
-            <meta-data android:name="android.appwidget.provider" android:resource="@xml/shortcuts_widget_info" />
+            <meta-data android:name="android.appwidget.provider" android:resource="@xml/search_widget_info" />
         </receiver>
 
         <provider

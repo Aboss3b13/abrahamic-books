@@ -371,12 +371,12 @@ a,
 input,
 select,
 textarea {
-  transition: border-color 180ms cubic-bezier(.2,.8,.2,1), background-color 180ms cubic-bezier(.2,.8,.2,1), color 180ms cubic-bezier(.2,.8,.2,1), box-shadow 180ms cubic-bezier(.2,.8,.2,1), transform 180ms cubic-bezier(.2,.8,.2,1), opacity 180ms cubic-bezier(.2,.8,.2,1);
+  transition: border-color 260ms cubic-bezier(.16,1,.3,1), background-color 260ms cubic-bezier(.16,1,.3,1), color 260ms cubic-bezier(.16,1,.3,1), box-shadow 320ms cubic-bezier(.16,1,.3,1), transform 320ms cubic-bezier(.16,1,.3,1), opacity 240ms ease;
 }
 
 button:active,
 .pill-button:active {
-  transform: scale(0.97);
+  transform: translateY(1px) scale(0.955);
 }
 
 .app-shell {
@@ -483,6 +483,7 @@ main {
 .view.active {
   display: block;
   min-height: calc(100svh - var(--topbar-height) - 90px);
+  animation: view-arrive 420ms cubic-bezier(.16,1,.3,1) both;
 }
 
 /* Structural wrappers stay invisible to the original portrait/mobile flow. */
@@ -498,7 +499,8 @@ main {
   margin-bottom: 12px;
 }
 
-.reading-dashboard > div {
+.reading-dashboard > div,
+.reading-dashboard > button {
   min-width: 0;
   padding: 11px 12px;
   border: 1px solid var(--line);
@@ -506,6 +508,19 @@ main {
   background: color-mix(in srgb, var(--panel) 86%, transparent);
   box-shadow: var(--soft-shadow);
 }
+
+.dashboard-widget { position: relative; display: flex; align-items: center; gap: 10px; min-width: 0; min-height: 72px; text-align: left; color: var(--ink); }
+.dashboard-action { width: 100%; font: inherit; cursor: pointer; }
+.dashboard-action:not(:disabled):hover { transform: translateY(-3px); border-color: color-mix(in srgb, var(--green-2) 50%, var(--line)); box-shadow: 0 14px 30px color-mix(in srgb, var(--green) 13%, transparent); }
+.dashboard-action:disabled { cursor: default; opacity: .72; }
+.dashboard-icon { display: grid; place-items: center; width: 38px; height: 38px; flex: 0 0 38px; border-radius: 12px; color: var(--green); background: color-mix(in srgb, var(--green-2) 12%, var(--panel)); font-size: 1.08rem; }
+.last-read-widget.has-marker .dashboard-icon { color: color-mix(in srgb, var(--gold) 80%, var(--ink)); background: var(--gold-soft); }
+.dashboard-copy { display: block; min-width: 0; flex: 1 1 auto; }
+.dashboard-copy strong,
+.dashboard-copy small { display: block; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.dashboard-copy small { margin-top: 3px; color: var(--muted); font-size: .68rem; }
+.dashboard-chevron { flex: 0 0 auto; color: var(--muted); font-size: .85rem; transition: transform 260ms cubic-bezier(.16,1,.3,1); }
+.dashboard-action:hover .dashboard-chevron { transform: translateX(3px); }
 
 .dashboard-label {
   display: block;
@@ -3724,4 +3739,45 @@ dialog::backdrop { animation: backdrop-in 300ms ease-out both; }
   .sync-status-badge { max-width: 116px; padding-inline: 9px; }
   .sync-status-badge span { overflow: hidden; text-overflow: ellipsis; }
   .notes-select-button span { display: none; }
+}
+
+/* Shared tactile motion language */
+button,
+a.text-button,
+a.pill-button { position: relative; isolation: isolate; }
+.button-ripple { position: absolute; z-index: 0; border-radius: 50%; pointer-events: none; background: currentColor; opacity: 0; transform: scale(.08); animation: button-ripple 620ms cubic-bezier(.16,1,.3,1); }
+.text-button:not(:disabled):hover,
+.pill-button:not(:disabled):hover,
+.icon-button:not(:disabled):hover,
+.mini-button:not(:disabled):hover,
+.settings-shortcut:not(:disabled):hover,
+.share-mode:not(:disabled):hover { transform: translateY(-2px); box-shadow: 0 10px 24px color-mix(in srgb, var(--green) 12%, transparent); }
+
+.last-read-marker { width: auto; min-width: 96px; padding: 0 11px; display: inline-flex; align-items: center; justify-content: center; gap: 6px; color: color-mix(in srgb, var(--gold) 78%, var(--ink)); border-color: color-mix(in srgb, var(--gold) 30%, var(--line)); background: color-mix(in srgb, var(--gold-soft) 48%, var(--panel)); overflow: visible; }
+.last-read-marker span { font-size: .68rem; font-weight: 900; white-space: nowrap; }
+.last-read-marker.active { color: #fff; border-color: var(--green); background: linear-gradient(135deg, var(--green), var(--teal)); box-shadow: 0 7px 18px color-mix(in srgb, var(--green) 28%, transparent); }
+.last-read-marker.last-read-confirmed { animation: bookmark-confirm 760ms cubic-bezier(.16,1,.3,1); }
+.bookmark-burst { position: absolute; inset: 50%; width: 1px; height: 1px; pointer-events: none; }
+.bookmark-burst i { --burst-distance: 38px; position: absolute; width: 6px; height: 6px; margin: -3px; border-radius: 50%; background: var(--gold); box-shadow: 0 0 0 3px color-mix(in srgb, var(--gold) 18%, transparent); animation: bookmark-particle 720ms cubic-bezier(.16,.8,.24,1) forwards; transform: rotate(var(--burst-angle)) translateX(0) scale(.4); }
+
+@keyframes view-arrive { from { opacity: 0; transform: translateY(10px) scale(.995); } to { opacity: 1; transform: none; } }
+@keyframes button-ripple { 0% { opacity: .15; transform: scale(.08); } 72% { opacity: .08; } 100% { opacity: 0; transform: scale(1); } }
+@keyframes bookmark-confirm { 0% { transform: scale(1); } 28% { transform: scale(.84) rotate(-3deg); } 62% { transform: scale(1.18) rotate(2deg); box-shadow: 0 0 0 8px color-mix(in srgb, var(--gold) 20%, transparent), 0 14px 32px color-mix(in srgb, var(--green) 30%, transparent); } 100% { transform: scale(1); } }
+@keyframes bookmark-particle { 0% { opacity: 0; transform: rotate(var(--burst-angle)) translateX(3px) scale(.4); } 25% { opacity: 1; } 100% { opacity: 0; transform: rotate(var(--burst-angle)) translateX(var(--burst-distance)) scale(0); } }
+
+@media (max-width: 520px) {
+  .reading-dashboard { grid-template-columns: 1fr 1fr; }
+  .reading-dashboard .current-reading-widget { grid-column: 1 / -1; }
+  .dashboard-widget { min-height: 68px; }
+  .dashboard-chevron { display: none; }
+}
+@media (max-width: 390px) {
+  .ayah-actions { gap: 4px; }
+  .mini-button { min-width: 32px; }
+  .last-read-marker { min-width: 82px; width: auto; padding: 0 8px; }
+  .last-read-marker span { font-size: .62rem; }
+}
+@media (max-width: 340px) {
+  .last-read-marker { min-width: 36px; width: 36px; padding: 0; }
+  .last-read-marker span { display: none; }
 }

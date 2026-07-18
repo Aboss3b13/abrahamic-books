@@ -151,6 +151,9 @@ const els = {
   dashboardSurah: document.querySelector("#dashboardSurah"),
   dashboardProgress: document.querySelector("#dashboardProgress"),
   dashboardNotes: document.querySelector("#dashboardNotes"),
+  dashboardLastRead: document.querySelector("#dashboardLastRead"),
+  dashboardLastReadLabel: document.querySelector("#dashboardLastReadLabel"),
+  dashboardNotesCard: document.querySelector("#dashboardNotesCard"),
   verses: document.querySelector("#verses"),
   readSelectionBar: document.querySelector("#readSelectionBar"),
   readSelectionCount: document.querySelector("#readSelectionCount"),
@@ -450,6 +453,8 @@ function bindEvents() {
   els.tafsirButton.addEventListener("click", () => openDialog(state.scripture === "quran" ? els.tafsirSheet : els.commentarySheet));
   els.commentarySearch.addEventListener("input", renderCommentaryList);
   els.lastReadButton.addEventListener("click", restoreLastRead);
+  els.dashboardLastRead.addEventListener("click", restoreLastRead);
+  els.dashboardNotesCard.addEventListener("click", () => switchView("notesView", true));
   els.copyOriginalOnly.addEventListener("click", () => applyVerseCopyPreset("original"));
   els.copyTranslationOnly.addEventListener("click", () => applyVerseCopyPreset("translation"));
   els.copySelectedVerse.addEventListener("click", copySelectedVerseText);
@@ -575,6 +580,7 @@ function bindEvents() {
   document.querySelectorAll(".nav-item").forEach((button) => {
     button.addEventListener("click", () => switchView(button.dataset.view, true));
   });
+  installButtonMotion();
   setupSwipeNavigation();
 
   window.addEventListener("scroll", handleToolbarScroll, { passive: true });
@@ -1091,7 +1097,7 @@ function renderVerse(verse) {
           <button class="mini-button" type="button" data-action="copy" aria-label="Copy ${escapeHTML(displayKey(verse))}" title="Copy verse"><i class="ti ti-copy" aria-hidden="true"></i></button>
           <button class="mini-button share-mini-button" type="button" data-action="share" aria-label="Share ${escapeHTML(displayKey(verse))}" title="Share verse">${shareIcon()}</button>
           ${isQuran ? `<button class="mini-button" type="button" data-action="tafsir" aria-label="Tafsir for ${verse.verse_key}">≡</button>` : !isHadith ? `<button class="mini-button" type="button" data-action="commentary" aria-label="Commentary for ${escapeHTML(displayKey(verse))}">≡</button>` : ""}
-          <button class="mini-button" type="button" data-action="bookmark" aria-label="Save ${verse.verse_key} as last read">⌖</button>
+          <button class="mini-button last-read-marker ${isLastRead(verse.verse_key) ? "active" : ""}" type="button" data-action="bookmark" aria-label="Mark ${escapeHTML(displayKey(verse))} as last read" title="Mark as last read"><i class="ti ti-bookmark${isLastRead(verse.verse_key) ? "-filled" : ""}" aria-hidden="true"></i><span>Last read</span></button>
         </div>
       </div>
       ${isQuran ? `${state.showArabic ? `<div class="arabic" lang="ar" dir="rtl">${renderArabicWords(verse)}</div>` : ""}<div class="translations">${translations}</div>` : `${state.showOriginalBible && verse.originalText ? `<div class="original-scripture" dir="${verse.scripture === "old" || isHadith ? "rtl" : "ltr"}">${isHadith ? escapeHTML(verse.originalText) : renderOriginalWords(verse)}</div>` : ""}<div class="scripture-text">${escapeHTML(verse.text || "")}</div>`}
@@ -1876,7 +1882,6 @@ async function jumpToReference(key, behavior = "smooth", focused = true) {
   state.focusedVerseKey = focused ? key : null;
   await ensureReferenceLoaded(key);
   renderVerses();
-  recordLastRead(key);
   switchView("readView", false, sourceView === "readView" ? null : sourceScrollTop);
   await waitForStableLayout();
   if (focused) {
@@ -1988,10 +1993,32 @@ function refreshVerse(key) {
 }
 
 function saveLastRead(key) {
+  const previousKey = localStorage.getItem("quran-reader-last-read-v1");
   recordLastRead(key);
   updateDashboard(key);
-  setStatus(`Saved ${key} as last read.`);
+  if (previousKey && previousKey !== key) refreshVerse(previousKey);
+  refreshVerse(key);
+  const marker = els.verses.querySelector(`[data-key="${CSS.escape(key)}"] [data-action="bookmark"]`);
+  playLastReadAnimation(marker);
+  setStatus(`${formatReferenceKey(key)} is now your last read.`);
   setTimeout(() => setStatus(""), 1600);
+}
+
+function isLastRead(key) {
+  return localStorage.getItem("quran-reader-last-read-v1") === key;
+}
+
+function playLastReadAnimation(button) {
+  if (!button || matchMedia("(prefers-reduced-motion: reduce)").matches) return;
+  button.classList.remove("last-read-confirmed");
+  void button.offsetWidth;
+  button.classList.add("last-read-confirmed");
+  const burst = document.createElement("span");
+  burst.className = "bookmark-burst";
+  burst.setAttribute("aria-hidden", "true");
+  burst.innerHTML = Array.from({ length: 8 }, (_, index) => `<i style="--burst-angle:${index * 45}deg"></i>`).join("");
+  button.append(burst);
+  setTimeout(() => { burst.remove(); button.classList.remove("last-read-confirmed"); }, 900);
 }
 
 function recordLastRead(key) {
@@ -2075,14 +2102,13 @@ function openVerseCopy(key) {
 
 async function shareVerseDirect(key, button) {
   const url = makePublicLink(`?ref=${encodeURIComponent(key)}`);
-  const title = formatReferenceKey(key);
   try {
     if (Capacitor.isNativePlatform()) {
-      await Share.share({ title, text: title, url, dialogTitle: `Share ${title}` });
+      await Share.share({ text: url, dialogTitle: "Share link" });
       return;
     }
     if (navigator.share) {
-      await navigator.share({ title, text: title, url });
+      await navigator.share({ text: url });
       return;
     }
   } catch (error) {
@@ -3517,12 +3543,29 @@ function updateDashboard(activeKey = localStorage.getItem("quran-reader-last-rea
   const hadithBook = state.hadithBooks.find((item) => item.key === state.selectedHadithBook);
   els.dashboardSurah.textContent = isQuran ? chapter?.name_simple || "Quran" : isHadith ? hadithBook?.name || "Hadith" : state.selectedBibleBook;
 
-  const active = parseReferenceKey(activeKey || "");
   const verseCount = chapter?.verses_count || state.verses.length || 0;
-  const activeChapter = isQuran ? state.selectedChapter : isHadith ? state.selectedHadithSection : state.selectedBibleChapter;
-  const progress = active.type === state.scripture && active.chapter === activeChapter ? active.verse : state.verses.length ? 1 : 0;
-  els.dashboardProgress.textContent = `${Math.min(progress, verseCount)} / ${verseCount}`;
+  els.dashboardProgress.textContent = `${verseCount} ${isHadith ? "hadith" : isQuran ? "ayat" : "verses"}`;
+  const savedKey = localStorage.getItem("quran-reader-last-read-v1");
+  els.dashboardLastReadLabel.textContent = savedKey ? formatReferenceKey(savedKey) : "Not marked yet";
+  els.dashboardLastRead.disabled = !savedKey;
+  els.dashboardLastRead.classList.toggle("has-marker", Boolean(savedKey));
   els.dashboardNotes.textContent = String(Object.values(state.notes).filter((note) => note.title?.trim() || note.text?.trim() || note.tags?.length || note.references?.length || note.standalone).length);
+}
+
+function installButtonMotion() {
+  document.addEventListener("pointerdown", (event) => {
+    const button = event.target.closest("button, a.text-button, a.pill-button");
+    if (!button || button.matches(":disabled") || matchMedia("(prefers-reduced-motion: reduce)").matches) return;
+    const bounds = button.getBoundingClientRect();
+    const ripple = document.createElement("span");
+    const size = Math.max(bounds.width, bounds.height) * 1.8;
+    ripple.className = "button-ripple";
+    ripple.style.width = ripple.style.height = `${size}px`;
+    ripple.style.left = `${event.clientX - bounds.left - size / 2}px`;
+    ripple.style.top = `${event.clientY - bounds.top - size / 2}px`;
+    button.append(ripple);
+    ripple.addEventListener("animationend", () => ripple.remove(), { once: true });
+  }, { passive: true });
 }
 
 function changeArabicScale(delta) {
