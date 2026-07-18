@@ -1,0 +1,9 @@
+<?xml version="1.0" encoding="utf-8"?>
+<appwidget-provider xmlns:android="http://schemas.android.com/apk/res/android"
+    android:minWidth="180dp" android:minHeight="180dp"
+    android:minResizeWidth="120dp" android:minResizeHeight="140dp"
+    android:initialLayout="@layout/widget_abrahamic"
+    android:configure="com.aboss3b13.abrahamicbooks.WidgetConfigActivity"
+    android:resizeMode="horizontal|vertical"
+    android:widgetCategory="home_screen"
+    android:updatePeriodMillis="3600000" />

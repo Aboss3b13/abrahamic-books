@@ -1,0 +1,12 @@
+[
+  {
+    "relation": ["delegate_permission/common.handle_all_urls"],
+    "target": {
+      "namespace": "android_app",
+      "package_name": "com.aboss3b13.abrahamicbooks",
+      "sha256_cert_fingerprints": [
+        "C0:A5:78:00:CC:61:2E:CC:4E:0D:8C:AE:05:38:31:E5:18:26:9A:1B:2A:C6:00:38:F1:62:E1:8E:4F:95:D5:5E"
+      ]
+    }
+  }
+]

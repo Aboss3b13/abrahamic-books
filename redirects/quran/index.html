@@ -1,0 +1,27 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <meta name="robots" content="noindex">
+    <title>Abrahamic Books</title>
+    <script>
+      const destination = new URL("/AbrahamicBooks/", location.origin);
+      destination.search = location.search;
+      destination.hash = location.hash;
+      if ("serviceWorker" in navigator) {
+        navigator.serviceWorker.getRegistrations()
+          .then((registrations) => Promise.all(registrations
+            .filter((registration) => new URL(registration.scope).pathname.startsWith("/quran"))
+            .map((registration) => registration.unregister())))
+          .finally(() => location.replace(destination));
+      } else {
+        location.replace(destination);
+      }
+    </script>
+    <noscript><meta http-equiv="refresh" content="0; url=/AbrahamicBooks/"></noscript>
+  </head>
+  <body>
+    <p>Abrahamic Books moved to <a href="/AbrahamicBooks/">/AbrahamicBooks/</a>.</p>
+  </body>
+</html>

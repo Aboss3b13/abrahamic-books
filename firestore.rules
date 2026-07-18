@@ -1,0 +1,28 @@
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+    function signedIn() { return request.auth != null; }
+    function email() { return request.auth.token.email.lower(); }
+
+    match /users/{userId}/notes/{noteId} {
+      allow read, write: if signedIn() && request.auth.uid == userId;
+    }
+
+    match /sharedNotes/{noteId} {
+      function canAccess(data) {
+        return signedIn() && (data.ownerUid == request.auth.uid || email() in data.memberEmails);
+      }
+      allow create: if signedIn()
+        && request.resource.data.ownerUid == request.auth.uid
+        && request.resource.data.ownerEmail == email()
+        && request.resource.data.memberEmails is list;
+      allow read: if canAccess(resource.data);
+      allow update: if canAccess(resource.data)
+        && request.resource.data.ownerUid == resource.data.ownerUid
+        && request.resource.data.ownerEmail == resource.data.ownerEmail
+        && (request.auth.uid == resource.data.ownerUid
+          || request.resource.data.memberEmails == resource.data.memberEmails);
+      allow delete: if signedIn() && resource.data.ownerUid == request.auth.uid;
+    }
+  }
+}

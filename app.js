@@ -1,4 +1,5 @@
-import { Capacitor } from "@capacitor/core";
+import { Capacitor, registerPlugin } from "@capacitor/core";
+import { App as CapacitorApp } from "@capacitor/app";
 import { Directory, Encoding, Filesystem } from "@capacitor/filesystem";
 import { Share } from "@capacitor/share";
 import "@tabler/icons-webfont/dist/tabler-icons.min.css";
@@ -17,8 +18,10 @@ const STORE = {
   downloadedTafsirs: "quran-downloaded-tafsirs",
   downloadedCommentaries: "bible-downloaded-commentaries",
 };
-const PUBLIC_APP_URL = "https://abbas2.ali-raza.net/quran/";
+const PUBLIC_APP_URL = "https://abbas2.ali-raza.net/AbrahamicBooks/";
 let notesSystem;
+const NotesFiles = registerPlugin("NotesFiles");
+const WidgetData = registerPlugin("WidgetData");
 
 const OLD_TESTAMENT = [
   ["Genesis", 50], ["Exodus", 40], ["Leviticus", 27], ["Numbers", 36], ["Deuteronomy", 34],
@@ -88,6 +91,7 @@ const state = {
   lineScale: 1,
   compactCards: false,
   showOriginalBible: true,
+  showArabic: true,
   cardStyle: "soft",
   headerStyle: "pattern",
   customTheme: {
@@ -113,6 +117,7 @@ const state = {
   originalWordCache: {},
   currentNoteKey: null,
   focusedVerseKey: null,
+  copyVerseKey: null,
   searchIndex: null,
   searchAbort: 0,
   currentView: "readView",
@@ -165,6 +170,13 @@ const els = {
   increaseFont: document.querySelector("#increaseFont"),
   settingsButton: document.querySelector("#settingsButton"),
   readerSettingsSheet: document.querySelector("#readerSettingsSheet"),
+  verseCopySheet: document.querySelector("#verseCopySheet"),
+  verseCopySubtitle: document.querySelector("#verseCopySubtitle"),
+  verseCopyOptions: document.querySelector("#verseCopyOptions"),
+  copyOriginalOnly: document.querySelector("#copyOriginalOnly"),
+  copyTranslationOnly: document.querySelector("#copyTranslationOnly"),
+  copySelectedVerse: document.querySelector("#copySelectedVerse"),
+  shareVerseLink: document.querySelector("#shareVerseLink"),
   settingsSummary: document.querySelector("#settingsSummary"),
   accountSettingsButton: document.querySelector("#accountSettingsButton"),
   themeSelect: document.querySelector("#themeSelect"),
@@ -172,6 +184,7 @@ const els = {
   arabicFontSelect: document.querySelector("#arabicFontSelect"),
   translationFontSelect: document.querySelector("#translationFontSelect"),
   originalLanguageToggle: document.querySelector("#originalLanguageToggle"),
+  arabicTextToggle: document.querySelector("#arabicTextToggle"),
   arabicSizeRange: document.querySelector("#arabicSizeRange"),
   translationSizeRange: document.querySelector("#translationSizeRange"),
   lineHeightRange: document.querySelector("#lineHeightRange"),
@@ -337,9 +350,24 @@ async function init() {
     renderNotes();
     await loadCurrentScripture();
     await openSharedLink();
+    await setupAppLinks();
   } catch (error) {
     setStatus(`Could not load Quran data. ${error.message}`);
   }
+}
+
+async function setupAppLinks() {
+  if (!Capacitor.isNativePlatform()) return;
+  const openAppUrl = async (url) => {
+    const incoming = new URL(url);
+    const supportedPath = incoming.pathname.startsWith("/AbrahamicBooks") || incoming.pathname.startsWith("/quran");
+    if (incoming.hostname !== "abbas2.ali-raza.net" || !supportedPath) return;
+    history.replaceState(null, "", `${location.pathname}${incoming.search}${incoming.hash}`);
+    await openSharedLink();
+  };
+  await CapacitorApp.addListener("appUrlOpen", ({ url }) => openAppUrl(url));
+  const launch = await CapacitorApp.getLaunchUrl();
+  if (launch?.url) await openAppUrl(launch.url);
 }
 
 function bindEvents() {
@@ -419,6 +447,10 @@ function bindEvents() {
   els.tafsirButton.addEventListener("click", () => openDialog(state.scripture === "quran" ? els.tafsirSheet : els.commentarySheet));
   els.commentarySearch.addEventListener("input", renderCommentaryList);
   els.lastReadButton.addEventListener("click", restoreLastRead);
+  els.copyOriginalOnly.addEventListener("click", () => applyVerseCopyPreset("original"));
+  els.copyTranslationOnly.addEventListener("click", () => applyVerseCopyPreset("translation"));
+  els.copySelectedVerse.addEventListener("click", copySelectedVerseText);
+  els.shareVerseLink.addEventListener("click", copyCurrentVerseLink);
   els.themeButton.addEventListener("click", toggleTheme);
   els.decreaseFont.addEventListener("click", () => changeArabicScale(-0.08));
   els.increaseFont.addEventListener("click", () => changeArabicScale(0.08));
@@ -429,6 +461,10 @@ function bindEvents() {
   els.originalLanguageToggle.addEventListener("change", () => {
     updateReaderPref("showOriginalBible", els.originalLanguageToggle.checked);
     if (state.scripture !== "quran") renderVerses();
+  });
+  els.arabicTextToggle.addEventListener("change", () => {
+    updateReaderPref("showArabic", els.arabicTextToggle.checked);
+    if (state.scripture === "quran") renderVerses();
   });
   els.arabicSizeRange.addEventListener("input", () => updateReaderPref("arabicScale", Number(els.arabicSizeRange.value)));
   els.translationSizeRange.addEventListener("input", () => updateReaderPref("translationScale", Number(els.translationSizeRange.value)));
@@ -528,10 +564,15 @@ function bindEvents() {
     if (!state.readSelectMode) state.readSelectMode = true;
     toggleReadVerse(card.dataset.key, true);
   });
+  installLongPress(els.notesList, ".note-card", (card) => {
+    if (!state.noteSelectMode) state.noteSelectMode = true;
+    toggleSelectedNote(card.dataset.noteKey);
+  });
 
   document.querySelectorAll(".nav-item").forEach((button) => {
     button.addEventListener("click", () => switchView(button.dataset.view, true));
   });
+  setupSwipeNavigation();
 
   window.addEventListener("scroll", handleToolbarScroll, { passive: true });
   document.querySelectorAll(".reader-controls, .view-toolbar").forEach((toolbar) => {
@@ -570,7 +611,8 @@ function bindEvents() {
     if (button.dataset.action === "tafsir") openTafsir(key);
     if (button.dataset.action === "commentary") openBibleCommentary(key);
     if (button.dataset.action === "bookmark") saveLastRead(key);
-    if (button.dataset.action === "share") shareVerse(key);
+    if (button.dataset.action === "copy") openVerseCopy(key);
+    if (button.dataset.action === "share") shareVerseDirect(key, button);
   });
 
   els.verses.addEventListener("click", (event) => {
@@ -584,6 +626,52 @@ function bindEvents() {
     if (!word) return;
     openOriginalWordTranslation(word.dataset.word, word.dataset.lang, word.closest(".ayah-card")?.dataset.key);
   });
+}
+
+function setupSwipeNavigation() {
+  const views = [...document.querySelectorAll(".bottom-nav .nav-item")].map((item) => item.dataset.view);
+  const main = document.querySelector("main");
+  let startX = 0;
+  let startY = 0;
+  let startedAt = 0;
+  let blocked = false;
+  let axis = "";
+  let transitioning = false;
+  const isHorizontalScroller = (target) => {
+    if (target.closest("input, textarea, select, dialog, .sheet, .bottom-nav, .search-book-index, .quick-actions, .notes-tabs, .notes-filter-row, .tag-filters, .ayah-actions, .selection-bar, .search-check")) return true;
+    for (let node = target; node && node !== main; node = node.parentElement) {
+      const style = getComputedStyle(node);
+      if (node.scrollWidth > node.clientWidth + 4 && ["auto", "scroll"].includes(style.overflowX)) return true;
+    }
+    return false;
+  };
+  main?.addEventListener("touchstart", (event) => {
+    if (event.touches.length !== 1) return;
+    blocked = transitioning || isLandscapeWorkspace() || isHorizontalScroller(event.target);
+    axis = "";
+    startX = event.touches[0].clientX;
+    startY = event.touches[0].clientY;
+    startedAt = performance.now();
+  }, { passive: true });
+  main?.addEventListener("touchmove", (event) => {
+    if (blocked || event.touches.length !== 1 || axis === "vertical") return;
+    const deltaX = event.touches[0].clientX - startX;
+    const deltaY = event.touches[0].clientY - startY;
+    if (!axis && Math.max(Math.abs(deltaX), Math.abs(deltaY)) > 12) axis = Math.abs(deltaX) > Math.abs(deltaY) * 1.25 ? "horizontal" : "vertical";
+    if (axis === "horizontal" && event.cancelable) event.preventDefault();
+  }, { passive: false });
+  main?.addEventListener("touchend", (event) => {
+    if (blocked || event.changedTouches.length !== 1 || performance.now() - startedAt > 650) return;
+    const deltaX = event.changedTouches[0].clientX - startX;
+    const deltaY = event.changedTouches[0].clientY - startY;
+    if (axis === "vertical" || Math.abs(deltaX) < 72 || Math.abs(deltaX) < Math.abs(deltaY) * 1.5) return;
+    const current = views.indexOf(state.currentView);
+    const next = current + (deltaX < 0 ? 1 : -1);
+    if (current < 0 || next < 0 || next >= views.length) return;
+    transitioning = true;
+    switchView(views[next], false, null, deltaX < 0 ? "swipe-left" : "swipe-right");
+    setTimeout(() => { transitioning = false; }, 320);
+  }, { passive: true });
 }
 
 let toolbarScrollFrame = false;
@@ -621,9 +709,12 @@ function handleToolbarScroll() {
 }
 
 function expandActiveToolbar() {
-  setControlsCollapsed(false, true);
+  // Expanding a sticky toolbar must not compensate the page scroll. Doing so
+  // creates a synthetic downward scroll that immediately collapses it again.
+  setControlsCollapsed(false, false);
   document.body.classList.add("controls-manually-expanded");
   controlsExpandedAt = window.scrollY;
+  previousToolbarScrollY = window.scrollY;
 }
 
 function expandWorkspaceToolbar() {
@@ -664,9 +755,12 @@ function setControlsCollapsed(collapsed, compensateScroll = true) {
   const after = toolbar?.getBoundingClientRect().height || 0;
   if (compensateScroll && window.scrollY > 100 && before !== after) window.scrollBy({ top: after - before, behavior: "auto" });
   if (toolbar?.animate) {
+    toolbar.getAnimations().forEach((animation) => animation.cancel());
     toolbar.animate(
-      [{ opacity: 0.72, transform: "translateY(-3px)" }, { opacity: 1, transform: "translateY(0)" }],
-      { duration: 180, easing: "cubic-bezier(.2,.8,.2,1)" },
+      collapsed
+        ? [{ opacity: 0.76, transform: "translateY(-6px) scale(.985)" }, { opacity: 1, transform: "translateY(0) scale(1)" }]
+        : [{ opacity: 0.8, transform: "translateY(-4px) scale(.99)" }, { opacity: 1, transform: "translateY(0) scale(1)" }],
+      { duration: collapsed ? 260 : 340, easing: "cubic-bezier(.16,1,.3,1)" },
     );
   }
 }
@@ -985,12 +1079,13 @@ function renderVerse(verse) {
         <div class="ayah-key">${escapeHTML(displayKey(verse))}</div>
         <div class="ayah-actions">
           <button class="mini-button ${note ? "active" : ""}" type="button" data-action="note" aria-label="Note for ${verse.verse_key}">✎</button>
+          <button class="mini-button" type="button" data-action="copy" aria-label="Copy ${escapeHTML(displayKey(verse))}" title="Copy verse"><i class="ti ti-copy" aria-hidden="true"></i></button>
           <button class="mini-button share-mini-button" type="button" data-action="share" aria-label="Share ${escapeHTML(displayKey(verse))}" title="Share verse">${shareIcon()}</button>
           ${isQuran ? `<button class="mini-button" type="button" data-action="tafsir" aria-label="Tafsir for ${verse.verse_key}">≡</button>` : !isHadith ? `<button class="mini-button" type="button" data-action="commentary" aria-label="Commentary for ${escapeHTML(displayKey(verse))}">≡</button>` : ""}
           <button class="mini-button" type="button" data-action="bookmark" aria-label="Save ${verse.verse_key} as last read">⌖</button>
         </div>
       </div>
-      ${isQuran ? `<div class="arabic" lang="ar" dir="rtl">${renderArabicWords(verse)}</div><div class="translations">${translations}</div>` : `${state.showOriginalBible && verse.originalText ? `<div class="original-scripture" dir="${verse.scripture === "old" || isHadith ? "rtl" : "ltr"}">${isHadith ? escapeHTML(verse.originalText) : renderOriginalWords(verse)}</div>` : ""}<div class="scripture-text">${escapeHTML(verse.text || "")}</div>`}
+      ${isQuran ? `${state.showArabic ? `<div class="arabic" lang="ar" dir="rtl">${renderArabicWords(verse)}</div>` : ""}<div class="translations">${translations}</div>` : `${state.showOriginalBible && verse.originalText ? `<div class="original-scripture" dir="${verse.scripture === "old" || isHadith ? "rtl" : "ltr"}">${isHadith ? escapeHTML(verse.originalText) : renderOriginalWords(verse)}</div>` : ""}<div class="scripture-text">${escapeHTML(verse.text || "")}</div>`}
       <div class="verse-meta">${renderVerseMeta(verse)}</div>
       ${note ? `<div class="note-preview">${escapeHTML(note)}</div>` : ""}
       ${tags.length ? `<div class="note-tags">${tags.map((tag) => `<span>#${escapeHTML(tag)}</span>`).join("")}</div>` : ""}
@@ -1312,11 +1407,13 @@ async function openOriginalWordTranslation(rawWord, lang, key) {
   `;
   openDialog(els.wordSheet);
 
-  const cacheKey = `${lang}:${word}`;
+  const lookupWord = normalizeBiblicalWord(word, lang);
+  const cacheKey = `${lang}:${lookupWord}`;
   if (!state.originalWordCache[cacheKey]) {
     try {
-      const data = await getJSON(`https://api.mymemory.translated.net/get?q=${encodeURIComponent(word)}&langpair=${lang}%7Cen`);
-      state.originalWordCache[cacheKey] = data.responseData?.translatedText || "";
+      const lexical = await getWiktionaryGloss(lookupWord, lang).catch(() => "");
+      const data = lexical ? null : await getJSON(`https://api.mymemory.translated.net/get?q=${encodeURIComponent(lookupWord)}&langpair=${lang}%7Cen`);
+      state.originalWordCache[cacheKey] = lexical || data?.responseData?.translatedText || "";
     } catch {
       state.originalWordCache[cacheKey] = "";
     }
@@ -1326,8 +1423,26 @@ async function openOriginalWordTranslation(rawWord, lang, key) {
   els.wordContent.innerHTML = `
     <div class="word-arabic" dir="${lang === "he" ? "rtl" : "ltr"}">${escapeHTML(word)}</div>
     <div class="word-translation"><strong>${escapeHTML(translation || "No direct word translation found")}</strong></div>
-    <div>${escapeHTML(label)} word lookup. Inflected biblical forms may translate imperfectly.</div>
+    <div>${escapeHTML(label)} dictionary lookup${lookupWord !== word ? ` · normalized as ${escapeHTML(lookupWord)}` : ""}.</div>
   `;
+}
+
+function normalizeBiblicalWord(word, lang) {
+  const cleaned = cleanOriginalWord(word).normalize("NFC");
+  if (lang === "he") return cleaned.replace(/[\u0591-\u05AF\u05BD\u05BF\u05C1\u05C2\u05C4\u05C5\u05C7]/g, "");
+  return cleaned;
+}
+
+async function getWiktionaryGloss(word, lang) {
+  const response = await fetch(`https://en.wiktionary.org/api/rest_v1/page/definition/${encodeURIComponent(word)}`, {
+    headers: { accept: "application/json" },
+  });
+  if (!response.ok) throw new Error("No dictionary entry");
+  const data = await response.json();
+  const wanted = lang === "he" ? /hebrew/i : /(?:ancient )?greek/i;
+  const entries = Object.values(data).flat().filter((entry) => wanted.test(entry.language || ""));
+  const definitions = entries.flatMap((entry) => entry.definitions || []).map((item) => stripHTML(item.definition || "")).filter(Boolean);
+  return definitions.slice(0, 3).join("; ");
 }
 
 async function openTafsir(key) {
@@ -1402,7 +1517,7 @@ function renderNotes() {
         const updatedLabel = formatNoteDate(note.updatedAt);
         const visibility = state.notesSection === "shared" ? "Shared" : "Private";
         return `
-          <article class="note-card ${state.selectedNotes.has(key) ? "selected" : ""}" data-note-key="${escapeHTML(key)}">
+          <article class="note-card ${state.selectedNotes.has(key) ? "selected" : ""}" data-note-key="${escapeHTML(key)}" style="--note-order:${Math.min(8, entries.findIndex(([entryKey]) => entryKey === key))}">
             ${state.noteSelectMode ? `<label class="note-select"><input type="checkbox" data-select-key="${escapeHTML(key)}" ${state.selectedNotes.has(key) ? "checked" : ""}><span aria-hidden="true"></span></label>` : ""}
             <button class="note-card-main" type="button" data-key="${escapeHTML(key)}">
               <span class="note-card-heading"><strong>${escapeHTML(note.title?.trim() || "Untitled note")}</strong><time>${escapeHTML(updatedLabel)}</time></span>
@@ -1410,7 +1525,7 @@ function renderNotes() {
               ${tags.length ? `<div class="note-tags">${tags.map((tag) => `<span>#${escapeHTML(tag)}</span>`).join("")}</div>` : ""}
             </button>
             <div class="note-card-footer">
-              <div class="note-card-references">${refs.slice(0, 3).map((ref) => `<button class="reference-link" type="button" data-ref="${escapeHTML(ref)}"><i class="ti ti-book-2" aria-hidden="true"></i>${escapeHTML(formatReferenceKey(ref))}</button>`).join("")}</div>
+              <div class="note-card-references">${refs.slice(0, 3).map((ref) => `<button class="reference-link" type="button" data-ref="${escapeHTML(ref)}"><i class="ti ti-book-2" aria-hidden="true"></i><span>${escapeHTML(formatReferenceKey(ref))}</span><i class="ti ti-chevron-right reference-link-arrow" aria-hidden="true"></i></button>`).join("")}</div>
               <span class="note-visibility"><i class="ti ti-${state.notesSection === "shared" ? "users" : "lock"}" aria-hidden="true"></i>${visibility}</span>
             </div>
           </article>
@@ -1484,10 +1599,24 @@ async function deleteSelectedNotes() {
   toggleNoteSelection(false);
 }
 async function shareSelectedNotes() {
-  const notes = [...state.selectedNotes].map((key) => key.startsWith("shared:") ? state.sharedNotes.find((note) => `shared:${note.id}` === key) : state.notes[key]).filter(Boolean);
-  const text = notes.map((note) => `${note.title || "Untitled note"}\n${note.text || ""}`).join("\n\n———\n\n");
-  if (navigator.share) await navigator.share({ title: `${notes.length} Abrahamic Books notes`, text });
-  else if (!(await copyShareLink(text))) window.prompt("Copy selected notes:", text);
+  const notes = [...state.selectedNotes].map((key) => {
+    const note = key.startsWith("shared:") ? state.sharedNotes.find((item) => `shared:${item.id}` === key) : state.notes[key];
+    if (!note) return null;
+    return {
+      title: String(note.title || ""), text: String(note.text || ""),
+      tags: Array.isArray(note.tags) ? note.tags.map(String) : [],
+      references: Array.isArray(note.references) ? note.references.map(String) : [],
+      createdAt: note.createdAt || "", updatedAt: note.updatedAt || "",
+      standalone: Boolean(note.standalone),
+    };
+  }).filter(Boolean);
+  const url = makePublicLink(`notes=${encodeBase64Url(JSON.stringify({ version: 1, notes }))}`);
+  const title = `${notes.length} Abrahamic Books ${notes.length === 1 ? "note" : "notes"}`;
+  try {
+    if (Capacitor.isNativePlatform()) await Share.share({ title, text: "Open this link to import the complete notes, tags, and references.", url, dialogTitle: "Share notes" });
+    else if (navigator.share) await navigator.share({ title, text: "Open this link to import the complete notes, tags, and references.", url });
+    else if (!(await copyShareLink(url))) window.prompt("Copy notes link:", url);
+  } catch (error) { if (error?.name !== "AbortError" && !(await copyShareLink(url))) window.prompt("Copy notes link:", url); }
 }
 
 function renderTagFilters() {
@@ -1850,6 +1979,11 @@ function refreshVerse(key) {
 
 function saveLastRead(key) {
   localStorage.setItem("quran-reader-last-read-v1", key);
+  if (Capacitor.isNativePlatform()) {
+    const verse = state.verses.find((item) => item.verse_key === key);
+    const text = stripHTML(verse?.translations?.[0]?.text || verse?.text || verse?.english?.text || verse?.text_uthmani || "");
+    WidgetData.setLastRead({ reference: key, label: formatReferenceLabel(key), text: text.slice(0, 320) }).catch(() => {});
+  }
   updateDashboard(key);
   setStatus(`Saved ${key} as last read.`);
   setTimeout(() => setStatus(""), 1600);
@@ -1880,25 +2014,17 @@ async function exportNotes() {
 
   if (Capacitor.isNativePlatform()) {
     try {
-      const saved = await Filesystem.writeFile({
-        path: filename,
-        data: json,
-        directory: Directory.Documents,
-        encoding: Encoding.UTF8,
-        recursive: true,
-      });
-      setStatus(`Notes saved to Documents as ${filename}.`);
-      await Share.share({
-        title: "Abrahamic Books notes",
-        text: "Exported notes backup",
-        url: saved.uri,
-        dialogTitle: "Save or share your notes backup",
-      });
+      await NotesFiles.saveToDownloads({ filename, data: json, mimeType: "application/json" });
+      setStatus(`Notes saved to Downloads as ${filename}.`);
       setTimeout(() => setStatus(""), 3200);
       return;
     } catch (error) {
-      setStatus(`Could not save notes: ${error.message}`);
-      return;
+      try {
+        const saved = await Filesystem.writeFile({ path: filename, data: json, directory: Directory.Documents, encoding: Encoding.UTF8, recursive: true });
+        setStatus(`Downloads was unavailable, so notes were saved to Documents as ${filename}.`);
+        await Share.share({ title: "Abrahamic Books notes", text: "Exported notes backup", url: saved.uri, dialogTitle: "Save or share your notes backup" });
+        return;
+      } catch (fallbackError) { setStatus(`Could not save notes: ${fallbackError.message}`); return; }
     }
   }
 
@@ -1913,9 +2039,111 @@ async function exportNotes() {
   setTimeout(() => URL.revokeObjectURL(url), 1000);
 }
 
-async function shareVerse(key) {
-  const button = els.verses.querySelector(`[data-key="${CSS.escape(key)}"] [data-action="share"]`);
-  await shareReference(key, button);
+function openVerseCopy(key) {
+  const verse = state.verses.find((item) => item.verse_key === key);
+  if (!verse) return;
+  state.copyVerseKey = key;
+  els.verseCopySubtitle.textContent = `${formatReferenceKey(key)} · choose one or more versions`;
+  renderVerseCopyOptions(verse);
+  openDialog(els.verseCopySheet);
+}
+
+async function shareVerseDirect(key, button) {
+  const url = makePublicLink(`?ref=${encodeURIComponent(key)}`);
+  const title = formatReferenceKey(key);
+  try {
+    if (Capacitor.isNativePlatform()) {
+      await Share.share({ title, text: title, url, dialogTitle: `Share ${title}` });
+      return;
+    }
+    if (navigator.share) {
+      await navigator.share({ title, text: title, url });
+      return;
+    }
+  } catch (error) {
+    if (error?.name === "AbortError") return;
+  }
+  const copied = await copyShareLink(url);
+  if (copied) {
+    showCopiedState(button);
+    setStatus("Verse link copied for sharing.");
+  } else window.prompt("Copy this verse link:", url);
+}
+
+function getVerseCopyChoices(verse) {
+  const isQuran = !verse.scripture || verse.scripture === "quran";
+  const choices = [];
+  const original = isQuran ? getQuranArabicText(verse) : verse.originalText;
+  if (original) choices.push({ id: "original", kind: "original", label: isQuran ? "Arabic original" : "Original language", text: String(original) });
+  if (isQuran) {
+    (verse.translations || []).forEach((translation, index) => {
+      const resource = state.translations.find((item) => Number(item.id) === Number(translation.resource_id));
+      choices.push({
+        id: `translation-${index}`,
+        kind: "translation",
+        label: resource?.name || `Translation ${index + 1}`,
+        detail: resource?.language_name || "Translation",
+        text: stripHTML(translation.text || ""),
+      });
+    });
+  } else if (verse.text) {
+    choices.push({ id: "translation-0", kind: "translation", label: "Displayed translation", detail: "Translation", text: String(verse.text) });
+  }
+  return choices.filter((choice) => choice.text.trim());
+}
+
+function getQuranArabicText(verse) {
+  if (String(verse.text_uthmani || "").trim()) return String(verse.text_uthmani).trim();
+  return (verse.words || [])
+    .map((word) => word.text_uthmani || word.text || "")
+    .filter(Boolean)
+    .join(" ")
+    .replace(/\s+/g, " ")
+    .trim();
+}
+
+function renderVerseCopyOptions(verse) {
+  const choices = getVerseCopyChoices(verse);
+  els.verseCopyOptions.innerHTML = `<legend>Select original text and translations</legend>${choices.map((choice, index) => `
+    <label class="copy-choice">
+      <input type="checkbox" value="${escapeHTML(choice.id)}" ${choice.kind === "original" || (!choices.some((item) => item.kind === "original") && index === 0) ? "checked" : ""}>
+      <span><strong>${escapeHTML(choice.label)}</strong>${choice.detail ? `<small>${escapeHTML(choice.detail)}</small>` : ""}</span>
+      <i class="ti ti-check" aria-hidden="true"></i>
+    </label>`).join("")}`;
+  els.copyOriginalOnly.disabled = !choices.some((choice) => choice.kind === "original");
+  els.copyTranslationOnly.disabled = !choices.some((choice) => choice.kind === "translation");
+}
+
+function applyVerseCopyPreset(kind) {
+  const verse = state.verses.find((item) => item.verse_key === state.copyVerseKey);
+  if (!verse) return;
+  const choices = getVerseCopyChoices(verse);
+  els.verseCopyOptions.querySelectorAll('input[type="checkbox"]').forEach((input) => {
+    input.checked = choices.find((choice) => choice.id === input.value)?.kind === kind;
+  });
+}
+
+async function copySelectedVerseText() {
+  const verse = state.verses.find((item) => item.verse_key === state.copyVerseKey);
+  if (!verse) return;
+  const selected = new Set([...els.verseCopyOptions.querySelectorAll('input:checked')].map((input) => input.value));
+  const choices = getVerseCopyChoices(verse).filter((choice) => selected.has(choice.id));
+  if (!choices.length) {
+    setStatus("Choose at least one text to copy.");
+    return;
+  }
+  const text = [formatReferenceKey(state.copyVerseKey), ...choices.map((choice) => `${choice.label}\n${choice.text}`)].join("\n\n");
+  const copied = await copyShareLink(text);
+  if (copied) {
+    showCopiedState(els.copySelectedVerse);
+    setStatus("Verse text copied.");
+    setTimeout(() => els.verseCopySheet.close(), 500);
+  } else window.prompt("Copy verse text:", text);
+}
+
+async function copyCurrentVerseLink() {
+  if (!state.copyVerseKey) return;
+  await shareReference(state.copyVerseKey, els.shareVerseLink);
 }
 
 async function shareReference(key, button) {
@@ -2099,14 +2327,37 @@ function decodeBase64Url(value) {
 async function openSharedLink() {
   const queryParams = new URLSearchParams(location.search);
   const hashParams = new URLSearchParams(location.hash.slice(1));
+  const requestedView = queryParams.get("view");
+  if (["readView", "notesView", "searchView"].includes(requestedView)) switchView(requestedView);
   const reference = queryParams.get("ref") || hashParams.get("ref");
   if (reference) {
     await jumpToReference(reference, "auto");
     return;
   }
+  const encodedNotes = hashParams.get("notes");
   const encodedNote = hashParams.get("note");
-  if (!encodedNote) return;
+  if (!encodedNote && !encodedNotes) return;
   try {
+    if (encodedNotes) {
+      const sharedCollection = JSON.parse(decodeBase64Url(encodedNotes));
+      const items = Array.isArray(sharedCollection?.notes) ? sharedCollection.notes : [];
+      if (!items.length) throw new Error("Empty notes collection");
+      for (const shared of items.slice(0, 250)) {
+        const key = `note:${crypto.randomUUID()}`;
+        state.notes[key] = {
+          title: String(shared.title || "Shared note"), text: String(shared.text || ""),
+          tags: Array.isArray(shared.tags) ? shared.tags.map(String).slice(0, 12) : [],
+          references: Array.isArray(shared.references) ? [...new Set(shared.references.map(String))].slice(0, 50) : [],
+          createdAt: shared.createdAt || new Date().toISOString(), updatedAt: shared.updatedAt || new Date().toISOString(), standalone: true,
+        };
+      }
+      saveNotes();
+      switchView("notesView");
+      renderNotes();
+      setStatus(`Imported ${items.length} shared ${items.length === 1 ? "note" : "notes"}, including tags and references.`);
+      history.replaceState(null, "", `${location.pathname}${location.search}`);
+      return;
+    }
     const shared = JSON.parse(decodeBase64Url(encodedNote));
     const key = `note:${crypto.randomUUID()}`;
     state.notes[key] = {
@@ -2137,7 +2388,7 @@ async function importNotes(event) {
   event.target.value = "";
 }
 
-function switchView(viewId, reselectedFromNav = false, currentScrollOverride = null) {
+function switchView(viewId, reselectedFromNav = false, currentScrollOverride = null, transition = "section") {
   if (isLandscapeWorkspace()) {
     if (viewId === "notesView" || viewId === "searchView") {
       setWorkspaceTool(viewId);
@@ -2160,7 +2411,15 @@ function switchView(viewId, reselectedFromNav = false, currentScrollOverride = n
   const leavingTop = currentScrollOverride ?? window.scrollY;
   state.viewScrollPositions[state.currentView] = leavingTop;
   document.querySelector(`#${state.currentView}`)?.setAttribute("data-saved-scroll", String(leavingTop));
-  document.querySelectorAll(".view").forEach((view) => view.classList.toggle("active", view.id === viewId));
+  document.querySelectorAll(".view").forEach((view) => {
+    view.classList.remove("view-enter", "swipe-left", "swipe-right");
+    view.classList.toggle("active", view.id === viewId);
+  });
+  const destinationView = document.querySelector(`#${viewId}`);
+  destinationView?.classList.add("view-enter", transition);
+  const finishTransition = () => destinationView?.classList.remove("view-enter", "section", "swipe-left", "swipe-right");
+  destinationView?.addEventListener("animationend", finishTransition, { once: true });
+  setTimeout(finishTransition, 440);
   document.querySelectorAll(".nav-item").forEach((button) => button.classList.toggle("active", button.dataset.view === viewId));
   if (viewId === "notesView") renderNotes();
   state.currentView = viewId;
@@ -2171,13 +2430,10 @@ function switchView(viewId, reselectedFromNav = false, currentScrollOverride = n
   previousToolbarScrollY = 0;
   const savedOnView = Number(document.querySelector(`#${viewId}`)?.getAttribute("data-saved-scroll"));
   const restoreTop = Number.isFinite(savedOnView) ? savedOnView : state.viewScrollPositions[viewId] || 0;
-  requestAnimationFrame(() => requestAnimationFrame(() => {
+  requestAnimationFrame(() => {
     window.scrollTo({ top: restoreTop, behavior: "auto" });
     previousToolbarScrollY = restoreTop;
-    setTimeout(() => {
-      if (state.currentView === viewId) window.scrollTo({ top: restoreTop, behavior: "auto" });
-    }, 80);
-  }));
+  });
 }
 
 function isLandscapeWorkspace() {
@@ -2339,24 +2595,30 @@ async function runGlobalSearch() {
   if (query.length < 2) {
     els.searchSummary.textContent = "Enter at least 2 characters";
     els.searchResults.innerHTML = "";
+    renderSearchBookIndex([], "Enter a search to see matching books");
     return;
   }
 
   if (!selectedSources.size) {
     els.searchSummary.textContent = "Choose at least one book to search";
     els.searchResults.innerHTML = `<div class="status">Open “Search in” and select one or more downloaded books.</div>`;
+    renderSearchBookIndex([], "Choose one or more books");
     return;
   }
 
   els.runSearch.disabled = true;
   els.searchSummary.textContent = "Searching offline bundle...";
-  els.searchResults.innerHTML = `<div class="status">Searching bundled texts...</div>`;
+  els.searchResults.innerHTML = `<div class="status live-search-status"><span aria-hidden="true"></span>Searching bundled texts...</div>`;
+  renderSearchBookIndex([], "Searching selected books…");
+  const liveRenderer = createLiveSearchRenderer(query, token);
 
   try {
-    const results = await searchOfflineTexts(query, selectedSources, token);
+    const results = await searchOfflineTexts(query, selectedSources, token, (result) => liveRenderer.add(result));
     if (state.searchAbort !== token) return;
+    liveRenderer.stop();
     renderSearchResults(results, query);
   } catch (error) {
+    liveRenderer.stop();
     els.searchResults.innerHTML = `<div class="status">${escapeHTML(error.message)}</div>`;
     els.searchSummary.textContent = "Search failed";
   } finally {
@@ -2364,12 +2626,15 @@ async function runGlobalSearch() {
   }
 }
 
-async function searchOfflineTexts(query, selectedSources, token) {
+async function searchOfflineTexts(query, selectedSources, token, onResult) {
   const expression = parseSearchExpression(query);
   const results = [];
   const pushResult = (_sourceId, result) => {
     const haystack = normalizeSearchText(`${result.title} ${result.label} ${result.text} ${result.extra || ""}`);
-    if (expression.matches(haystack)) results.push(result);
+    if (expression.matches(haystack)) {
+      results.push(result);
+      onResult?.(result);
+    }
   };
   const shouldStop = () => state.searchAbort !== token;
 
@@ -2552,7 +2817,59 @@ async function searchOfflineTexts(query, selectedSources, token) {
   return results;
 }
 
-function renderSearchResults(results, query) {
+function createLiveSearchRenderer(query, token) {
+  const queue = [];
+  const groups = new Map();
+  let frame = 0;
+  let count = 0;
+  let started = false;
+  const flush = () => {
+    frame = 0;
+    if (state.searchAbort !== token) return;
+    if (!started) {
+      els.searchResults.innerHTML = `<div class="live-search-grid" aria-live="polite"></div>`;
+      started = true;
+    }
+    const batch = queue.splice(0, 100);
+    const grid = els.searchResults.querySelector(".live-search-grid");
+    batch.forEach((result) => {
+      const book = result.book || result.type;
+      if (!groups.has(book)) {
+        const index = groups.size;
+        grid?.insertAdjacentHTML("beforeend", `<section class="search-book-group" id="search-book-${index}" data-book="${escapeHTML(book)}"><div class="search-book-results"></div></section>`);
+        groups.set(book, { index, count: 0 });
+      }
+      const group = groups.get(book);
+      group.count += 1;
+      grid?.querySelector(`#search-book-${group.index} .search-book-results`)?.insertAdjacentHTML("beforeend", `
+        <article class="search-result live-result" data-search-id="${escapeHTML(result.searchId)}">
+          <button type="button" tabindex="-1" aria-hidden="true">
+            <span>${escapeHTML(result.type)}</span>
+            <strong>${highlightSearchText(result.title, query)}</strong>
+            <small>${highlightSearchText(result.label || "", query)}</small>
+            <p>${highlightSearchText(makeSnippet(result.text || result.extra || "", query), query)}</p>
+          </button>
+        </article>`);
+    });
+    renderSearchBookIndex([...groups].map(([book, group]) => [book, group.count]), "Searching selected books…", true);
+    if (queue.length) frame = requestAnimationFrame(flush);
+  };
+  return {
+    add(result) {
+      count += 1;
+      queue.push({ ...result, searchId: `${result.type}:${result.key}:${count - 1}` });
+      els.searchSummary.textContent = `${count} result${count === 1 ? "" : "s"} so far for "${query}"`;
+      if (!frame) frame = requestAnimationFrame(flush);
+    },
+    stop() {
+      if (frame) cancelAnimationFrame(frame);
+      frame = 0;
+      queue.length = 0;
+    },
+  };
+}
+
+function renderSearchResults(results, query, searching = false) {
   results = Array.isArray(results) ? results.filter((result) => result && result.key) : [];
   state.searchResults = results.map((result, index) => ({ ...result, searchId: `${result.type}:${result.key}:${index}` }));
   const groups = new Map();
@@ -2562,7 +2879,7 @@ function renderSearchResults(results, query) {
     groups.get(book).push(result);
   });
   els.searchSummary.textContent = results.length
-    ? `${results.length} result${results.length === 1 ? "" : "s"} for "${query}"`
+    ? `${results.length} result${results.length === 1 ? "" : "s"}${searching ? " so far" : ""} for "${query}"`
     : `No offline results for "${query}"`;
   els.searchResults.innerHTML = state.searchResults.length
     ? [...groups.entries()].map(([book, bookResults], groupIndex) => `
@@ -2589,19 +2906,44 @@ function renderSearchResults(results, query) {
         </div>
       </section>
     `).join("")
-    : `<div class="search-empty" role="status"><span aria-hidden="true">⌕</span><strong>No matches yet</strong><p>Try a shorter phrase, another spelling, or choose more downloaded books in “Search in”.</p></div>`;
+    : searching
+      ? `<div class="status live-search-status"><span aria-hidden="true"></span>Searching bundled texts...</div>`
+      : `<div class="search-empty" role="status"><span aria-hidden="true">⌕</span><strong>No matches yet</strong><p>Try a shorter phrase, another spelling, or choose more downloaded books in “Search in”.</p></div>`;
 
-  els.searchBookIndex.hidden = groups.size === 0;
-  els.searchBookIndex.innerHTML = groups.size ? `
+  renderSearchBookIndex([...groups.entries()].map(([book, bookResults]) => [book, bookResults.length]), results.length ? "" : "No matching books");
+  bindRenderedSearchResults();
+  updateSearchSelectionUI();
+  updateSearchJumpActive();
+}
+
+function renderSearchBookIndex(entries, placeholder = "Matching books will appear here", preservePosition = false) {
+  els.searchBookIndex.hidden = false;
+  if (preservePosition && entries.length) {
+    const rail = els.searchBookIndex.querySelector(":scope > div");
+    rail?.querySelector(".book-index-placeholder")?.remove();
+    entries.forEach(([book, resultCount], index) => {
+      let button = rail?.querySelector(`[data-group-index="${index}"]`);
+      if (!button) {
+        rail?.insertAdjacentHTML("beforeend", `<button type="button" data-group-index="${index}">${escapeHTML(book)} <span>${resultCount}</span></button>`);
+        button = rail?.querySelector(`[data-group-index="${index}"]`);
+        button?.addEventListener("click", () => scrollToSearchBook(index));
+      } else {
+        button.querySelector("span").textContent = String(resultCount);
+      }
+    });
+    return;
+  }
+  els.searchBookIndex.innerHTML = `
     <span class="book-index-title">Jump to</span>
-    <div>${[...groups.entries()].map(([book, bookResults], index) => `
-      <button type="button" data-group-index="${index}">${escapeHTML(book)} <span>${bookResults.length}</span></button>
-    `).join("")}</div>
-  ` : "";
+    <div>${entries.length ? entries.map(([book, resultCount], index) => `
+      <button type="button" data-group-index="${index}">${escapeHTML(book)} <span>${resultCount}</span></button>
+    `).join("") : `<span class="book-index-placeholder">${escapeHTML(placeholder)}</span>`}</div>`;
   els.searchBookIndex.querySelectorAll("[data-group-index]").forEach((button) => {
     button.addEventListener("click", () => scrollToSearchBook(Number(button.dataset.groupIndex)));
   });
+}
 
+function bindRenderedSearchResults() {
   els.searchResults.querySelectorAll("button[data-key]").forEach((button) => {
     button.addEventListener("click", () => {
       const card = button.closest(".search-result");
@@ -2617,8 +2959,6 @@ function renderSearchResults(results, query) {
   els.searchResults.querySelectorAll(".search-check input").forEach((checkbox) => {
     checkbox.addEventListener("change", () => toggleSearchResult(checkbox.closest(".search-result").dataset.searchId, checkbox.checked));
   });
-  updateSearchSelectionUI();
-  updateSearchJumpActive();
 }
 
 function scrollToSearchBook(index) {
@@ -3067,6 +3407,7 @@ async function loadLocalState() {
     state.lineScale = clampNumber(Number(prefs.lineScale) || state.lineScale, 1, 1.24);
     state.compactCards = Boolean(prefs.compactCards);
     state.showOriginalBible = prefs.showOriginalBible !== false;
+    state.showArabic = prefs.showArabic !== false;
     state.cardStyle = ["soft", "flat", "outlined"].includes(prefs.cardStyle) ? prefs.cardStyle : state.cardStyle;
     state.headerStyle = ["pattern", "solid", "minimal"].includes(prefs.headerStyle) ? prefs.headerStyle : state.headerStyle;
     state.appLanguage = ["en", "ar", "de", "fr", "tr", "ur"].includes(prefs.appLanguage) ? prefs.appLanguage : "en";
@@ -3102,6 +3443,7 @@ function savePrefs() {
     lineScale: state.lineScale,
     compactCards: state.compactCards,
     showOriginalBible: state.showOriginalBible,
+    showArabic: state.showArabic,
     cardStyle: state.cardStyle,
     headerStyle: state.headerStyle,
     appLanguage: state.appLanguage,
@@ -3192,6 +3534,7 @@ function applyReaderPrefs() {
   els.lineHeightRange.value = String(state.lineScale);
   els.compactToggle.checked = state.compactCards;
   els.originalLanguageToggle.checked = state.showOriginalBible;
+  els.arabicTextToggle.checked = state.showArabic;
   els.cardStyleSelect.value = state.cardStyle;
   els.headerStyleSelect.value = state.headerStyle;
   els.customPaper.value = state.customTheme.paper;
@@ -3210,23 +3553,140 @@ function applyReaderPrefs() {
 }
 
 const UI_COPY = {
-  en: ["Read", "Search", "Notes", "All", "Shared", "New note", "Select"],
-  ar: ["القراءة", "البحث", "الملاحظات", "الكل", "مشتركة", "ملاحظة جديدة", "تحديد"],
-  de: ["Lesen", "Suchen", "Notizen", "Alle", "Geteilt", "Neue Notiz", "Auswählen"],
-  fr: ["Lire", "Rechercher", "Notes", "Tout", "Partagées", "Nouvelle note", "Sélectionner"],
-  tr: ["Oku", "Ara", "Notlar", "Tümü", "Paylaşılan", "Yeni not", "Seç"],
-  ur: ["پڑھیں", "تلاش", "نوٹس", "سب", "مشترکہ", "نیا نوٹ", "منتخب کریں"],
+  ar: {
+    Read: "القراءة", Search: "البحث", Notes: "الملاحظات", All: "الكل", Shared: "مشتركة", "New note": "ملاحظة جديدة", Select: "تحديد",
+    "Reading options": "خيارات القراءة", "Choose a text and passage": "اختر النص والمقطع", "Last read": "آخر قراءة", Tradition: "الديانة", Text: "النص", Chapter: "الفصل", Book: "الكتاب", Collection: "المجموعة", Section: "القسم", Verse: "الآية", Ayah: "آية", Hadith: "حديث",
+    "Now reading": "تقرأ الآن", Progress: "التقدم", "Reader Settings": "إعدادات القارئ", "Personalize your reading experience": "خصّص تجربة القراءة", "App language": "لغة التطبيق", Appearance: "المظهر", Theme: "السمة", "Reader width": "عرض القارئ", Typography: "الخطوط", "Arabic font": "الخط العربي", "Translation font": "خط الترجمة", "Show Hebrew / Greek for Bible": "إظهار العبرية واليونانية للكتاب المقدس", "Show Arabic text in Quran": "إظهار النص العربي في القرآن", "Arabic size": "حجم العربية", "Translation size": "حجم الترجمة", "Line spacing": "تباعد الأسطر", "Reader layout": "تخطيط القارئ", "Card style": "نمط البطاقات", "Header style": "نمط الرأس", "Compact cards": "بطاقات مضغوطة",
+    Translations: "الترجمات", Tafsir: "التفسير", "Dark mode": "الوضع الداكن", "Notes & account": "الملاحظات والحساب", "Offline Android app": "تطبيق أندرويد دون اتصال", "Download APK": "تنزيل التطبيق", "Copy verse": "نسخ الآية", "Choose the text to copy": "اختر النص المراد نسخه", "Original only": "الأصل فقط", "Translation only": "الترجمة فقط", "Select original text and translations": "اختر النص الأصلي والترجمات", "Copy selected text": "نسخ النص المحدد", "Copy verse link": "نسخ رابط الآية", "Search texts": "البحث في النصوص", "Search in": "البحث في", "Select results": "تحديد النتائج", "Add to note": "إضافة إلى ملاحظة", "Select all": "تحديد الكل", Clear: "مسح", Done: "تم", Sort: "ترتيب", Settings: "الإعدادات",
+  },
+  de: {
+    Read: "Lesen", Search: "Suchen", Notes: "Notizen", All: "Alle", Shared: "Geteilt", "New note": "Neue Notiz", Select: "Auswählen",
+    "Reading options": "Leseoptionen", "Choose a text and passage": "Text und Stelle auswählen", "Last read": "Zuletzt gelesen", Tradition: "Tradition", Text: "Text", Chapter: "Kapitel", Book: "Buch", Collection: "Sammlung", Section: "Abschnitt", Verse: "Vers", Ayah: "Aya", Hadith: "Hadith", "Now reading": "Aktuell", Progress: "Fortschritt",
+    "Reader Settings": "Leseeinstellungen", "Personalize your reading experience": "Leseerlebnis anpassen", "App language": "App-Sprache", Appearance: "Darstellung", Theme: "Design", "Reader width": "Lesebreite", Typography: "Typografie", "Arabic font": "Arabische Schrift", "Translation font": "Übersetzungsschrift", "Show Hebrew / Greek for Bible": "Hebräisch/Griechisch der Bibel anzeigen", "Show Arabic text in Quran": "Arabischen Korantext anzeigen", "Arabic size": "Arabische Größe", "Translation size": "Übersetzungsgröße", "Line spacing": "Zeilenabstand", "Reader layout": "Leselayout", "Card style": "Kartenstil", "Header style": "Kopfstil", "Compact cards": "Kompakte Karten",
+    Translations: "Übersetzungen", Tafsir: "Tafsir", "Dark mode": "Dunkelmodus", "Notes & account": "Notizen & Konto", "Offline Android app": "Offline-Android-App", "Download APK": "APK herunterladen", "Copy verse": "Vers kopieren", "Choose the text to copy": "Text zum Kopieren wählen", "Original only": "Nur Original", "Translation only": "Nur Übersetzung", "Select original text and translations": "Original und Übersetzungen auswählen", "Copy selected text": "Ausgewählten Text kopieren", "Copy verse link": "Verslink kopieren", "Search texts": "Texte durchsuchen", "Search in": "Suchen in", "Select results": "Ergebnisse auswählen", "Add to note": "Zu Notiz hinzufügen", "Select all": "Alle auswählen", Clear: "Leeren", Done: "Fertig", Sort: "Sortieren", Settings: "Einstellungen",
+  },
+  fr: {
+    Read: "Lire", Search: "Rechercher", Notes: "Notes", All: "Tout", Shared: "Partagées", "New note": "Nouvelle note", Select: "Sélectionner",
+    "Reading options": "Options de lecture", "Choose a text and passage": "Choisir un texte et un passage", "Last read": "Dernière lecture", Tradition: "Tradition", Text: "Texte", Chapter: "Chapitre", Book: "Livre", Collection: "Collection", Section: "Section", Verse: "Verset", Ayah: "Verset", Hadith: "Hadith", "Now reading": "Lecture actuelle", Progress: "Progression",
+    "Reader Settings": "Paramètres de lecture", "Personalize your reading experience": "Personnalisez votre lecture", "App language": "Langue de l’application", Appearance: "Apparence", Theme: "Thème", "Reader width": "Largeur de lecture", Typography: "Typographie", "Arabic font": "Police arabe", "Translation font": "Police de traduction", "Show Hebrew / Greek for Bible": "Afficher l’hébreu/le grec de la Bible", "Show Arabic text in Quran": "Afficher le texte arabe du Coran", "Arabic size": "Taille de l’arabe", "Translation size": "Taille de la traduction", "Line spacing": "Interligne", "Reader layout": "Mise en page", "Card style": "Style des cartes", "Header style": "Style de l’en-tête", "Compact cards": "Cartes compactes",
+    Translations: "Traductions", Tafsir: "Tafsir", "Dark mode": "Mode sombre", "Notes & account": "Notes et compte", "Offline Android app": "Application Android hors ligne", "Download APK": "Télécharger l’APK", "Copy verse": "Copier le verset", "Choose the text to copy": "Choisir le texte à copier", "Original only": "Original seulement", "Translation only": "Traduction seulement", "Select original text and translations": "Sélectionner l’original et les traductions", "Copy selected text": "Copier le texte sélectionné", "Copy verse link": "Copier le lien", "Search texts": "Rechercher dans les textes", "Search in": "Rechercher dans", "Select results": "Sélectionner les résultats", "Add to note": "Ajouter à une note", "Select all": "Tout sélectionner", Clear: "Effacer", Done: "Terminé", Sort: "Trier", Settings: "Paramètres",
+  },
+  tr: {
+    Read: "Oku", Search: "Ara", Notes: "Notlar", All: "Tümü", Shared: "Paylaşılan", "New note": "Yeni not", Select: "Seç",
+    "Reading options": "Okuma seçenekleri", "Choose a text and passage": "Metin ve bölüm seç", "Last read": "Son okunan", Tradition: "Gelenek", Text: "Metin", Chapter: "Bölüm", Book: "Kitap", Collection: "Koleksiyon", Section: "Kısım", Verse: "Ayet", Ayah: "Ayet", Hadith: "Hadis", "Now reading": "Şimdi okunuyor", Progress: "İlerleme",
+    "Reader Settings": "Okuyucu Ayarları", "Personalize your reading experience": "Okuma deneyimini kişiselleştir", "App language": "Uygulama dili", Appearance: "Görünüm", Theme: "Tema", "Reader width": "Okuyucu genişliği", Typography: "Yazı", "Arabic font": "Arapça yazı tipi", "Translation font": "Çeviri yazı tipi", "Show Hebrew / Greek for Bible": "İncil’de İbranice/Yunanca göster", "Show Arabic text in Quran": "Kur’an Arapça metnini göster", "Arabic size": "Arapça boyutu", "Translation size": "Çeviri boyutu", "Line spacing": "Satır aralığı", "Reader layout": "Okuyucu düzeni", "Card style": "Kart stili", "Header style": "Başlık stili", "Compact cards": "Kompakt kartlar",
+    Translations: "Çeviriler", Tafsir: "Tefsir", "Dark mode": "Karanlık mod", "Notes & account": "Notlar ve hesap", "Offline Android app": "Çevrimdışı Android uygulaması", "Download APK": "APK indir", "Copy verse": "Ayeti kopyala", "Choose the text to copy": "Kopyalanacak metni seç", "Original only": "Yalnızca özgün", "Translation only": "Yalnızca çeviri", "Select original text and translations": "Özgün metni ve çevirileri seç", "Copy selected text": "Seçili metni kopyala", "Copy verse link": "Ayet bağlantısını kopyala", "Search texts": "Metinlerde ara", "Search in": "Şurada ara", "Select results": "Sonuçları seç", "Add to note": "Nota ekle", "Select all": "Tümünü seç", Clear: "Temizle", Done: "Bitti", Sort: "Sırala", Settings: "Ayarlar",
+  },
+  ur: {
+    Read: "پڑھیں", Search: "تلاش", Notes: "نوٹس", All: "سب", Shared: "مشترکہ", "New note": "نیا نوٹ", Select: "منتخب کریں",
+    "Reading options": "پڑھنے کے اختیارات", "Choose a text and passage": "متن اور حوالہ منتخب کریں", "Last read": "آخری مطالعہ", Tradition: "روایت", Text: "متن", Chapter: "باب", Book: "کتاب", Collection: "مجموعہ", Section: "حصہ", Verse: "آیت", Ayah: "آیت", Hadith: "حدیث", "Now reading": "ابھی پڑھ رہے ہیں", Progress: "پیش رفت",
+    "Reader Settings": "قاری کی ترتیبات", "Personalize your reading experience": "مطالعے کو اپنی پسند کے مطابق بنائیں", "App language": "ایپ کی زبان", Appearance: "ظاہری شکل", Theme: "تھیم", "Reader width": "قاری کی چوڑائی", Typography: "خط", "Arabic font": "عربی خط", "Translation font": "ترجمے کا خط", "Show Hebrew / Greek for Bible": "بائبل کی عبرانی/یونانی دکھائیں", "Show Arabic text in Quran": "قرآن کا عربی متن دکھائیں", "Arabic size": "عربی کا سائز", "Translation size": "ترجمے کا سائز", "Line spacing": "سطروں کا فاصلہ", "Reader layout": "قاری کی ترتیب", "Card style": "کارڈ کا انداز", "Header style": "ہیڈر کا انداز", "Compact cards": "مختصر کارڈز",
+    Translations: "تراجم", Tafsir: "تفسیر", "Dark mode": "ڈارک موڈ", "Notes & account": "نوٹس اور اکاؤنٹ", "Offline Android app": "آف لائن اینڈرائیڈ ایپ", "Download APK": "اے پی کے ڈاؤن لوڈ کریں", "Copy verse": "آیت نقل کریں", "Choose the text to copy": "نقل کرنے کے لیے متن چنیں", "Original only": "صرف اصل", "Translation only": "صرف ترجمہ", "Select original text and translations": "اصل اور تراجم منتخب کریں", "Copy selected text": "منتخب متن نقل کریں", "Copy verse link": "آیت کا لنک نقل کریں", "Search texts": "متون میں تلاش", "Search in": "اس میں تلاش", "Select results": "نتائج منتخب کریں", "Add to note": "نوٹ میں شامل کریں", "Select all": "سب منتخب کریں", Clear: "صاف", Done: "مکمل", Sort: "ترتیب", Settings: "ترتیبات",
+  },
 };
+const originalUiText = new WeakMap();
+let languageObserver;
+const AUTO_UI_CACHE_KEY = "abrahamic-ui-translations-v1";
+const autoUiCache = (() => { try { return JSON.parse(localStorage.getItem(AUTO_UI_CACHE_KEY)) || {}; } catch { return {}; } })();
+const autoTranslationPromises = new Map();
+const autoTranslationQueue = [];
+let autoTranslationWorkers = 0;
 function setAppLanguage(language) { state.appLanguage = language; applyAppLanguage(); savePrefs(); }
 function applyAppLanguage() {
-  const copy = UI_COPY[state.appLanguage] || UI_COPY.en;
   document.documentElement.lang = state.appLanguage;
   document.documentElement.dir = ["ar", "ur"].includes(state.appLanguage) ? "rtl" : "ltr";
-  document.querySelectorAll(".bottom-nav .nav-item > span:last-child").forEach((item, index) => { item.textContent = copy[index]; });
-  els.privateNotesTab.childNodes[0].textContent = `${copy[3]} `;
-  els.sharedNotesTab.childNodes[0].textContent = `${copy[4]} `;
-  els.newStudyNote.querySelector("span").textContent = copy[5];
-  els.toggleNoteSelect.querySelector("span").textContent = copy[6];
+  translateInterface(document.body);
+  if (!languageObserver) {
+    languageObserver = new MutationObserver((records) => {
+      records.forEach((record) => record.addedNodes.forEach((node) => {
+        if (node.nodeType === Node.TEXT_NODE) translateUiTextNode(node);
+        else if (node.nodeType === Node.ELEMENT_NODE) translateInterface(node);
+      }));
+    });
+    languageObserver.observe(document.body, { childList: true, subtree: true });
+  }
+}
+
+function translateInterface(root) {
+  if (!root) return;
+  const walker = document.createTreeWalker(root, NodeFilter.SHOW_TEXT);
+  const nodes = [];
+  while (walker.nextNode()) nodes.push(walker.currentNode);
+  nodes.forEach(translateUiTextNode);
+  const elements = root.matches?.("[placeholder], [aria-label], [title]") ? [root, ...root.querySelectorAll("[placeholder], [aria-label], [title]")] : [...root.querySelectorAll?.("[placeholder], [aria-label], [title]") || []];
+  elements.forEach((element) => ["placeholder", "aria-label", "title"].forEach((attribute) => {
+    if (!element.hasAttribute(attribute)) return;
+    const sourceKey = `i18n${attribute.replace(/(^|-)(\w)/g, (_, __, letter) => letter.toUpperCase())}`;
+    if (!element.dataset[sourceKey]) element.dataset[sourceKey] = element.getAttribute(attribute);
+    const source = element.dataset[sourceKey];
+    const requestedLanguage = state.appLanguage;
+    element.setAttribute(attribute, translateUiString(source));
+    requestUiTranslation(source).then((translated) => {
+      if (translated && state.appLanguage === requestedLanguage && element.isConnected) element.setAttribute(attribute, translated);
+    });
+  }));
+}
+
+function translateUiTextNode(node) {
+  const parent = node.parentElement;
+  if (!parent || parent.closest("script, style, .verses, .notes-list, .search-results, .resource-list, .tafsir-content, .word-content, .reference-overview-content, .verse-preview")) return;
+  if (!originalUiText.has(node)) originalUiText.set(node, node.nodeValue);
+  const original = originalUiText.get(node);
+  const trimmed = original.trim();
+  if (!trimmed) return;
+  const translated = translateUiString(trimmed);
+  node.nodeValue = original.replace(trimmed, translated);
+  const requestedLanguage = state.appLanguage;
+  requestUiTranslation(trimmed).then((automatic) => {
+    if (!automatic || state.appLanguage !== requestedLanguage || !node.isConnected) return;
+    node.nodeValue = original.replace(trimmed, automatic);
+  });
+}
+
+function translateUiString(value) {
+  if (state.appLanguage === "en") return value;
+  return UI_COPY[state.appLanguage]?.[value] || autoUiCache[state.appLanguage]?.[value] || value;
+}
+
+function requestUiTranslation(source) {
+  const language = state.appLanguage;
+  if (language === "en" || !source || UI_COPY[language]?.[source] || autoUiCache[language]?.[source] || !/[A-Za-z]/.test(source) || source.length > 450) {
+    return Promise.resolve(translateUiString(source));
+  }
+  const key = `${language}:${source}`;
+  if (autoTranslationPromises.has(key)) return autoTranslationPromises.get(key);
+  const promise = new Promise((resolve) => autoTranslationQueue.push({ language, source, resolve }));
+  autoTranslationPromises.set(key, promise);
+  startAutoTranslationWorkers();
+  return promise;
+}
+
+function startAutoTranslationWorkers() {
+  while (autoTranslationWorkers < 3 && autoTranslationQueue.length) {
+    autoTranslationWorkers += 1;
+    runAutoTranslationWorker();
+  }
+}
+
+async function runAutoTranslationWorker() {
+  while (autoTranslationQueue.length) {
+    const job = autoTranslationQueue.shift();
+    let translated = "";
+    try {
+      const data = await getJSON(`https://api.mymemory.translated.net/get?q=${encodeURIComponent(job.source)}&langpair=en%7C${job.language}`);
+      translated = String(data.responseData?.translatedText || "").trim();
+      if (translated && translated.toLowerCase() !== job.source.toLowerCase()) {
+        autoUiCache[job.language] ||= {};
+        autoUiCache[job.language][job.source] = translated;
+        localStorage.setItem(AUTO_UI_CACHE_KEY, JSON.stringify(autoUiCache));
+      }
+    } catch {
+      translated = "";
+    }
+    job.resolve(translated || UI_COPY[job.language]?.[job.source] || job.source);
+  }
+  autoTranslationWorkers -= 1;
+  startAutoTranslationWorkers();
 }
 
 function updateCustomTheme() {

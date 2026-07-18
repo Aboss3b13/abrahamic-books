@@ -43,6 +43,16 @@
           </div>
 
           <div class="reader-controls">
+            <div class="filter-toolbar-heading">
+              <div>
+                <span>Reading options</span>
+                <strong>Choose a text and passage</strong>
+              </div>
+              <button id="lastReadButton" class="last-read-filter-button" type="button">
+                <i class="ti ti-bookmark" aria-hidden="true"></i>
+                <span>Last read</span>
+              </button>
+            </div>
             <label class="field">
               <span>Tradition</span>
               <select id="traditionSelect">
@@ -81,10 +91,6 @@
               <span id="verseControlLabel">Verse</span>
               <input id="ayahSearch" type="search" placeholder="2:255, 255, John 3:16">
             </label>
-          </div>
-
-          <div class="quick-actions">
-            <button id="lastReadButton" class="pill-button muted" type="button">Last read</button>
           </div>
 
           <div id="status" class="status">Preparing reader...</div>
@@ -183,7 +189,10 @@
               </div>
             </div>
           </div>
-          <nav id="searchBookIndex" class="search-book-index" aria-label="Jump to result book" hidden></nav>
+          <nav id="searchBookIndex" class="search-book-index" aria-label="Jump to result book">
+            <span class="book-index-title">Jump to</span>
+            <div><span class="book-index-placeholder">Matching books will appear here</span></div>
+          </nav>
           <div id="searchResults" class="search-results"></div>
         </section>
 
@@ -285,6 +294,10 @@
             <input id="originalLanguageToggle" type="checkbox">
             <span>Show Hebrew / Greek for Bible</span>
           </label>
+          <label class="check-field">
+            <input id="arabicTextToggle" type="checkbox">
+            <span>Show Arabic text in Quran</span>
+          </label>
           <label class="range-field">
             <span>Arabic size</span>
             <input id="arabicSizeRange" type="range" min="0.84" max="1.4" step="0.04">
@@ -332,6 +345,29 @@
             <button id="decreaseFont" class="mini-button" type="button" aria-label="Decrease Arabic text size">A-</button>
             <button id="increaseFont" class="mini-button" type="button" aria-label="Increase Arabic text size">A+</button>
           </div>
+        </div>
+      </form>
+    </dialog>
+
+    <dialog id="verseCopySheet" class="sheet verse-copy-sheet">
+      <form method="dialog" class="sheet-inner">
+        <div class="sheet-header">
+          <div>
+            <h2>Copy verse</h2>
+            <p id="verseCopySubtitle">Choose the text to copy</p>
+          </div>
+          <button class="icon-button" value="close" aria-label="Close copy options"><i class="ti ti-x" aria-hidden="true"></i></button>
+        </div>
+        <div class="copy-presets" aria-label="Quick copy choices">
+          <button id="copyOriginalOnly" class="text-button" type="button"><i class="ti ti-language" aria-hidden="true"></i>Original only</button>
+          <button id="copyTranslationOnly" class="text-button" type="button"><i class="ti ti-writing" aria-hidden="true"></i>Translation only</button>
+        </div>
+        <fieldset id="verseCopyOptions" class="verse-copy-options">
+          <legend>Select original text and translations</legend>
+        </fieldset>
+        <div class="sheet-actions copy-sheet-actions">
+          <button id="copySelectedVerse" class="text-button primary" type="button"><i class="ti ti-copy" aria-hidden="true"></i>Copy selected text</button>
+          <button id="shareVerseLink" class="text-button" type="button"><i class="ti ti-link" aria-hidden="true"></i>Copy verse link</button>
         </div>
       </form>
     </dialog>
