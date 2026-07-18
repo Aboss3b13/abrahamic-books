@@ -8,7 +8,7 @@ import {
   signOut,
   browserLocalPersistence,
 } from "firebase/auth";
-import { addDoc, collection, deleteDoc, doc, getDocs, getFirestore, onSnapshot, query, setDoc, updateDoc, where } from "firebase/firestore";
+import { addDoc, collection, deleteDoc, doc, getDoc, getDocs, getFirestore, onSnapshot, query, setDoc, updateDoc, where } from "firebase/firestore";
 
 const FIREBASE_CONFIG = {
   apiKey: "AIzaSyDcZTfjyNPnbGCBdO6HvPSLttQsrOZYx-E",
@@ -243,6 +243,12 @@ export class NotesSystem extends EventTarget {
   async setLastRead(lastRead) {
     if (!this.user) return;
     await setDoc(doc(this.firestore, "users", this.user.uid, "notes", "reader-state-v1"), { lastRead }, { merge: true });
+  }
+
+  async getLastRead() {
+    if (!this.user) return null;
+    const snapshot = await getDoc(doc(this.firestore, "users", this.user.uid, "notes", "reader-state-v1"));
+    return snapshot.exists() ? snapshot.data()?.lastRead || null : null;
   }
 
   stopSharedSync() {

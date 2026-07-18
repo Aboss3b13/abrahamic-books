@@ -483,7 +483,6 @@ main {
 .view.active {
   display: block;
   min-height: calc(100svh - var(--topbar-height) - 90px);
-  animation: view-arrive 420ms cubic-bezier(.16,1,.3,1) both;
 }
 
 /* Structural wrappers stay invisible to the original portrait/mobile flow. */
@@ -492,53 +491,6 @@ main {
 .workspace-divider,
 .workspace-pane-head { display: none; }
 
-.reading-dashboard {
-  display: grid;
-  grid-template-columns: 1.4fr 1fr 0.7fr;
-  gap: 8px;
-  margin-bottom: 12px;
-}
-
-.reading-dashboard > div,
-.reading-dashboard > button {
-  min-width: 0;
-  padding: 11px 12px;
-  border: 1px solid var(--line);
-  border-radius: 8px;
-  background: color-mix(in srgb, var(--panel) 86%, transparent);
-  box-shadow: var(--soft-shadow);
-}
-
-.dashboard-widget { position: relative; display: flex; align-items: center; gap: 10px; min-width: 0; min-height: 72px; text-align: left; color: var(--ink); }
-.dashboard-action { width: 100%; font: inherit; cursor: pointer; }
-.dashboard-action:not(:disabled):hover { transform: translateY(-3px); border-color: color-mix(in srgb, var(--green-2) 50%, var(--line)); box-shadow: 0 14px 30px color-mix(in srgb, var(--green) 13%, transparent); }
-.dashboard-action:disabled { cursor: default; opacity: .72; }
-.dashboard-icon { display: grid; place-items: center; width: 38px; height: 38px; flex: 0 0 38px; border-radius: 12px; color: var(--green); background: color-mix(in srgb, var(--green-2) 12%, var(--panel)); font-size: 1.08rem; }
-.last-read-widget.has-marker .dashboard-icon { color: color-mix(in srgb, var(--gold) 80%, var(--ink)); background: var(--gold-soft); }
-.dashboard-copy { display: block; min-width: 0; flex: 1 1 auto; }
-.dashboard-copy strong,
-.dashboard-copy small { display: block; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-.dashboard-copy small { margin-top: 3px; color: var(--muted); font-size: .68rem; }
-.dashboard-chevron { flex: 0 0 auto; color: var(--muted); font-size: .85rem; transition: transform 260ms cubic-bezier(.16,1,.3,1); }
-.dashboard-action:hover .dashboard-chevron { transform: translateX(3px); }
-
-.dashboard-label {
-  display: block;
-  margin-bottom: 4px;
-  color: var(--muted);
-  font-size: 0.7rem;
-  font-weight: 800;
-  text-transform: uppercase;
-}
-
-.reading-dashboard strong {
-  display: block;
-  overflow: hidden;
-  font-size: 0.92rem;
-  line-height: 1.2;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-}
 
 .reader-controls {
   position: sticky;
@@ -1817,15 +1769,6 @@ body.controls-collapsed .search-book-index {
   scroll-behavior: smooth;
   -webkit-overflow-scrolling: touch;
   scrollbar-gutter: stable;
-}
-
-dialog[open] .sheet-inner {
-  animation: sheet-enter 200ms cubic-bezier(.2,.8,.2,1) both;
-}
-
-@keyframes sheet-enter {
-  from { opacity: 0; transform: translateY(10px) scale(.99); }
-  to { opacity: 1; transform: translateY(0) scale(1); }
 }
 
 .sheet .sheet-header {
@@ -3554,7 +3497,12 @@ dialog::backdrop { animation: backdrop-in 300ms ease-out both; }
   gap: 12px;
 }
 
-.live-result button { pointer-events: none; }
+.live-result:nth-last-child(-n + 12) { animation: live-result-enter 300ms cubic-bezier(.16,1,.3,1) both; }
+
+@keyframes live-result-enter {
+  from { opacity: 0; transform: translateY(8px) scale(.992); }
+  to { opacity: 1; transform: none; }
+}
 
 .view.active.view-enter.swipe-left { animation: swipe-in-left 180ms cubic-bezier(.2, .8, .2, 1) both; }
 .view.active.view-enter.swipe-right { animation: swipe-in-right 180ms cubic-bezier(.2, .8, .2, 1) both; }
@@ -3757,7 +3705,6 @@ a.pill-button { position: relative; isolation: isolate; }
 .last-read-marker.active { color: #fff; border-color: var(--green); background: linear-gradient(135deg, var(--green), var(--teal)); box-shadow: 0 7px 18px color-mix(in srgb, var(--green) 28%, transparent); }
 .last-read-marker.last-read-confirmed { animation: bookmark-confirm 760ms cubic-bezier(.16,1,.3,1); }
 
-@keyframes view-arrive { from { opacity: 0; transform: translateY(10px) scale(.995); } to { opacity: 1; transform: none; } }
 @keyframes bookmark-confirm { 0% { transform: scale(1); } 28% { transform: scale(.84) rotate(-3deg); } 62% { transform: scale(1.18) rotate(2deg); box-shadow: 0 0 0 8px color-mix(in srgb, var(--gold) 20%, transparent), 0 14px 32px color-mix(in srgb, var(--green) 30%, transparent); } 100% { transform: scale(1); } }
 
 @media (max-width: 520px) {
@@ -3807,8 +3754,8 @@ a.pill-button { position: relative; isolation: isolate; }
 }
 @keyframes success-label-in { from { opacity: 0; transform: translateX(-5px); } to { opacity: 1; transform: none; } }
 @keyframes study-sheet-open {
-  0% { opacity: 0; transform: translateY(32px) scale(.94); filter: blur(3px); }
-  58% { opacity: 1; filter: blur(0); }
-  100% { opacity: 1; transform: none; filter: none; }
+  0% { opacity: 0; transform: translateY(28px) scale(.965); }
+  62% { opacity: 1; transform: translateY(-2px) scale(1.002); }
+  100% { opacity: 1; transform: none; }
 }
 @keyframes study-header-in { from { opacity: 0; transform: translateY(8px); } to { opacity: 1; transform: none; } }

@@ -148,12 +148,6 @@ const els = {
   hadithSectionSelect: document.querySelector("#hadithSectionSelect"),
   verseControlLabel: document.querySelector("#verseControlLabel"),
   ayahSearch: document.querySelector("#ayahSearch"),
-  dashboardSurah: document.querySelector("#dashboardSurah"),
-  dashboardProgress: document.querySelector("#dashboardProgress"),
-  dashboardNotes: document.querySelector("#dashboardNotes"),
-  dashboardLastRead: document.querySelector("#dashboardLastRead"),
-  dashboardLastReadLabel: document.querySelector("#dashboardLastReadLabel"),
-  dashboardNotesCard: document.querySelector("#dashboardNotesCard"),
   verses: document.querySelector("#verses"),
   readSelectionBar: document.querySelector("#readSelectionBar"),
   readSelectionCount: document.querySelector("#readSelectionCount"),
@@ -362,6 +356,18 @@ async function init() {
 }
 
 async function setupAppLinks() {
+  if ("scrollRestoration" in history) history.scrollRestoration = "manual";
+  const restoreOnResume = async () => {
+    await refreshAccountLastRead();
+    await waitForStableLayout();
+    restoreAppPosition();
+  };
+  document.addEventListener("visibilitychange", () => {
+    if (document.visibilityState === "hidden") captureAppPosition();
+    else restoreOnResume();
+  });
+  window.addEventListener("pagehide", captureAppPosition);
+  window.addEventListener("pageshow", restoreOnResume);
   if (!Capacitor.isNativePlatform()) return;
   const openAppUrl = async (url) => {
     const incoming = new URL(url);
@@ -371,6 +377,14 @@ async function setupAppLinks() {
     await openSharedLink();
   };
   await CapacitorApp.addListener("appUrlOpen", ({ url }) => openAppUrl(url));
+  await CapacitorApp.addListener("appStateChange", ({ isActive }) => {
+    if (!isActive) {
+      captureAppPosition();
+      syncSavedLastReadToWidget();
+      return;
+    }
+    restoreOnResume();
+  });
   const launch = await CapacitorApp.getLaunchUrl();
   if (launch?.url) await openAppUrl(launch.url);
 }
@@ -453,8 +467,6 @@ function bindEvents() {
   els.tafsirButton.addEventListener("click", () => openDialog(state.scripture === "quran" ? els.tafsirSheet : els.commentarySheet, els.tafsirButton));
   els.commentarySearch.addEventListener("input", renderCommentaryList);
   els.lastReadButton.addEventListener("click", restoreLastRead);
-  els.dashboardLastRead.addEventListener("click", restoreLastRead);
-  els.dashboardNotesCard.addEventListener("click", () => switchView("notesView", true));
   els.copyOriginalOnly.addEventListener("click", () => applyVerseCopyPreset("original"));
   els.copyTranslationOnly.addEventListener("click", () => applyVerseCopyPreset("translation"));
   els.copySelectedVerse.addEventListener("click", copySelectedVerseText);
@@ -700,6 +712,37 @@ let previousToolbarScrollY = 0;
 let viewSwitchingUntil = 0;
 let workspaceToolbarExpandedAt = 0;
 let previousWorkspaceToolbarScrollY = 0;
+let suspendedAppPosition = null;
+
+function captureAppPosition() {
+  const workspace = document.querySelector("#workspaceLeft");
+  const reader = document.querySelector("#readView");
+  suspendedAppPosition = {
+    view: state.currentView,
+    windowTop: window.scrollY,
+    workspaceTop: workspace?.scrollTop || 0,
+    readerTop: reader?.scrollTop || 0,
+    controlsCollapsed: document.body.classList.contains("controls-collapsed"),
+    workspaceToolCollapsed: document.body.classList.contains("workspace-tool-collapsed"),
+  };
+  state.viewScrollPositions[state.currentView] = suspendedAppPosition.windowTop;
+  try { sessionStorage.setItem("abrahamic-app-position-v1", JSON.stringify(suspendedAppPosition)); } catch {}
+}
+
+function restoreAppPosition() {
+  let position = suspendedAppPosition;
+  if (!position) {
+    try { position = JSON.parse(sessionStorage.getItem("abrahamic-app-position-v1") || "null"); } catch {}
+  }
+  if (!position || position.view !== state.currentView) return;
+  viewSwitchingUntil = performance.now() + 300;
+  document.body.classList.toggle("controls-collapsed", Boolean(position.controlsCollapsed));
+  document.body.classList.toggle("workspace-tool-collapsed", Boolean(position.workspaceToolCollapsed));
+  window.scrollTo({ top: Math.max(0, Number(position.windowTop) || 0), behavior: "auto" });
+  document.querySelector("#workspaceLeft")?.scrollTo({ top: Math.max(0, Number(position.workspaceTop) || 0), behavior: "auto" });
+  document.querySelector("#readView")?.scrollTo({ top: Math.max(0, Number(position.readerTop) || 0), behavior: "auto" });
+  previousToolbarScrollY = window.scrollY;
+}
 
 function handleToolbarScroll() {
   if (toolbarScrollFrame) return;
@@ -945,7 +988,6 @@ function renderBibleChapterOptions() {
 function updateBibleHeader() {
   els.chapterTitle.textContent = `${state.selectedBibleBook} ${state.selectedBibleChapter}`;
   els.chapterMeta.textContent = `${state.scripture === "old" ? "Old Testament" : "New Testament"} · World English Bible`;
-  els.dashboardSurah.textContent = state.selectedBibleBook;
 }
 
 async function loadHadithSection() {
@@ -955,7 +997,6 @@ async function loadHadithSection() {
   savePrefs();
   els.chapterTitle.textContent = info?.name || "Hadith";
   els.chapterMeta.textContent = `Hadith · ${info?.tradition || "Available public collections"} · Section ${section}`;
-  els.dashboardSurah.textContent = info?.name || "Hadith";
   setStatus(`Loading ${info?.name || book}, section ${section}...`);
   els.verses.innerHTML = "";
 
@@ -1069,7 +1110,6 @@ function updateChapterHeader() {
   if (!chapter) return;
   els.chapterTitle.textContent = `${chapter.name_simple} · ${chapter.name_arabic}`;
   els.chapterMeta.textContent = `${chapter.translated_name?.name || ""} · ${chapter.verses_count} ayat · ${chapter.revelation_place}`;
-  els.dashboardSurah.textContent = chapter.name_simple;
 }
 
 function renderVerses() {
@@ -1538,7 +1578,6 @@ function renderNotes() {
   const privateTotal = Object.values(state.notes).filter((note) => note.title?.trim() || note.text?.trim() || note.tags?.length || note.references?.length || note.standalone).length;
   const total = state.notesSection === "shared" ? state.sharedNotes.length : privateTotal;
   els.notesCount.textContent = state.notesSection === "shared" ? `${total} shared ${total === 1 ? "note" : "notes"}` : `${total} saved ${total === 1 ? "note" : "notes"}`;
-  els.dashboardNotes.textContent = String(total);
   els.sharedNotesBadge.textContent = String(state.sharedNotes.length);
   const locked = state.notesSection === "shared" && !notesSystem?.signedIn;
   els.sharedNotesLocked.hidden = !locked;
@@ -1899,18 +1938,29 @@ function jumpToAyah() {
 async function jumpToReference(key, behavior = "smooth", focused = true) {
   const sourceView = state.currentView;
   const sourceScrollTop = window.scrollY;
+  const keepVerseSearchFocused = document.activeElement === els.ayahSearch;
   state.focusedVerseKey = focused ? key : null;
   await ensureReferenceLoaded(key);
   renderVerses();
   switchView("readView", false, sourceView === "readView" ? null : sourceScrollTop);
   await waitForStableLayout();
   if (focused) {
-    document.body.classList.remove("controls-manually-expanded");
-    setControlsCollapsed(true);
+    if (!keepVerseSearchFocused) {
+      document.body.classList.remove("controls-manually-expanded");
+      setControlsCollapsed(true);
+    }
     await waitForStableLayout();
     // An instant view-local jump prevents a long page scroll animation from
     // continuing after the user returns to Search or Notes.
     scrollToFocusedVerse(isLandscapeWorkspace() ? behavior : "auto");
+    if (keepVerseSearchFocused) {
+      document.body.classList.add("controls-manually-expanded");
+      controlsExpandedAt = window.scrollY;
+      previousToolbarScrollY = window.scrollY;
+      els.ayahSearch.focus({ preventScroll: true });
+      const end = els.ayahSearch.value.length;
+      els.ayahSearch.setSelectionRange?.(end, end);
+    }
   } else {
     scrollToKey(key, behavior);
   }
@@ -2055,35 +2105,44 @@ function recordLastRead(key) {
 
 function startAccountLastReadSync() {
   if (!notesSystem?.signedIn) return;
-  notesSystem.watchLastRead((remote) => {
-    const accountUid = notesSystem.user?.uid || "";
-    const localReference = localStorage.getItem("quran-reader-last-read-v1") || "";
-    const localUpdatedAt = localStorage.getItem("quran-reader-last-read-updated-v1") || "";
-    const localOwner = localStorage.getItem("quran-reader-last-read-owner-v1") || "";
-    const localBelongsToAccount = !localOwner || localOwner === "__local__" || localOwner === accountUid;
-    if (!remote?.reference) {
-      if (localReference && localBelongsToAccount) {
-        localStorage.setItem("quran-reader-last-read-owner-v1", accountUid);
-        notesSystem.setLastRead({ reference: localReference, label: formatReferenceKey(localReference), text: "", updatedAt: localUpdatedAt || new Date().toISOString() }).catch(() => {});
-      } else if (!localBelongsToAccount) {
-        localStorage.removeItem("quran-reader-last-read-v1");
-        updateDashboard("");
-      }
-      return;
+  notesSystem.watchLastRead(applyAccountLastRead, (error) => setStatus(`Could not sync last read: ${error.message}`));
+}
+
+function applyAccountLastRead(remote) {
+  if (!notesSystem?.signedIn) return;
+  const accountUid = notesSystem.user?.uid || "";
+  const localReference = localStorage.getItem("quran-reader-last-read-v1") || "";
+  const localUpdatedAt = localStorage.getItem("quran-reader-last-read-updated-v1") || "";
+  const localOwner = localStorage.getItem("quran-reader-last-read-owner-v1") || "";
+  const localBelongsToAccount = !localOwner || localOwner === "__local__" || localOwner === accountUid;
+  if (!remote?.reference) {
+    if (localReference && localBelongsToAccount) {
+      localStorage.setItem("quran-reader-last-read-owner-v1", accountUid);
+      notesSystem.setLastRead({ reference: localReference, label: formatReferenceKey(localReference), text: "", updatedAt: localUpdatedAt || new Date().toISOString() }).catch(() => {});
+    } else if (!localBelongsToAccount) {
+      localStorage.removeItem("quran-reader-last-read-v1");
+      updateDashboard("");
     }
-    if (localReference && localBelongsToAccount && Date.parse(localUpdatedAt || 0) > Date.parse(remote.updatedAt || 0)) {
-      notesSystem.setLastRead({ reference: localReference, label: formatReferenceKey(localReference), text: "", updatedAt: localUpdatedAt }).catch(() => {});
-      return;
-    }
-    const previousKey = localReference;
-    localStorage.setItem("quran-reader-last-read-v1", remote.reference);
-    localStorage.setItem("quran-reader-last-read-updated-v1", remote.updatedAt || new Date().toISOString());
-    localStorage.setItem("quran-reader-last-read-owner-v1", accountUid);
-    if (previousKey && previousKey !== remote.reference) refreshVerse(previousKey);
-    refreshVerse(remote.reference);
-    updateDashboard(remote.reference);
-    if (Capacitor.isNativePlatform()) WidgetData.setLastRead(remote).catch(() => {});
-  }, (error) => setStatus(`Could not sync last read: ${error.message}`));
+    return;
+  }
+  if (localReference && localBelongsToAccount && Date.parse(localUpdatedAt || 0) > Date.parse(remote.updatedAt || 0)) {
+    notesSystem.setLastRead({ reference: localReference, label: formatReferenceKey(localReference), text: "", updatedAt: localUpdatedAt }).catch(() => {});
+    return;
+  }
+  const previousKey = localReference;
+  localStorage.setItem("quran-reader-last-read-v1", remote.reference);
+  localStorage.setItem("quran-reader-last-read-updated-v1", remote.updatedAt || new Date().toISOString());
+  localStorage.setItem("quran-reader-last-read-owner-v1", accountUid);
+  if (previousKey && previousKey !== remote.reference) refreshVerse(previousKey);
+  refreshVerse(remote.reference);
+  updateDashboard(remote.reference);
+  if (Capacitor.isNativePlatform()) WidgetData.setLastRead(remote).catch(() => {});
+}
+
+async function refreshAccountLastRead() {
+  if (!notesSystem?.signedIn || !navigator.onLine) return;
+  try { applyAccountLastRead(await notesSystem.getLastRead()); }
+  catch (error) { setStatus(`Last read will refresh when the connection returns. ${error.message}`); }
 }
 
 function syncSavedLastReadToWidget() {
@@ -2605,10 +2664,9 @@ function setupResponsiveWorkspace() {
   main.prepend(left);
   readView.after(leftDivider, rightDivider, right);
 
-  const dashboard = readView.querySelector(".reading-dashboard");
   const controls = readView.querySelector(".reader-controls");
   const quickActions = readView.querySelector(".quick-actions");
-  [dashboard, controls, quickActions].forEach((node) => {
+  [controls, quickActions].forEach((node) => {
     if (!node) return;
     const marker = document.createComment(`workspace-${node.className}`);
     node.before(marker);
@@ -2620,13 +2678,13 @@ function setupResponsiveWorkspace() {
     const active = media.matches;
     document.body.classList.toggle("landscape-workspace", active);
     if (active) {
-      [dashboard, controls, quickActions].forEach((node) => node && right.append(node));
+      [controls, quickActions].forEach((node) => node && right.append(node));
       document.querySelectorAll(".view").forEach((view) => view.classList.remove("active"));
       readView.classList.add("active");
       setWorkspaceTool(state.workspaceTool, false);
       document.body.classList.remove("controls-collapsed", "controls-manually-expanded");
     } else {
-      [dashboard, controls, quickActions].forEach((node) => node?._workspaceMarker?.after(node));
+      [controls, quickActions].forEach((node) => node?._workspaceMarker?.after(node));
       document.querySelectorAll(".view").forEach((view) => view.classList.toggle("active", view.id === state.currentView));
       document.querySelectorAll(".nav-item").forEach((button) => button.classList.toggle("active", button.dataset.view === state.currentView));
       document.body.classList.remove("workspace-left-collapsed", "workspace-right-collapsed", "workspace-tool-collapsed", "workspace-tool-manually-expanded");
@@ -2714,6 +2772,7 @@ async function runGlobalSearch() {
   const token = Date.now();
   state.searchAbort = token;
   clearSearchSelection();
+  state.searchResults = [];
 
   if (query.length < 2) {
     els.searchSummary.textContent = "Enter at least 2 characters";
@@ -2953,7 +3012,8 @@ function createLiveSearchRenderer(query, token) {
       els.searchResults.innerHTML = `<div class="live-search-grid" aria-live="polite"></div>`;
       started = true;
     }
-    const batch = queue.splice(0, 100);
+    // Keep each paint small so controls remain responsive even for common words.
+    const batch = queue.splice(0, 24);
     const grid = els.searchResults.querySelector(".live-search-grid");
     batch.forEach((result) => {
       const book = result.book || result.type;
@@ -2966,6 +3026,10 @@ function createLiveSearchRenderer(query, token) {
       group.count += 1;
       grid?.querySelector(`#search-book-${group.index} .search-book-results`)?.insertAdjacentHTML("beforeend", `
         <article class="search-result live-result" data-search-id="${escapeHTML(result.searchId)}">
+          <label class="search-check" aria-label="Select ${escapeHTML(result.title)}">
+            <input type="checkbox" ${state.selectedSearchResults.has(result.searchId) ? "checked" : ""}>
+            <span aria-hidden="true"></span>
+          </label>
           <button type="button" data-key="${escapeHTML(result.key)}" data-type="${escapeHTML(result.type)}">
             <span>${escapeHTML(result.type)}</span>
             <strong>${highlightSearchText(result.title, query)}</strong>
@@ -2980,7 +3044,9 @@ function createLiveSearchRenderer(query, token) {
   return {
     add(result) {
       count += 1;
-      queue.push({ ...result, searchId: `${result.type}:${result.key}:${count - 1}` });
+      const liveResult = { ...result, searchId: `${result.type}:${result.key}:${count - 1}` };
+      state.searchResults.push(liveResult);
+      queue.push(liveResult);
       els.searchSummary.textContent = `${count} result${count === 1 ? "" : "s"} so far for "${query}"`;
       if (!frame) frame = requestAnimationFrame(flush);
     },
@@ -3602,20 +3668,10 @@ function setStatus(message) {
   els.status.textContent = message;
 }
 
-function updateDashboard(activeKey = localStorage.getItem("quran-reader-last-read-v1")) {
-  const isQuran = state.scripture === "quran";
-  const isHadith = state.scripture === "hadith";
-  const chapter = isQuran ? getChapter(state.selectedChapter) : null;
-  const hadithBook = state.hadithBooks.find((item) => item.key === state.selectedHadithBook);
-  els.dashboardSurah.textContent = isQuran ? chapter?.name_simple || "Quran" : isHadith ? hadithBook?.name || "Hadith" : state.selectedBibleBook;
-
-  const verseCount = chapter?.verses_count || state.verses.length || 0;
-  els.dashboardProgress.textContent = `${verseCount} ${isHadith ? "hadith" : isQuran ? "ayat" : "verses"}`;
+function updateDashboard() {
   const savedKey = localStorage.getItem("quran-reader-last-read-v1");
-  els.dashboardLastReadLabel.textContent = savedKey ? formatReferenceKey(savedKey) : "Not marked yet";
-  els.dashboardLastRead.disabled = !savedKey;
-  els.dashboardLastRead.classList.toggle("has-marker", Boolean(savedKey));
-  els.dashboardNotes.textContent = String(Object.values(state.notes).filter((note) => note.title?.trim() || note.text?.trim() || note.tags?.length || note.references?.length || note.standalone).length);
+  els.lastReadButton.disabled = !savedKey;
+  els.lastReadButton.title = savedKey ? `Resume ${formatReferenceKey(savedKey)}` : "Mark a verse as last read first";
 }
 
 function changeArabicScale(delta) {
