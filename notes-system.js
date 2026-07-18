@@ -65,6 +65,7 @@ export class NotesSystem extends EventTarget {
     this.user = null;
     this.unsubscribeRemote = null;
     this.sharedUnsubscribers = [];
+    this.lastReadUnsubscribe = null;
   }
 
   async init(legacy = {}) {
@@ -213,6 +214,7 @@ export class NotesSystem extends EventTarget {
     await signOut(this.auth);
     this.unsubscribeRemote?.();
     this.unsubscribeRemote = null;
+    this.stopLastReadSync();
     this.stopSharedSync();
     this.user = null;
     this.config.accountUid = "";
@@ -222,6 +224,26 @@ export class NotesSystem extends EventTarget {
 
   get accountEmail() { return this.user?.email || ""; }
   get signedIn() { return Boolean(this.user); }
+
+  stopLastReadSync() {
+    this.lastReadUnsubscribe?.();
+    this.lastReadUnsubscribe = null;
+  }
+
+  watchLastRead(onChange, onError = () => {}) {
+    this.stopLastReadSync();
+    if (!this.user) { onChange(null); return; }
+    this.lastReadUnsubscribe = onSnapshot(
+      doc(this.firestore, "users", this.user.uid, "notes", "__reader_state__"),
+      (snapshot) => onChange(snapshot.exists() ? snapshot.data()?.lastRead || null : null),
+      onError,
+    );
+  }
+
+  async setLastRead(lastRead) {
+    if (!this.user) return;
+    await setDoc(doc(this.firestore, "users", this.user.uid, "notes", "__reader_state__"), { lastRead }, { merge: true });
+  }
 
   stopSharedSync() {
     this.sharedUnsubscribers.forEach((unsubscribe) => unsubscribe?.());

@@ -3745,7 +3745,6 @@ dialog::backdrop { animation: backdrop-in 300ms ease-out both; }
 button,
 a.text-button,
 a.pill-button { position: relative; isolation: isolate; }
-.button-ripple { position: absolute; z-index: 0; border-radius: 50%; pointer-events: none; background: currentColor; opacity: 0; transform: scale(.08); animation: button-ripple 620ms cubic-bezier(.16,1,.3,1); }
 .text-button:not(:disabled):hover,
 .pill-button:not(:disabled):hover,
 .icon-button:not(:disabled):hover,
@@ -3757,13 +3756,9 @@ a.pill-button { position: relative; isolation: isolate; }
 .last-read-marker span { font-size: .68rem; font-weight: 900; white-space: nowrap; }
 .last-read-marker.active { color: #fff; border-color: var(--green); background: linear-gradient(135deg, var(--green), var(--teal)); box-shadow: 0 7px 18px color-mix(in srgb, var(--green) 28%, transparent); }
 .last-read-marker.last-read-confirmed { animation: bookmark-confirm 760ms cubic-bezier(.16,1,.3,1); }
-.bookmark-burst { position: absolute; inset: 50%; width: 1px; height: 1px; pointer-events: none; }
-.bookmark-burst i { --burst-distance: 38px; position: absolute; width: 6px; height: 6px; margin: -3px; border-radius: 50%; background: var(--gold); box-shadow: 0 0 0 3px color-mix(in srgb, var(--gold) 18%, transparent); animation: bookmark-particle 720ms cubic-bezier(.16,.8,.24,1) forwards; transform: rotate(var(--burst-angle)) translateX(0) scale(.4); }
 
 @keyframes view-arrive { from { opacity: 0; transform: translateY(10px) scale(.995); } to { opacity: 1; transform: none; } }
-@keyframes button-ripple { 0% { opacity: .15; transform: scale(.08); } 72% { opacity: .08; } 100% { opacity: 0; transform: scale(1); } }
 @keyframes bookmark-confirm { 0% { transform: scale(1); } 28% { transform: scale(.84) rotate(-3deg); } 62% { transform: scale(1.18) rotate(2deg); box-shadow: 0 0 0 8px color-mix(in srgb, var(--gold) 20%, transparent), 0 14px 32px color-mix(in srgb, var(--green) 30%, transparent); } 100% { transform: scale(1); } }
-@keyframes bookmark-particle { 0% { opacity: 0; transform: rotate(var(--burst-angle)) translateX(3px) scale(.4); } 25% { opacity: 1; } 100% { opacity: 0; transform: rotate(var(--burst-angle)) translateX(var(--burst-distance)) scale(0); } }
 
 @media (max-width: 520px) {
   .reading-dashboard { grid-template-columns: 1fr 1fr; }
@@ -3781,3 +3776,39 @@ a.pill-button { position: relative; isolation: isolate; }
   .last-read-marker { min-width: 36px; width: 36px; padding: 0; }
   .last-read-marker span { display: none; }
 }
+
+/* Buttons animate through their own shape and content; no tap ripples. */
+.button-morph-success {
+  color: #fff !important;
+  border-color: var(--green-2) !important;
+  background: linear-gradient(135deg, var(--green), var(--teal)) !important;
+  box-shadow: 0 10px 26px color-mix(in srgb, var(--green) 28%, transparent) !important;
+  transform: translateY(-1px) scale(1.06) !important;
+  transition-duration: 420ms !important;
+}
+.button-morph-success > .ti-check {
+  font-size: 1.05rem;
+  animation: success-tick-in 480ms cubic-bezier(.16,1,.3,1) both;
+}
+.button-morph-success .copied-label { animation: success-label-in 360ms 70ms cubic-bezier(.16,1,.3,1) both; }
+.button-morph-returning { opacity: .65; transform: scale(.94) !important; }
+
+.study-opening[open] .sheet-inner {
+  transform-origin: 70% 100%;
+  animation: study-sheet-open 520ms cubic-bezier(.16,1,.3,1) both !important;
+}
+.study-opening[open] .sheet-header { animation: study-header-in 440ms 80ms cubic-bezier(.16,1,.3,1) both; }
+.tafsir-content { transition: opacity 280ms ease, transform 420ms cubic-bezier(.16,1,.3,1); }
+
+@keyframes success-tick-in {
+  0% { opacity: 0; transform: scale(.2) rotate(-24deg); }
+  65% { opacity: 1; transform: scale(1.2) rotate(4deg); }
+  100% { opacity: 1; transform: scale(1) rotate(0); }
+}
+@keyframes success-label-in { from { opacity: 0; transform: translateX(-5px); } to { opacity: 1; transform: none; } }
+@keyframes study-sheet-open {
+  0% { opacity: 0; transform: translateY(32px) scale(.94); filter: blur(3px); }
+  58% { opacity: 1; filter: blur(0); }
+  100% { opacity: 1; transform: none; filter: none; }
+}
+@keyframes study-header-in { from { opacity: 0; transform: translateY(8px); } to { opacity: 1; transform: none; } }

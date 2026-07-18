@@ -450,7 +450,7 @@ function bindEvents() {
     els.readerSettingsSheet.close();
     openNotesSyncSettings();
   });
-  els.tafsirButton.addEventListener("click", () => openDialog(state.scripture === "quran" ? els.tafsirSheet : els.commentarySheet));
+  els.tafsirButton.addEventListener("click", () => openDialog(state.scripture === "quran" ? els.tafsirSheet : els.commentarySheet, els.tafsirButton));
   els.commentarySearch.addEventListener("input", renderCommentaryList);
   els.lastReadButton.addEventListener("click", restoreLastRead);
   els.dashboardLastRead.addEventListener("click", restoreLastRead);
@@ -524,7 +524,18 @@ function bindEvents() {
   els.connectFirebase.addEventListener("click", () => connectFirebase(false));
   els.createFirebaseAccount.addEventListener("click", () => connectFirebase(true));
   els.syncNow.addEventListener("click", () => runNotesAction(() => notesSystem.sync({ force: true })));
-  els.disconnectFirebase.addEventListener("click", () => runNotesAction(async () => { await notesSystem.disconnect(); updateSyncUI("saved locally"); }));
+  els.disconnectFirebase.addEventListener("click", () => runNotesAction(async () => {
+    await notesSystem.disconnect();
+    const localReference = localStorage.getItem("quran-reader-local-last-read-v1") || "";
+    const localUpdatedAt = localStorage.getItem("quran-reader-local-last-read-updated-v1") || "";
+    if (localReference) localStorage.setItem("quran-reader-last-read-v1", localReference);
+    else localStorage.removeItem("quran-reader-last-read-v1");
+    if (localUpdatedAt) localStorage.setItem("quran-reader-last-read-updated-v1", localUpdatedAt);
+    else localStorage.removeItem("quran-reader-last-read-updated-v1");
+    localStorage.setItem("quran-reader-last-read-owner-v1", "__local__");
+    updateDashboard(localReference);
+    updateSyncUI("saved locally");
+  }));
   els.exportEncryptedBackup.addEventListener("click", exportEncryptedBackup);
   els.importEncryptedBackup.addEventListener("change", importEncryptedBackup);
   els.shareSnapshot.addEventListener("click", shareSnapshotNote);
@@ -580,7 +591,6 @@ function bindEvents() {
   document.querySelectorAll(".nav-item").forEach((button) => {
     button.addEventListener("click", () => switchView(button.dataset.view, true));
   });
-  installButtonMotion();
   setupSwipeNavigation();
 
   window.addEventListener("scroll", handleToolbarScroll, { passive: true });
@@ -617,8 +627,8 @@ function bindEvents() {
     if (!key) return;
 
     if (button.dataset.action === "note") openNote(key);
-    if (button.dataset.action === "tafsir") openTafsir(key);
-    if (button.dataset.action === "commentary") openBibleCommentary(key);
+    if (button.dataset.action === "tafsir") openTafsir(key, button);
+    if (button.dataset.action === "commentary") openBibleCommentary(key, button);
     if (button.dataset.action === "bookmark") saveLastRead(key);
     if (button.dataset.action === "copy") openVerseCopy(key);
     if (button.dataset.action === "share") shareVerseDirect(key, button);
@@ -1460,18 +1470,18 @@ async function getWiktionaryGloss(word, lang) {
   return definitions.slice(0, 3).join("; ");
 }
 
-async function openTafsir(key) {
+async function openTafsir(key, sourceButton = null) {
   const tafsir = state.tafsirs.find((item) => item.id === state.selectedTafsir);
   els.tafsirContentTitle.textContent = `Tafsir ${key}`;
   els.tafsirContentSubtitle.textContent = tafsir ? tafsir.name : "Loading...";
   els.tafsirContent.innerHTML = "<p>Loading tafsir...</p>";
-  openDialog(els.tafsirContentSheet);
+  openDialog(els.tafsirContentSheet, sourceButton, "study");
 
   try {
     const data = await getDownloadedTafsir(key).catch(() => getBundledTafsir(key)).catch(() => getJSON(`${API}/tafsirs/${state.selectedTafsir}/by_ayah/${key}`));
-    els.tafsirContent.innerHTML = sanitizeHTML(data.tafsir?.text || "<p>No tafsir returned for this ayah.</p>");
+    revealStudyContent(sanitizeHTML(data.tafsir?.text || "<p>No tafsir returned for this ayah.</p>"));
   } catch (error) {
-    els.tafsirContent.innerHTML = `<p>${escapeHTML(error.message)}</p>`;
+    revealStudyContent(`<p>${escapeHTML(error.message)}</p>`);
   }
 }
 
@@ -1483,19 +1493,29 @@ async function getDownloadedTafsir(key) {
   if (!row) throw new Error("No downloaded entry"); return { tafsir: row };
 }
 
-async function openBibleCommentary(key) {
+async function openBibleCommentary(key, sourceButton = null) {
   const parsed = parseReferenceKey(key); const bookId = BOOK_IDS[parsed.book];
   const commentary = state.commentaries.find((item) => item.id === state.selectedCommentary);
   els.tafsirContentTitle.textContent = `${parsed.label} commentary`;
   els.tafsirContentSubtitle.textContent = commentary?.name || state.selectedCommentary;
-  els.tafsirContent.innerHTML = "<p>Loading commentary...</p>"; openDialog(els.tafsirContentSheet);
+  els.tafsirContent.innerHTML = "<p>Loading commentary...</p>"; openDialog(els.tafsirContentSheet, sourceButton, "study");
   try {
     const url = `https://bible.helloao.org/api/c/${state.selectedCommentary}/${bookId}/${parsed.chapter}.json`;
     const data = state.selectedCommentary === "matthew-henry" ? await getOfflineJSON(`commentary/matthew-henry/${bookId}-${parsed.chapter}.json`).catch(() => getJSON(url)) : await getJSON(url);
     const entry = data.chapter?.content?.find((item) => item.type === "verse" && Number(item.number) === parsed.verse);
     const paragraphs = Array.isArray(entry?.content) ? entry.content : [];
-    els.tafsirContent.innerHTML = paragraphs.length ? paragraphs.map((text) => `<p>${escapeHTML(text)}</p>`).join("") : "<p>No commentary entry is available for this verse.</p>";
-  } catch (error) { els.tafsirContent.innerHTML = `<p>${escapeHTML(error.message)}</p>`; }
+    revealStudyContent(paragraphs.length ? paragraphs.map((text) => `<p>${escapeHTML(text)}</p>`).join("") : "<p>No commentary entry is available for this verse.</p>");
+  } catch (error) { revealStudyContent(`<p>${escapeHTML(error.message)}</p>`); }
+}
+
+function revealStudyContent(html) {
+  els.tafsirContent.innerHTML = html;
+  if (!matchMedia("(prefers-reduced-motion: reduce)").matches) {
+    els.tafsirContent.animate(
+      [{ opacity: 0, transform: "translateY(10px)" }, { opacity: 1, transform: "translateY(0)" }],
+      { duration: 420, easing: "cubic-bezier(.16,1,.3,1)" },
+    );
+  }
 }
 
 function renderNotes() {
@@ -2013,21 +2033,57 @@ function playLastReadAnimation(button) {
   button.classList.remove("last-read-confirmed");
   void button.offsetWidth;
   button.classList.add("last-read-confirmed");
-  const burst = document.createElement("span");
-  burst.className = "bookmark-burst";
-  burst.setAttribute("aria-hidden", "true");
-  burst.innerHTML = Array.from({ length: 8 }, (_, index) => `<i style="--burst-angle:${index * 45}deg"></i>`).join("");
-  button.append(burst);
-  setTimeout(() => { burst.remove(); button.classList.remove("last-read-confirmed"); }, 900);
+  setTimeout(() => button.classList.remove("last-read-confirmed"), 900);
 }
 
 function recordLastRead(key) {
+  const updatedAt = new Date().toISOString();
   localStorage.setItem("quran-reader-last-read-v1", key);
-  if (Capacitor.isNativePlatform()) {
-    const verse = state.verses.find((item) => item.verse_key === key);
-    const text = stripHTML(verse?.translations?.[0]?.text || verse?.text || verse?.english?.text || verse?.text_uthmani || "");
-    WidgetData.setLastRead({ reference: key, label: formatReferenceKey(key), text: text.slice(0, 320) }).catch(() => {});
+  localStorage.setItem("quran-reader-last-read-updated-v1", updatedAt);
+  const ownerUid = notesSystem?.user?.uid || "__local__";
+  localStorage.setItem("quran-reader-last-read-owner-v1", ownerUid);
+  if (ownerUid === "__local__") {
+    localStorage.setItem("quran-reader-local-last-read-v1", key);
+    localStorage.setItem("quran-reader-local-last-read-updated-v1", updatedAt);
   }
+  const verse = state.verses.find((item) => item.verse_key === key);
+  const text = stripHTML(verse?.translations?.[0]?.text || verse?.text || verse?.english?.text || verse?.text_uthmani || "");
+  const payload = { reference: key, label: formatReferenceKey(key), text: text.slice(0, 320), updatedAt };
+  if (Capacitor.isNativePlatform()) WidgetData.setLastRead(payload).catch(() => {});
+  if (notesSystem?.signedIn) notesSystem.setLastRead(payload).catch((error) => setStatus(`Last read saved locally; account sync will retry. ${error.message}`));
+}
+
+function startAccountLastReadSync() {
+  if (!notesSystem?.signedIn) return;
+  notesSystem.watchLastRead((remote) => {
+    const accountUid = notesSystem.user?.uid || "";
+    const localReference = localStorage.getItem("quran-reader-last-read-v1") || "";
+    const localUpdatedAt = localStorage.getItem("quran-reader-last-read-updated-v1") || "";
+    const localOwner = localStorage.getItem("quran-reader-last-read-owner-v1") || "";
+    const localBelongsToAccount = !localOwner || localOwner === "__local__" || localOwner === accountUid;
+    if (!remote?.reference) {
+      if (localReference && localBelongsToAccount) {
+        localStorage.setItem("quran-reader-last-read-owner-v1", accountUid);
+        notesSystem.setLastRead({ reference: localReference, label: formatReferenceKey(localReference), text: "", updatedAt: localUpdatedAt || new Date().toISOString() }).catch(() => {});
+      } else if (!localBelongsToAccount) {
+        localStorage.removeItem("quran-reader-last-read-v1");
+        updateDashboard("");
+      }
+      return;
+    }
+    if (localReference && localBelongsToAccount && Date.parse(localUpdatedAt || 0) > Date.parse(remote.updatedAt || 0)) {
+      notesSystem.setLastRead({ reference: localReference, label: formatReferenceKey(localReference), text: "", updatedAt: localUpdatedAt }).catch(() => {});
+      return;
+    }
+    const previousKey = localReference;
+    localStorage.setItem("quran-reader-last-read-v1", remote.reference);
+    localStorage.setItem("quran-reader-last-read-updated-v1", remote.updatedAt || new Date().toISOString());
+    localStorage.setItem("quran-reader-last-read-owner-v1", accountUid);
+    if (previousKey && previousKey !== remote.reference) refreshVerse(previousKey);
+    refreshVerse(remote.reference);
+    updateDashboard(remote.reference);
+    if (Capacitor.isNativePlatform()) WidgetData.setLastRead(remote).catch(() => {});
+  }, (error) => setStatus(`Could not sync last read: ${error.message}`));
 }
 
 function syncSavedLastReadToWidget() {
@@ -2105,10 +2161,12 @@ async function shareVerseDirect(key, button) {
   try {
     if (Capacitor.isNativePlatform()) {
       await Share.share({ text: url, dialogTitle: "Share link" });
+      showCopiedState(button, "Shared");
       return;
     }
     if (navigator.share) {
       await navigator.share({ text: url });
+      showCopiedState(button, "Shared");
       return;
     }
   } catch (error) {
@@ -2287,6 +2345,7 @@ async function connectFirebase(createAccount) {
   await runNotesAction(async () => {
     await notesSystem.connect(els.firebaseEmail.value.trim(), els.firebasePassword.value, createAccount);
     startSharedNotes();
+    startAccountLastReadSync();
     els.firebasePassword.value = "";
     updateSyncUI("synced", createAccount ? "Firebase account created and notes synced." : "Signed in and synced with Firebase.");
   });
@@ -2351,15 +2410,21 @@ function legacyCopy(url) {
   return copied;
 }
 
-function showCopiedState(button) {
+function showCopiedState(button, label = "Copied") {
   if (!button) return;
   const original = button.innerHTML;
-  button.innerHTML = `<span aria-hidden="true">✓</span><span class="copied-label">Copied</span>`;
-  button.classList.add("active");
+  const originalWidth = button.getBoundingClientRect().width;
+  button.style.setProperty("--morph-width", `${originalWidth}px`);
+  button.classList.add("active", "button-morph-success");
+  button.innerHTML = `<i class="ti ti-check" aria-hidden="true"></i><span class="copied-label">${escapeHTML(label)}</span>`;
   setTimeout(() => {
+    button.classList.add("button-morph-returning");
+    setTimeout(() => {
     button.innerHTML = original;
-    button.classList.remove("active");
-  }, 1400);
+      button.classList.remove("active", "button-morph-success", "button-morph-returning");
+      button.style.removeProperty("--morph-width");
+    }, 180);
+  }, 1250);
 }
 
 function encodeBase64Url(value) {
@@ -3420,6 +3485,7 @@ async function loadLocalState() {
   notesSystem = new NotesSystem({ isNative: Capacitor.isNativePlatform(), onChange: (notes) => { state.notes = notes; renderNotes(); renderVerses(); updateDashboard(); syncWidgetNotes(); } });
   state.notes = await notesSystem.init(legacyNotes);
   startSharedNotes();
+  startAccountLastReadSync();
   notesSystem.addEventListener("status", (event) => updateSyncUI(event.detail.state, event.detail.detail));
 
   let notesMigrated = false;
@@ -3550,22 +3616,6 @@ function updateDashboard(activeKey = localStorage.getItem("quran-reader-last-rea
   els.dashboardLastRead.disabled = !savedKey;
   els.dashboardLastRead.classList.toggle("has-marker", Boolean(savedKey));
   els.dashboardNotes.textContent = String(Object.values(state.notes).filter((note) => note.title?.trim() || note.text?.trim() || note.tags?.length || note.references?.length || note.standalone).length);
-}
-
-function installButtonMotion() {
-  document.addEventListener("pointerdown", (event) => {
-    const button = event.target.closest("button, a.text-button, a.pill-button");
-    if (!button || button.matches(":disabled") || matchMedia("(prefers-reduced-motion: reduce)").matches) return;
-    const bounds = button.getBoundingClientRect();
-    const ripple = document.createElement("span");
-    const size = Math.max(bounds.width, bounds.height) * 1.8;
-    ripple.className = "button-ripple";
-    ripple.style.width = ripple.style.height = `${size}px`;
-    ripple.style.left = `${event.clientX - bounds.left - size / 2}px`;
-    ripple.style.top = `${event.clientY - bounds.top - size / 2}px`;
-    button.append(ripple);
-    ripple.addEventListener("animationend", () => ripple.remove(), { once: true });
-  }, { passive: true });
 }
 
 function changeArabicScale(delta) {
@@ -4140,13 +4190,21 @@ function registerServiceWorker() {
   });
 }
 
-function openDialog(dialog) {
+function openDialog(dialog, sourceButton = null, motion = "sheet") {
   if (dialog.open) return;
+  if (sourceButton && !matchMedia("(prefers-reduced-motion: reduce)").matches) {
+    sourceButton.animate(
+      [{ transform: "scale(1)" }, { transform: "scale(.92)" }, { transform: "scale(1.04)" }, { transform: "scale(1)" }],
+      { duration: 420, easing: "cubic-bezier(.16,1,.3,1)" },
+    );
+  }
+  dialog.classList.toggle("study-opening", motion === "study");
   if (typeof dialog.showModal === "function") {
     dialog.showModal();
   } else {
     dialog.setAttribute("open", "");
   }
+  dialog.addEventListener("close", () => dialog.classList.remove("study-opening"), { once: true });
   syncModalState();
 }
 
