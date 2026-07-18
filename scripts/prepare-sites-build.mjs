@@ -2,7 +2,11 @@ import { cp, copyFile, mkdir, writeFile } from "node:fs/promises";
 
 await mkdir("dist/server", { recursive: true });
 await mkdir("dist/.openai", { recursive: true });
-await cp("public/offline", "dist/offline", { recursive: true });
+await cp("public/offline", "dist/offline", { recursive: true }).catch((error) => {
+  // The lightweight Sites source branch intentionally omits the 300+ MB
+  // offline bundle. Full server and APK builds still include it.
+  if (error.code !== "ENOENT") throw error;
+});
 await copyFile(".openai/hosting.json", "dist/.openai/hosting.json");
 await copyFile("sw.js", "dist/sw.js");
 await copyFile("manifest.webmanifest", "dist/manifest.webmanifest");
