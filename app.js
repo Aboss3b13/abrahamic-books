@@ -349,6 +349,8 @@ async function init() {
     renderResourceLists();
     renderNotes();
     await loadCurrentScripture();
+    syncSavedLastReadToWidget();
+    syncWidgetNotes();
     await openSharedLink();
     await setupAppLinks();
   } catch (error) {
@@ -1873,6 +1875,7 @@ async function jumpToReference(key, behavior = "smooth", focused = true) {
   state.focusedVerseKey = focused ? key : null;
   await ensureReferenceLoaded(key);
   renderVerses();
+  recordLastRead(key);
   switchView("readView", false, sourceView === "readView" ? null : sourceScrollTop);
   await waitForStableLayout();
   if (focused) {
@@ -1984,15 +1987,30 @@ function refreshVerse(key) {
 }
 
 function saveLastRead(key) {
+  recordLastRead(key);
+  updateDashboard(key);
+  setStatus(`Saved ${key} as last read.`);
+  setTimeout(() => setStatus(""), 1600);
+}
+
+function recordLastRead(key) {
   localStorage.setItem("quran-reader-last-read-v1", key);
   if (Capacitor.isNativePlatform()) {
     const verse = state.verses.find((item) => item.verse_key === key);
     const text = stripHTML(verse?.translations?.[0]?.text || verse?.text || verse?.english?.text || verse?.text_uthmani || "");
     WidgetData.setLastRead({ reference: key, label: formatReferenceLabel(key), text: text.slice(0, 320) }).catch(() => {});
   }
-  updateDashboard(key);
-  setStatus(`Saved ${key} as last read.`);
-  setTimeout(() => setStatus(""), 1600);
+}
+
+function syncSavedLastReadToWidget() {
+  if (!Capacitor.isNativePlatform()) return;
+  const key = localStorage.getItem("quran-reader-last-read-v1");
+  if (!key) return;
+  const verse = state.verses.find((item) => item.verse_key === key);
+  const text = stripHTML(verse?.translations?.[0]?.text || verse?.text || verse?.english?.text || verse?.text_uthmani || "");
+  const payload = { reference: key, label: formatReferenceLabel(key) };
+  if (text) payload.text = text.slice(0, 320);
+  WidgetData.setLastRead(payload).catch(() => {});
 }
 
 async function restoreLastRead() {
@@ -2335,6 +2353,11 @@ async function openSharedLink() {
   const hashParams = new URLSearchParams(location.hash.slice(1));
   const requestedView = queryParams.get("view");
   if (["readView", "notesView", "searchView"].includes(requestedView)) switchView(requestedView);
+  const requestedNote = queryParams.get("note");
+  if (requestedNote && state.notes[requestedNote]) openNote(requestedNote);
+  if (requestedView === "searchView" && queryParams.get("focus") === "search") {
+    requestAnimationFrame(() => els.globalSearch.focus({ preventScroll: true }));
+  }
   const reference = queryParams.get("ref") || hashParams.get("ref");
   if (reference) {
     await jumpToReference(reference, "auto");
@@ -3365,7 +3388,7 @@ async function loadLocalState() {
     legacyNotes = {};
   }
 
-  notesSystem = new NotesSystem({ isNative: Capacitor.isNativePlatform(), onChange: (notes) => { state.notes = notes; renderNotes(); renderVerses(); updateDashboard(); } });
+  notesSystem = new NotesSystem({ isNative: Capacitor.isNativePlatform(), onChange: (notes) => { state.notes = notes; renderNotes(); renderVerses(); updateDashboard(); syncWidgetNotes(); } });
   state.notes = await notesSystem.init(legacyNotes);
   startSharedNotes();
   notesSystem.addEventListener("status", (event) => updateSyncUI(event.detail.state, event.detail.detail));
@@ -3463,6 +3486,21 @@ function saveNotes() {
   const key = state.currentNoteKey;
   if (key && state.notes[key]) notesSystem?.save(key, state.notes[key]).then((saved) => { state.notes[key] = saved; }).catch((error) => updateSyncUI("conflict", error.message));
   else Object.entries(state.notes).filter(([, note]) => !note.id).forEach(([noteKey, note]) => notesSystem?.save(noteKey, note).then((saved) => { state.notes[noteKey] = saved; }));
+}
+
+function syncWidgetNotes() {
+  if (!Capacitor.isNativePlatform() || !state.notes) return;
+  const notes = Object.entries(state.notes)
+    .filter(([, note]) => note && (note.title?.trim() || note.text?.trim() || note.references?.length))
+    .sort(([, left], [, right]) => Date.parse(right.updatedAt || 0) - Date.parse(left.updatedAt || 0))
+    .slice(0, 200)
+    .map(([key, note]) => ({
+      key,
+      title: note.title?.trim() || (note.references?.[0] ? formatReferenceLabel(note.references[0]) : "Untitled note"),
+      text: note.text?.trim() || (note.references?.length ? `${note.references.length} saved reference${note.references.length === 1 ? "" : "s"}` : "Open note"),
+      updatedAt: note.updatedAt || "",
+    }));
+  WidgetData.setNotes({ notes }).catch(() => {});
 }
 
 function setStatus(message) {
