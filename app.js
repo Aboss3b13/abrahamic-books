@@ -678,6 +678,7 @@ let toolbarScrollFrame = false;
 let lastSearchSpyAt = 0;
 let controlsExpandedAt = 0;
 let previousToolbarScrollY = 0;
+let viewSwitchingUntil = 0;
 let workspaceToolbarExpandedAt = 0;
 let previousWorkspaceToolbarScrollY = 0;
 
@@ -686,6 +687,11 @@ function handleToolbarScroll() {
   toolbarScrollFrame = true;
   requestAnimationFrame(() => {
     const y = window.scrollY;
+    if (performance.now() < viewSwitchingUntil) {
+      previousToolbarScrollY = y;
+      toolbarScrollFrame = false;
+      return;
+    }
     const manuallyExpanded = document.body.classList.contains("controls-manually-expanded");
     const scrollingDown = y > previousToolbarScrollY + 2;
 
@@ -2411,29 +2417,31 @@ function switchView(viewId, reselectedFromNav = false, currentScrollOverride = n
   const leavingTop = currentScrollOverride ?? window.scrollY;
   state.viewScrollPositions[state.currentView] = leavingTop;
   document.querySelector(`#${state.currentView}`)?.setAttribute("data-saved-scroll", String(leavingTop));
+  const destinationView = document.querySelector(`#${viewId}`);
+  const savedOnView = Number(destinationView?.getAttribute("data-saved-scroll"));
+  const restoreTop = Number.isFinite(savedOnView) ? savedOnView : state.viewScrollPositions[viewId] || 0;
+
+  // Finish all destination work while it is still hidden. This keeps a swipe to
+  // one visual update instead of revealing the view and then reflowing it.
+  if (viewId === "notesView") renderNotes();
+  document.body.classList.remove("controls-collapsed", "controls-manually-expanded");
+  state.currentView = viewId;
+  previousToolbarScrollY = restoreTop;
+  viewSwitchingUntil = performance.now() + 120;
+
   document.querySelectorAll(".view").forEach((view) => {
     view.classList.remove("view-enter", "swipe-left", "swipe-right");
     view.classList.toggle("active", view.id === viewId);
   });
-  const destinationView = document.querySelector(`#${viewId}`);
   destinationView?.classList.add("view-enter", transition);
   const finishTransition = () => destinationView?.classList.remove("view-enter", "section", "swipe-left", "swipe-right");
   destinationView?.addEventListener("animationend", finishTransition, { once: true });
   setTimeout(finishTransition, 440);
   document.querySelectorAll(".nav-item").forEach((button) => button.classList.toggle("active", button.dataset.view === viewId));
-  if (viewId === "notesView") renderNotes();
-  state.currentView = viewId;
-  // A collapsed toolbar belongs to the scroll state of the view being left.
-  // Reset before restoring the destination so its filters cannot arrive hidden
-  // or be stranded above the restored scroll position.
-  document.body.classList.remove("controls-collapsed", "controls-manually-expanded");
-  previousToolbarScrollY = 0;
-  const savedOnView = Number(document.querySelector(`#${viewId}`)?.getAttribute("data-saved-scroll"));
-  const restoreTop = Number.isFinite(savedOnView) ? savedOnView : state.viewScrollPositions[viewId] || 0;
-  requestAnimationFrame(() => {
-    window.scrollTo({ top: restoreTop, behavior: "auto" });
-    previousToolbarScrollY = restoreTop;
-  });
+
+  // scrollTo forces the newly displayed view to lay out before the browser can
+  // paint it, so the user never sees an intermediate scroll position.
+  window.scrollTo({ top: restoreTop, behavior: "auto" });
 }
 
 function isLandscapeWorkspace() {

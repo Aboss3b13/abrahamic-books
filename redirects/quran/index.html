@@ -9,15 +9,14 @@
       const destination = new URL("/AbrahamicBooks/", location.origin);
       destination.search = location.search;
       destination.hash = location.hash;
-      if ("serviceWorker" in navigator) {
-        navigator.serviceWorker.getRegistrations()
-          .then((registrations) => Promise.all(registrations
-            .filter((registration) => new URL(registration.scope).pathname.startsWith("/quran"))
-            .map((registration) => registration.unregister())))
-          .finally(() => location.replace(destination));
-      } else {
-        location.replace(destination);
-      }
+      // Redirect immediately. Old service-worker cleanup is best-effort and
+      // must never hold up navigation to the current app.
+      if ("serviceWorker" in navigator) navigator.serviceWorker.getRegistrations()
+        .then((registrations) => registrations
+          .filter((registration) => new URL(registration.scope).pathname.startsWith("/quran"))
+          .forEach((registration) => registration.unregister()))
+        .catch(() => {});
+      location.replace(destination);
     </script>
     <noscript><meta http-equiv="refresh" content="0; url=/AbrahamicBooks/"></noscript>
   </head>
