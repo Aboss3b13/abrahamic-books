@@ -234,7 +234,7 @@ export class NotesSystem extends EventTarget {
     this.stopLastReadSync();
     if (!this.user) { onChange(null); return; }
     this.lastReadUnsubscribe = onSnapshot(
-      doc(this.firestore, "users", this.user.uid, "notes", "__reader_state__"),
+      doc(this.firestore, "users", this.user.uid, "notes", "reader-state-v1"),
       (snapshot) => onChange(snapshot.exists() ? snapshot.data()?.lastRead || null : null),
       onError,
     );
@@ -242,7 +242,7 @@ export class NotesSystem extends EventTarget {
 
   async setLastRead(lastRead) {
     if (!this.user) return;
-    await setDoc(doc(this.firestore, "users", this.user.uid, "notes", "__reader_state__"), { lastRead }, { merge: true });
+    await setDoc(doc(this.firestore, "users", this.user.uid, "notes", "reader-state-v1"), { lastRead }, { merge: true });
   }
 
   stopSharedSync() {
