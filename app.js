@@ -349,6 +349,8 @@ async function init() {
     renderResourceLists();
     renderNotes();
     await loadCurrentScripture();
+    syncSavedLastReadToWidget();
+    syncWidgetNotes();
     await openSharedLink();
     await setupAppLinks();
   } catch (error) {
@@ -371,6 +373,7 @@ async function setupAppLinks() {
 }
 
 function bindEvents() {
+  bindRenderedSearchResults();
   if ("ResizeObserver" in window) new ResizeObserver(syncStickyOffset).observe(els.topbar);
   window.addEventListener("resize", syncStickyOffset, { passive: true });
   els.traditionSelect.addEventListener("change", () => {
@@ -678,6 +681,7 @@ let toolbarScrollFrame = false;
 let lastSearchSpyAt = 0;
 let controlsExpandedAt = 0;
 let previousToolbarScrollY = 0;
+let viewSwitchingUntil = 0;
 let workspaceToolbarExpandedAt = 0;
 let previousWorkspaceToolbarScrollY = 0;
 
@@ -686,6 +690,11 @@ function handleToolbarScroll() {
   toolbarScrollFrame = true;
   requestAnimationFrame(() => {
     const y = window.scrollY;
+    if (performance.now() < viewSwitchingUntil) {
+      previousToolbarScrollY = y;
+      toolbarScrollFrame = false;
+      return;
+    }
     const manuallyExpanded = document.body.classList.contains("controls-manually-expanded");
     const scrollingDown = y > previousToolbarScrollY + 2;
 
@@ -1867,6 +1876,7 @@ async function jumpToReference(key, behavior = "smooth", focused = true) {
   state.focusedVerseKey = focused ? key : null;
   await ensureReferenceLoaded(key);
   renderVerses();
+  recordLastRead(key);
   switchView("readView", false, sourceView === "readView" ? null : sourceScrollTop);
   await waitForStableLayout();
   if (focused) {
@@ -1978,15 +1988,30 @@ function refreshVerse(key) {
 }
 
 function saveLastRead(key) {
+  recordLastRead(key);
+  updateDashboard(key);
+  setStatus(`Saved ${key} as last read.`);
+  setTimeout(() => setStatus(""), 1600);
+}
+
+function recordLastRead(key) {
   localStorage.setItem("quran-reader-last-read-v1", key);
   if (Capacitor.isNativePlatform()) {
     const verse = state.verses.find((item) => item.verse_key === key);
     const text = stripHTML(verse?.translations?.[0]?.text || verse?.text || verse?.english?.text || verse?.text_uthmani || "");
-    WidgetData.setLastRead({ reference: key, label: formatReferenceLabel(key), text: text.slice(0, 320) }).catch(() => {});
+    WidgetData.setLastRead({ reference: key, label: formatReferenceKey(key), text: text.slice(0, 320) }).catch(() => {});
   }
-  updateDashboard(key);
-  setStatus(`Saved ${key} as last read.`);
-  setTimeout(() => setStatus(""), 1600);
+}
+
+function syncSavedLastReadToWidget() {
+  if (!Capacitor.isNativePlatform()) return;
+  const key = localStorage.getItem("quran-reader-last-read-v1");
+  if (!key) return;
+  const verse = state.verses.find((item) => item.verse_key === key);
+  const text = stripHTML(verse?.translations?.[0]?.text || verse?.text || verse?.english?.text || verse?.text_uthmani || "");
+  const payload = { reference: key, label: formatReferenceKey(key) };
+  if (text) payload.text = text.slice(0, 320);
+  WidgetData.setLastRead(payload).catch(() => {});
 }
 
 async function restoreLastRead() {
@@ -2329,6 +2354,11 @@ async function openSharedLink() {
   const hashParams = new URLSearchParams(location.hash.slice(1));
   const requestedView = queryParams.get("view");
   if (["readView", "notesView", "searchView"].includes(requestedView)) switchView(requestedView);
+  const requestedNote = queryParams.get("note");
+  if (requestedNote && state.notes[requestedNote]) openNote(requestedNote);
+  if (requestedView === "searchView" && queryParams.get("focus") === "search") {
+    requestAnimationFrame(() => els.globalSearch.focus({ preventScroll: true }));
+  }
   const reference = queryParams.get("ref") || hashParams.get("ref");
   if (reference) {
     await jumpToReference(reference, "auto");
@@ -2411,29 +2441,31 @@ function switchView(viewId, reselectedFromNav = false, currentScrollOverride = n
   const leavingTop = currentScrollOverride ?? window.scrollY;
   state.viewScrollPositions[state.currentView] = leavingTop;
   document.querySelector(`#${state.currentView}`)?.setAttribute("data-saved-scroll", String(leavingTop));
+  const destinationView = document.querySelector(`#${viewId}`);
+  const savedOnView = Number(destinationView?.getAttribute("data-saved-scroll"));
+  const restoreTop = Number.isFinite(savedOnView) ? savedOnView : state.viewScrollPositions[viewId] || 0;
+
+  // Finish all destination work while it is still hidden. This keeps a swipe to
+  // one visual update instead of revealing the view and then reflowing it.
+  if (viewId === "notesView") renderNotes();
+  document.body.classList.remove("controls-collapsed", "controls-manually-expanded");
+  state.currentView = viewId;
+  previousToolbarScrollY = restoreTop;
+  viewSwitchingUntil = performance.now() + 120;
+
   document.querySelectorAll(".view").forEach((view) => {
     view.classList.remove("view-enter", "swipe-left", "swipe-right");
     view.classList.toggle("active", view.id === viewId);
   });
-  const destinationView = document.querySelector(`#${viewId}`);
   destinationView?.classList.add("view-enter", transition);
   const finishTransition = () => destinationView?.classList.remove("view-enter", "section", "swipe-left", "swipe-right");
   destinationView?.addEventListener("animationend", finishTransition, { once: true });
   setTimeout(finishTransition, 440);
   document.querySelectorAll(".nav-item").forEach((button) => button.classList.toggle("active", button.dataset.view === viewId));
-  if (viewId === "notesView") renderNotes();
-  state.currentView = viewId;
-  // A collapsed toolbar belongs to the scroll state of the view being left.
-  // Reset before restoring the destination so its filters cannot arrive hidden
-  // or be stranded above the restored scroll position.
-  document.body.classList.remove("controls-collapsed", "controls-manually-expanded");
-  previousToolbarScrollY = 0;
-  const savedOnView = Number(document.querySelector(`#${viewId}`)?.getAttribute("data-saved-scroll"));
-  const restoreTop = Number.isFinite(savedOnView) ? savedOnView : state.viewScrollPositions[viewId] || 0;
-  requestAnimationFrame(() => {
-    window.scrollTo({ top: restoreTop, behavior: "auto" });
-    previousToolbarScrollY = restoreTop;
-  });
+
+  // scrollTo forces the newly displayed view to lay out before the browser can
+  // paint it, so the user never sees an intermediate scroll position.
+  window.scrollTo({ top: restoreTop, behavior: "auto" });
 }
 
 function isLandscapeWorkspace() {
@@ -2843,7 +2875,7 @@ function createLiveSearchRenderer(query, token) {
       group.count += 1;
       grid?.querySelector(`#search-book-${group.index} .search-book-results`)?.insertAdjacentHTML("beforeend", `
         <article class="search-result live-result" data-search-id="${escapeHTML(result.searchId)}">
-          <button type="button" tabindex="-1" aria-hidden="true">
+          <button type="button" data-key="${escapeHTML(result.key)}" data-type="${escapeHTML(result.type)}">
             <span>${escapeHTML(result.type)}</span>
             <strong>${highlightSearchText(result.title, query)}</strong>
             <small>${highlightSearchText(result.label || "", query)}</small>
@@ -2944,20 +2976,22 @@ function renderSearchBookIndex(entries, placeholder = "Matching books will appea
 }
 
 function bindRenderedSearchResults() {
-  els.searchResults.querySelectorAll("button[data-key]").forEach((button) => {
-    button.addEventListener("click", () => {
-      const card = button.closest(".search-result");
-      if (state.searchSelectMode) {
-        toggleSearchResult(card.dataset.searchId);
-        return;
-      }
-      if (button.dataset.type === "Tafsir") openSearchTafsir(button.dataset.key, card.dataset.searchId);
-      else if (button.dataset.type === "Commentary") openSearchCommentary(button.dataset.key, card.dataset.searchId);
-      else jumpToReference(button.dataset.key);
-    });
+  if (els.searchResults.dataset.navigationBound === "true") return;
+  els.searchResults.dataset.navigationBound = "true";
+  els.searchResults.addEventListener("click", (event) => {
+    const button = event.target.closest("button[data-key]");
+    if (!button || !els.searchResults.contains(button)) return;
+    const card = button.closest(".search-result");
+    if (state.searchSelectMode) {
+      toggleSearchResult(card.dataset.searchId);
+      return;
+    }
+    jumpToReference(button.dataset.key);
   });
-  els.searchResults.querySelectorAll(".search-check input").forEach((checkbox) => {
-    checkbox.addEventListener("change", () => toggleSearchResult(checkbox.closest(".search-result").dataset.searchId, checkbox.checked));
+  els.searchResults.addEventListener("change", (event) => {
+    const checkbox = event.target.closest(".search-check input");
+    if (!checkbox || !els.searchResults.contains(checkbox)) return;
+    toggleSearchResult(checkbox.closest(".search-result").dataset.searchId, checkbox.checked);
   });
 }
 
@@ -3357,7 +3391,7 @@ async function loadLocalState() {
     legacyNotes = {};
   }
 
-  notesSystem = new NotesSystem({ isNative: Capacitor.isNativePlatform(), onChange: (notes) => { state.notes = notes; renderNotes(); renderVerses(); updateDashboard(); } });
+  notesSystem = new NotesSystem({ isNative: Capacitor.isNativePlatform(), onChange: (notes) => { state.notes = notes; renderNotes(); renderVerses(); updateDashboard(); syncWidgetNotes(); } });
   state.notes = await notesSystem.init(legacyNotes);
   startSharedNotes();
   notesSystem.addEventListener("status", (event) => updateSyncUI(event.detail.state, event.detail.detail));
@@ -3455,6 +3489,21 @@ function saveNotes() {
   const key = state.currentNoteKey;
   if (key && state.notes[key]) notesSystem?.save(key, state.notes[key]).then((saved) => { state.notes[key] = saved; }).catch((error) => updateSyncUI("conflict", error.message));
   else Object.entries(state.notes).filter(([, note]) => !note.id).forEach(([noteKey, note]) => notesSystem?.save(noteKey, note).then((saved) => { state.notes[noteKey] = saved; }));
+}
+
+function syncWidgetNotes() {
+  if (!Capacitor.isNativePlatform() || !state.notes) return;
+  const notes = Object.entries(state.notes)
+    .filter(([, note]) => note && (note.title?.trim() || note.text?.trim() || note.references?.length))
+    .sort(([, left], [, right]) => Date.parse(right.updatedAt || 0) - Date.parse(left.updatedAt || 0))
+    .slice(0, 200)
+    .map(([key, note]) => ({
+      key,
+      title: note.title?.trim() || (note.references?.[0] ? formatReferenceKey(note.references[0]) : "Untitled note"),
+      text: note.text?.trim() || (note.references?.length ? `${note.references.length} saved reference${note.references.length === 1 ? "" : "s"}` : "Open note"),
+      updatedAt: note.updatedAt || "",
+    }));
+  WidgetData.setNotes({ notes }).catch(() => {});
 }
 
 function setStatus(message) {

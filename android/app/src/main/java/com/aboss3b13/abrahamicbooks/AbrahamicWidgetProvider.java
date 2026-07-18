@@ -13,6 +13,7 @@ import android.view.View;
 import android.widget.RemoteViews;
 
 import java.util.Calendar;
+import org.json.JSONArray;
 
 public class AbrahamicWidgetProvider extends AppWidgetProvider {
     static final String PREFS = "abrahamic_widget_preferences";
@@ -60,6 +61,10 @@ public class AbrahamicWidgetProvider extends AppWidgetProvider {
         String mode = prefs.getString("mode_" + id, fallbackMode);
         String theme = prefs.getString("theme_" + id, "green");
         WidgetContent content = contentFor(prefs, id, mode);
+        if ("notes".equals(mode)) {
+            updateNotesWidget(context, manager, id, theme, content);
+            return;
+        }
         RemoteViews views = new RemoteViews(context.getPackageName(), R.layout.widget_abrahamic);
         views.setTextViewText(R.id.widget_eyebrow, content.eyebrow);
         views.setTextViewText(R.id.widget_title, content.title);
@@ -93,6 +98,7 @@ public class AbrahamicWidgetProvider extends AppWidgetProvider {
         open.setPackage(context.getPackageName());
         PendingIntent openPending = PendingIntent.getActivity(context, id, open, PendingIntent.FLAG_UPDATE_CURRENT | PendingIntent.FLAG_IMMUTABLE);
         views.setOnClickPendingIntent(R.id.widget_root, openPending);
+        views.setOnClickPendingIntent(R.id.widget_action, openPending);
 
         ComponentName provider = manager.getAppWidgetInfo(id) == null ? null : manager.getAppWidgetInfo(id).provider;
         if (provider != null && content.refreshable) {
@@ -101,6 +107,48 @@ public class AbrahamicWidgetProvider extends AppWidgetProvider {
             views.setOnClickPendingIntent(R.id.widget_refresh, refreshPending);
         }
         manager.updateAppWidget(id, views);
+    }
+
+    private static void updateNotesWidget(Context context, AppWidgetManager manager, int id, String theme, WidgetContent content) {
+        SharedPreferences prefs = context.getSharedPreferences(PREFS, Context.MODE_PRIVATE);
+        int count = 0;
+        try { count = new JSONArray(prefs.getString("notes_json", "[]")).length(); } catch (Exception ignored) {}
+        RemoteViews views = new RemoteViews(context.getPackageName(), R.layout.widget_notes);
+        views.setTextViewText(R.id.widget_notes_count, count == 1 ? "1 NOTE" : count + " NOTES");
+
+        int background = R.drawable.widget_bg_green;
+        int primary = Color.rgb(255, 248, 234);
+        int secondary = Color.rgb(220, 232, 227);
+        int accent = Color.rgb(216, 194, 141);
+        if ("sepia".equals(theme)) {
+            background = R.drawable.widget_bg_sepia;
+            primary = Color.rgb(40, 31, 23); secondary = Color.rgb(92, 76, 59); accent = Color.rgb(156, 111, 34);
+        } else if ("dark".equals(theme)) {
+            background = R.drawable.widget_bg_dark;
+            primary = Color.rgb(238, 245, 239); secondary = Color.rgb(168, 184, 177); accent = Color.rgb(210, 168, 76);
+        }
+        views.setInt(R.id.widget_notes_root, "setBackgroundResource", background);
+        views.setTextColor(R.id.widget_notes_heading, primary);
+        views.setTextColor(R.id.widget_notes_count, accent);
+        views.setTextColor(R.id.widget_notes_empty, secondary);
+        views.setTextColor(R.id.widget_notes_open, primary);
+
+        Intent service = new Intent(context, NotesWidgetService.class);
+        service.putExtra(AppWidgetManager.EXTRA_APPWIDGET_ID, id);
+        service.setData(Uri.parse(service.toUri(Intent.URI_INTENT_SCHEME)));
+        views.setRemoteAdapter(R.id.widget_notes_list, service);
+        views.setEmptyView(R.id.widget_notes_list, R.id.widget_notes_empty);
+
+        Intent openNotes = new Intent(Intent.ACTION_VIEW, Uri.parse(content.url), context, MainActivity.class).setPackage(context.getPackageName());
+        PendingIntent openPending = PendingIntent.getActivity(context, 300000 + id, openNotes, PendingIntent.FLAG_UPDATE_CURRENT | PendingIntent.FLAG_IMMUTABLE);
+        views.setOnClickPendingIntent(R.id.widget_notes_open, openPending);
+        views.setOnClickPendingIntent(R.id.widget_notes_header, openPending);
+
+        Intent template = new Intent(context, MainActivity.class).setAction(Intent.ACTION_VIEW).setPackage(context.getPackageName());
+        PendingIntent templatePending = PendingIntent.getActivity(context, 400000 + id, template, PendingIntent.FLAG_UPDATE_CURRENT | PendingIntent.FLAG_MUTABLE);
+        views.setPendingIntentTemplate(R.id.widget_notes_list, templatePending);
+        manager.updateAppWidget(id, views);
+        manager.notifyAppWidgetViewDataChanged(id, R.id.widget_notes_list);
     }
 
     @Override
@@ -112,20 +160,20 @@ public class AbrahamicWidgetProvider extends AppWidgetProvider {
         int dailySeed = Calendar.getInstance().get(Calendar.DAY_OF_YEAR) + prefs.getInt("seed_" + id, 0);
         if ("continue".equals(mode)) {
             String reference = prefs.getString("last_reference", "");
-            if (reference.isEmpty()) return new WidgetContent("LAST READ", "Nothing bookmarked yet", "Bookmark any passage inside the reader and it will appear here.", "Your latest saved passage", "RECENT", "OPEN READER  →", "https://abbas2.ali-raza.net/AbrahamicBooks/?view=readView", false);
-            return new WidgetContent("LAST READ", prefs.getString("last_label", reference), prefs.getString("last_text", "Open your saved passage."), "Saved from your reading history", "RECENT", "CONTINUE  →", "https://abbas2.ali-raza.net/AbrahamicBooks/?ref=" + Uri.encode(reference), false);
+            if (reference.isEmpty()) return new WidgetContent("LAST READ", "No saved passage", "Open a passage and tap Save as last read.", "Ready when you are", "RECENT", "OPEN READER", "https://abbas2.ali-raza.net/AbrahamicBooks/?view=readView", false);
+            return new WidgetContent("LAST READ", prefs.getString("last_label", reference), prefs.getString("last_text", "Open your saved passage."), "Saved on this device", "RECENT", "CONTINUE READING", "https://abbas2.ali-raza.net/AbrahamicBooks/?ref=" + Uri.encode(reference), false);
         }
         if ("quran".equals(mode)) return fromPassage("QURAN VERSE", QURAN[Math.floorMod(dailySeed, QURAN.length)], "QURAN", true);
         if ("bible".equals(mode)) return fromPassage("BIBLE VERSE", BIBLE[Math.floorMod(dailySeed, BIBLE.length)], "BIBLE", true);
         if ("hadith".equals(mode)) return fromPassage("HADITH OF THE DAY", HADITH[Math.floorMod(dailySeed, HADITH.length)], "HADITH", true);
-        if ("search".equals(mode)) return new WidgetContent("OFFLINE LIBRARY", "Search every downloaded book", "Quran, 66 Bible books, tafsir, commentary, and Sunni and Shia hadith.", "Complete live results • Works offline", "SEARCH", "SEARCH NOW  →", "https://abbas2.ali-raza.net/AbrahamicBooks/?view=searchView", false);
-        if ("notes".equals(mode)) return new WidgetContent("STUDY SPACE", "Notes, tags, and references", "Keep reflections beside Quran, Bible, and hadith passages and reopen every reference.", "Private local notes • Optional sync", "NOTES", "OPEN NOTES  →", "https://abbas2.ali-raza.net/AbrahamicBooks/?view=notesView", false);
+        if ("search".equals(mode)) return new WidgetContent("SEARCH LIBRARY", "What are you looking for?", "Search Quran, Bible, hadith, tafsir, commentary, and your offline library.", "Works offline", "SEARCH", "START SEARCH", "https://abbas2.ali-raza.net/AbrahamicBooks/?view=searchView&focus=search", false);
+        if ("notes".equals(mode)) return new WidgetContent("YOUR NOTES", "Notes", "", "", "NOTES", "OPEN ALL NOTES", "https://abbas2.ali-raza.net/AbrahamicBooks/?view=notesView", false);
         Passage[] all = {QURAN[0], BIBLE[0], HADITH[0], QURAN[1], BIBLE[1], HADITH[1], QURAN[2], BIBLE[2], QURAN[3], BIBLE[3]};
         return fromPassage("DAILY VERSE", all[Math.floorMod(dailySeed, all.length)], "DAILY", true);
     }
 
     private static WidgetContent fromPassage(String eyebrow, Passage passage, String badge, boolean refreshable) {
-        return new WidgetContent(eyebrow, passage.reference, passage.text, passage.meta, badge, "READ PASSAGE  →", passage.url, refreshable);
+        return new WidgetContent(eyebrow, passage.reference, passage.text, passage.meta, badge, "READ PASSAGE", passage.url, refreshable);
     }
 
     private static class Passage {

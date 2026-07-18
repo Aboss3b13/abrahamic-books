@@ -12,4 +12,11 @@
     <string name="widget_bible_name">Bible Reader</string>
     <string name="widget_hadith_name">Hadith Explorer</string>
     <string name="widget_search_name">Library Search</string>
+    <string name="widget_notes_heading">Your notes</string>
+    <string name="widget_notes_zero">0 NOTES</string>
+    <string name="widget_notes_empty">Create a note in the app.\nIt will appear here.</string>
+    <string name="widget_notes_open">OPEN ALL NOTES</string>
+    <string name="widget_note_title_placeholder">Note title</string>
+    <string name="widget_note_preview_placeholder">Note preview</string>
+    <string name="widget_note_open_arrow">›</string>
 </resources>

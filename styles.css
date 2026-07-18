@@ -3495,34 +3495,14 @@ body.controls-collapsed #notesView .notes-title-block h2 { font-size: .95rem; }
 
 .view.active { animation: none; }
 .view.active.view-enter.section { animation: section-enter 300ms cubic-bezier(.16,1,.3,1) both; }
-.ayah-card { animation: card-settle 420ms cubic-bezier(.16,1,.3,1) both; }
-.search-result { animation-duration: 420ms; animation-timing-function: cubic-bezier(.16,1,.3,1); }
 
 @keyframes section-enter {
   from { opacity: 0; transform: translateY(7px); }
   to { opacity: 1; transform: translateY(0); }
 }
 
-@keyframes card-settle {
-  from { opacity: 0; transform: translateY(10px) scale(.992); }
-  to { opacity: 1; transform: translateY(0) scale(1); }
-}
-
-/* Motion system: spring-like entrances and responsive micro-interactions. */
+/* Motion system: responsive micro-interactions without delayed view reflows. */
 .topbar { animation: topbar-drop 560ms cubic-bezier(.16, 1, .3, 1) both; }
-
-.reading-dashboard > div,
-.reader-controls > *,
-.view-toolbar > * { animation: control-rise 520ms cubic-bezier(.16, 1, .3, 1) both; }
-
-.reading-dashboard > div:nth-child(2),
-.reader-controls > *:nth-child(2),
-.view-toolbar > *:nth-child(2) { animation-delay: 45ms; }
-.reading-dashboard > div:nth-child(3),
-.reader-controls > *:nth-child(3),
-.view-toolbar > *:nth-child(3) { animation-delay: 90ms; }
-.reader-controls > *:nth-child(n+4),
-.view-toolbar > *:nth-child(n+4) { animation-delay: 125ms; }
 
 .bottom-nav .nav-item::after {
   transform: scaleX(0);
@@ -3561,27 +3541,23 @@ dialog::backdrop { animation: backdrop-in 300ms ease-out both; }
 
 .live-result button { pointer-events: none; }
 
-.view.active.view-enter.swipe-left { animation: swipe-in-left 260ms cubic-bezier(.2, .8, .2, 1) both; }
-.view.active.view-enter.swipe-right { animation: swipe-in-right 260ms cubic-bezier(.2, .8, .2, 1) both; }
+.view.active.view-enter.swipe-left { animation: swipe-in-left 180ms cubic-bezier(.2, .8, .2, 1) both; }
+.view.active.view-enter.swipe-right { animation: swipe-in-right 180ms cubic-bezier(.2, .8, .2, 1) both; }
 
 @keyframes topbar-drop {
   from { opacity: 0; transform: translateY(-18px); }
   to { opacity: 1; transform: translateY(0); }
 }
-@keyframes control-rise {
-  from { opacity: 0; transform: translateY(12px) scale(.98); }
-  to { opacity: 1; transform: translateY(0) scale(1); }
-}
 @keyframes backdrop-in { from { opacity: 0; } to { opacity: 1; } }
 @keyframes search-spin { to { transform: rotate(360deg); } }
 @keyframes status-breathe { 50% { box-shadow: 0 8px 24px color-mix(in srgb, var(--green-2) 12%, transparent); } }
 @keyframes swipe-in-left {
-  from { opacity: .45; transform: translate3d(12px, 0, 0); }
-  to { opacity: 1; transform: translate3d(0, 0, 0); }
+  from { transform: translate3d(6px, 0, 0); }
+  to { transform: translate3d(0, 0, 0); }
 }
 @keyframes swipe-in-right {
-  from { opacity: .45; transform: translate3d(-12px, 0, 0); }
-  to { opacity: 1; transform: translate3d(0, 0, 0); }
+  from { transform: translate3d(-6px, 0, 0); }
+  to { transform: translate3d(0, 0, 0); }
 }
 
 /* Settings and filter sheets share one calm, scannable control language. */

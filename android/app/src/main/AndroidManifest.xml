@@ -49,6 +49,11 @@
             android:theme="@android:style/Theme.Material.Light.NoActionBar"
             android:exported="true" />
 
+        <service
+            android:name=".NotesWidgetService"
+            android:permission="android.permission.BIND_REMOTEVIEWS"
+            android:exported="false" />
+
         <receiver android:name=".DailyWidgetProvider" android:label="@string/widget_daily_name" android:exported="true">
             <intent-filter><action android:name="android.appwidget.action.APPWIDGET_UPDATE" /></intent-filter>
             <meta-data android:name="android.appwidget.provider" android:resource="@xml/daily_widget_info" />
