@@ -373,6 +373,7 @@ async function setupAppLinks() {
 }
 
 function bindEvents() {
+  bindRenderedSearchResults();
   if ("ResizeObserver" in window) new ResizeObserver(syncStickyOffset).observe(els.topbar);
   window.addEventListener("resize", syncStickyOffset, { passive: true });
   els.traditionSelect.addEventListener("change", () => {
@@ -1998,7 +1999,7 @@ function recordLastRead(key) {
   if (Capacitor.isNativePlatform()) {
     const verse = state.verses.find((item) => item.verse_key === key);
     const text = stripHTML(verse?.translations?.[0]?.text || verse?.text || verse?.english?.text || verse?.text_uthmani || "");
-    WidgetData.setLastRead({ reference: key, label: formatReferenceLabel(key), text: text.slice(0, 320) }).catch(() => {});
+    WidgetData.setLastRead({ reference: key, label: formatReferenceKey(key), text: text.slice(0, 320) }).catch(() => {});
   }
 }
 
@@ -2008,7 +2009,7 @@ function syncSavedLastReadToWidget() {
   if (!key) return;
   const verse = state.verses.find((item) => item.verse_key === key);
   const text = stripHTML(verse?.translations?.[0]?.text || verse?.text || verse?.english?.text || verse?.text_uthmani || "");
-  const payload = { reference: key, label: formatReferenceLabel(key) };
+  const payload = { reference: key, label: formatReferenceKey(key) };
   if (text) payload.text = text.slice(0, 320);
   WidgetData.setLastRead(payload).catch(() => {});
 }
@@ -2874,7 +2875,7 @@ function createLiveSearchRenderer(query, token) {
       group.count += 1;
       grid?.querySelector(`#search-book-${group.index} .search-book-results`)?.insertAdjacentHTML("beforeend", `
         <article class="search-result live-result" data-search-id="${escapeHTML(result.searchId)}">
-          <button type="button" tabindex="-1" aria-hidden="true">
+          <button type="button" data-key="${escapeHTML(result.key)}" data-type="${escapeHTML(result.type)}">
             <span>${escapeHTML(result.type)}</span>
             <strong>${highlightSearchText(result.title, query)}</strong>
             <small>${highlightSearchText(result.label || "", query)}</small>
@@ -2975,20 +2976,22 @@ function renderSearchBookIndex(entries, placeholder = "Matching books will appea
 }
 
 function bindRenderedSearchResults() {
-  els.searchResults.querySelectorAll("button[data-key]").forEach((button) => {
-    button.addEventListener("click", () => {
-      const card = button.closest(".search-result");
-      if (state.searchSelectMode) {
-        toggleSearchResult(card.dataset.searchId);
-        return;
-      }
-      if (button.dataset.type === "Tafsir") openSearchTafsir(button.dataset.key, card.dataset.searchId);
-      else if (button.dataset.type === "Commentary") openSearchCommentary(button.dataset.key, card.dataset.searchId);
-      else jumpToReference(button.dataset.key);
-    });
+  if (els.searchResults.dataset.navigationBound === "true") return;
+  els.searchResults.dataset.navigationBound = "true";
+  els.searchResults.addEventListener("click", (event) => {
+    const button = event.target.closest("button[data-key]");
+    if (!button || !els.searchResults.contains(button)) return;
+    const card = button.closest(".search-result");
+    if (state.searchSelectMode) {
+      toggleSearchResult(card.dataset.searchId);
+      return;
+    }
+    jumpToReference(button.dataset.key);
   });
-  els.searchResults.querySelectorAll(".search-check input").forEach((checkbox) => {
-    checkbox.addEventListener("change", () => toggleSearchResult(checkbox.closest(".search-result").dataset.searchId, checkbox.checked));
+  els.searchResults.addEventListener("change", (event) => {
+    const checkbox = event.target.closest(".search-check input");
+    if (!checkbox || !els.searchResults.contains(checkbox)) return;
+    toggleSearchResult(checkbox.closest(".search-result").dataset.searchId, checkbox.checked);
   });
 }
 
@@ -3496,7 +3499,7 @@ function syncWidgetNotes() {
     .slice(0, 200)
     .map(([key, note]) => ({
       key,
-      title: note.title?.trim() || (note.references?.[0] ? formatReferenceLabel(note.references[0]) : "Untitled note"),
+      title: note.title?.trim() || (note.references?.[0] ? formatReferenceKey(note.references[0]) : "Untitled note"),
       text: note.text?.trim() || (note.references?.length ? `${note.references.length} saved reference${note.references.length === 1 ? "" : "s"}` : "Open note"),
       updatedAt: note.updatedAt || "",
     }));
