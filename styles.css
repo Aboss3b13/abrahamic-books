@@ -3504,8 +3504,13 @@ dialog::backdrop { animation: backdrop-in 300ms ease-out both; }
   to { opacity: 1; transform: none; }
 }
 
-.view.active.view-enter.swipe-left { animation: swipe-in-left 180ms cubic-bezier(.2, .8, .2, 1) both; }
-.view.active.view-enter.swipe-right { animation: swipe-in-right 180ms cubic-bezier(.2, .8, .2, 1) both; }
+.view.gesture-tracking {
+  transition: none !important;
+  will-change: transform, opacity;
+}
+
+.view.active.view-enter.swipe-left { animation: swipe-in-left 420ms cubic-bezier(.16, 1, .3, 1) both; }
+.view.active.view-enter.swipe-right { animation: swipe-in-right 420ms cubic-bezier(.16, 1, .3, 1) both; }
 
 @keyframes topbar-drop {
   from { opacity: 0; transform: translateY(-18px); }
@@ -3515,12 +3520,14 @@ dialog::backdrop { animation: backdrop-in 300ms ease-out both; }
 @keyframes search-spin { to { transform: rotate(360deg); } }
 @keyframes status-breathe { 50% { box-shadow: 0 8px 24px color-mix(in srgb, var(--green-2) 12%, transparent); } }
 @keyframes swipe-in-left {
-  from { transform: translate3d(6px, 0, 0); }
-  to { transform: translate3d(0, 0, 0); }
+  0% { opacity: .18; transform: translate3d(18vw, 0, 0) scale(.975); }
+  68% { opacity: 1; transform: translate3d(-5px, 0, 0) scale(1.002); }
+  100% { opacity: 1; transform: translate3d(0, 0, 0) scale(1); }
 }
 @keyframes swipe-in-right {
-  from { transform: translate3d(-6px, 0, 0); }
-  to { transform: translate3d(0, 0, 0); }
+  0% { opacity: .18; transform: translate3d(-18vw, 0, 0) scale(.975); }
+  68% { opacity: 1; transform: translate3d(5px, 0, 0) scale(1.002); }
+  100% { opacity: 1; transform: translate3d(0, 0, 0) scale(1); }
 }
 
 /* Settings and filter sheets share one calm, scannable control language. */
@@ -3759,3 +3766,161 @@ a.pill-button { position: relative; isolation: isolate; }
   100% { opacity: 1; transform: none; }
 }
 @keyframes study-header-in { from { opacity: 0; transform: translateY(8px); } to { opacity: 1; transform: none; } }
+
+/* Expressive navigation and study surfaces */
+.view.active.view-enter > .view-toolbar {
+  animation: view-toolbar-arrive 460ms 45ms cubic-bezier(.16,1,.3,1) both;
+}
+.view.active.view-enter > :is(.verses, .notes-list, .search-results, .search-book-index) {
+  animation: view-content-arrive 500ms 80ms cubic-bezier(.16,1,.3,1) both;
+}
+@keyframes view-toolbar-arrive {
+  from { opacity: .35; transform: translateY(-12px) scale(.99); }
+  to { opacity: 1; transform: none; }
+}
+@keyframes view-content-arrive {
+  from { opacity: .28; transform: translateY(18px) scale(.992); }
+  to { opacity: 1; transform: none; }
+}
+
+.global-search-wrap {
+  position: relative;
+  display: flex;
+  align-items: center;
+  min-width: 0;
+}
+.global-search-wrap > .ti-search {
+  position: absolute;
+  left: 14px;
+  z-index: 1;
+  color: var(--green);
+  pointer-events: none;
+}
+.global-search-wrap #globalSearch { width: 100%; padding-left: 42px; padding-right: 48px; }
+.global-search-wrap .search-help-button { right: 5px; }
+.search-panel > .search-help-panel { grid-column: 1 / -1; }
+.help-guide { display: grid; gap: 8px; line-height: 1.55; }
+.help-guide p { margin: 0; }
+.help-guide > strong { color: var(--green); font-size: .82rem; }
+
+.note-editor-identity {
+  display: grid;
+  grid-template-columns: minmax(0, 1.35fr) minmax(0, .8fr);
+  gap: 10px;
+  padding: 14px;
+  border: 1px solid color-mix(in srgb, var(--green-2) 22%, var(--line));
+  border-radius: 18px;
+  background: linear-gradient(145deg, color-mix(in srgb, var(--green-2) 7%, var(--panel)), var(--panel));
+}
+.note-editor-section {
+  padding: 14px;
+  border: 1px solid color-mix(in srgb, var(--green-2) 18%, var(--line));
+  border-radius: 18px;
+  background: color-mix(in srgb, var(--panel) 93%, var(--green-2));
+}
+.note-editor-section-heading { display: flex; align-items: center; gap: 10px; }
+.note-editor-section-heading > div { display: grid; gap: 2px; }
+.note-editor-section-heading strong { color: var(--ink); font-size: .9rem; }
+.note-editor-section-heading small { color: var(--muted); font-size: .72rem; }
+.note-editor-icon {
+  display: grid;
+  place-items: center;
+  width: 38px;
+  height: 38px;
+  flex: 0 0 38px;
+  border-radius: 12px;
+  color: #fff;
+  background: linear-gradient(135deg, var(--green), var(--teal));
+  box-shadow: 0 8px 18px color-mix(in srgb, var(--green) 22%, transparent);
+}
+.note-field > span { display: flex; align-items: center; gap: 6px; }
+.note-field input:focus,
+.note-field textarea:focus,
+.reference-search-field:focus-within {
+  outline: none;
+  border-color: var(--green-2);
+  box-shadow: 0 0 0 4px color-mix(in srgb, var(--green-2) 14%, transparent), 0 12px 28px color-mix(in srgb, var(--green) 9%, transparent);
+  transform: translateY(-1px);
+}
+.reference-search-field {
+  display: flex;
+  align-items: center;
+  gap: 9px;
+  min-height: 50px;
+  padding: 0 13px;
+  border: 1px solid var(--line);
+  border-radius: 14px;
+  color: var(--green);
+  background: var(--paper);
+  transition: transform 280ms cubic-bezier(.16,1,.3,1), border-color 220ms ease, box-shadow 300ms ease;
+}
+.reference-search-field input { width: 100%; min-height: 46px; padding: 0; border: 0; color: var(--ink); background: transparent; }
+.reference-search-field input:focus { outline: 0; }
+.note-body-field textarea { min-height: 210px; border-radius: 14px; line-height: 1.65; }
+
+.reference-results {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 7px;
+  max-height: 310px;
+  padding-right: 3px;
+  overflow-y: auto;
+  overscroll-behavior: contain;
+}
+.reference-results .reference-row {
+  display: grid;
+  gap: 3px;
+  min-height: 62px;
+  padding: 9px 11px;
+  border-radius: 13px;
+  text-align: left;
+}
+.reference-row > span { color: var(--green); font-size: .62rem; font-weight: 900; text-transform: uppercase; letter-spacing: .06em; }
+.reference-row > strong { overflow: hidden; color: var(--ink); font-size: .82rem; text-overflow: ellipsis; white-space: nowrap; }
+.reference-row > small { overflow: hidden; color: var(--muted); font-size: .68rem; text-overflow: ellipsis; white-space: nowrap; }
+.reference-row:hover,
+.reference-row:focus-visible { border-color: var(--green-2); background: color-mix(in srgb, var(--green-2) 9%, var(--panel)); transform: translateY(-2px) scale(1.01); }
+.reference-searching { grid-column: 1 / -1; display: flex; align-items: center; gap: 9px; padding: 10px; color: var(--muted); }
+.reference-searching > span { width: 15px; height: 15px; border: 2px solid var(--line); border-top-color: var(--green); border-radius: 50%; animation: search-spin 700ms linear infinite; }
+.reference-results-meta { grid-column: 1 / -1; margin: 5px 0 0; color: var(--muted); font-size: .72rem; }
+
+#notesView .note-card {
+  overflow: hidden;
+  border-color: color-mix(in srgb, var(--green-2) 18%, var(--line));
+  background: linear-gradient(145deg, color-mix(in srgb, var(--green-2) 4%, var(--panel)), var(--panel));
+  box-shadow: 0 10px 28px color-mix(in srgb, var(--ink) 9%, transparent);
+}
+#notesView .note-card::before {
+  content: "";
+  position: absolute;
+  inset: 0 auto 0 0;
+  width: 4px;
+  background: linear-gradient(var(--green-2), var(--gold));
+  opacity: .8;
+}
+#notesView .note-card.references-expanded { box-shadow: 0 16px 38px color-mix(in srgb, var(--green) 13%, transparent); }
+.reference-expand-button {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  min-height: 44px;
+  padding: 0 13px;
+  border: 1px dashed color-mix(in srgb, var(--green-2) 48%, var(--line));
+  border-radius: 999px;
+  color: var(--green);
+  background: color-mix(in srgb, var(--green-2) 7%, transparent);
+  font-size: .76rem;
+  font-weight: 900;
+}
+.note-card.references-expanded .reference-link { animation: reference-unfold 360ms cubic-bezier(.16,1,.3,1) both; }
+@keyframes reference-unfold { from { opacity: 0; transform: translateY(-7px) scale(.96); } to { opacity: 1; transform: none; } }
+
+@media (max-width: 760px) {
+  .global-search-wrap { grid-column: 1 / -1; }
+}
+@media (max-width: 560px) {
+  .note-editor-identity, .reference-results { grid-template-columns: 1fr; }
+  .note-sheet .sheet-inner { padding: 13px; }
+  .note-editor-section, .note-editor-identity { padding: 12px; }
+  .note-card-footer { align-items: flex-end; }
+}

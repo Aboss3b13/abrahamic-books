@@ -91,6 +91,7 @@
             <div>
               <button id="selectAllRead" class="text-button" type="button">Select all</button>
               <button id="clearReadSelection" class="text-button" type="button">Clear</button>
+              <button id="shareReadSelection" class="text-button" type="button"><i class="ti ti-share" aria-hidden="true"></i><span>Share</span></button>
               <button id="noteReadSelection" class="text-button primary" type="button">Add to note</button>
               <button id="doneReadSelection" class="text-button" type="button">Done</button>
             </div>
@@ -134,7 +135,12 @@
                 <input id="notesSearch" class="wide-search" type="search" autocomplete="off" placeholder="Search notes, verses, or phrases">
                 <button id="notesSearchHelpButton" class="search-help-button" type="button" aria-label="Search syntax help" aria-controls="notesSearchHelp" aria-expanded="false"><i class="ti ti-help-circle" aria-hidden="true"></i></button>
               </div>
-              <p id="notesSearchHelp" class="search-syntax-hint search-help-panel" hidden><strong>Search tips:</strong> words find any match, <code>"exact phrase"</code> keeps words together, and <code>mercy + prayer</code> requires both.</p>
+              <div id="notesSearchHelp" class="search-syntax-hint search-help-panel help-guide" hidden>
+                <strong>Using Notes</strong>
+                <p>Tap <b>New note</b> for a standalone study note, or use a verse’s note button to attach a note directly to it. Add comma-separated tags to organise a topic.</p>
+                <p>Cross-references can connect Quran verses, Bible passages, and hadith. Tap a reference on a note to read it, or use <b>View references</b> in the editor to compare them together.</p>
+                <p><b>Search:</b> words find any match, <code>"exact phrase"</code> keeps words together, and <code>mercy + prayer</code> requires both.</p>
+              </div>
               <div class="tag-filters notes-filter-row" role="tablist" aria-label="Filter notes">
                 <button id="privateNotesTab" class="tag-chip active" type="button" role="tab" aria-selected="true">All</button>
                 <button id="sharedNotesTab" class="tag-chip" type="button" role="tab" aria-selected="false">Shared <span id="sharedNotesBadge">0</span></button>
@@ -157,8 +163,12 @@
               <button id="toggleSearchSelect" class="text-button" type="button" aria-pressed="false">Select results</button>
             </div>
             <div class="search-panel">
-              <input id="globalSearch" class="wide-search" type="search" inputmode="search" enterkeyhint="search" autocomplete="off" placeholder='Try mercy, "eternal life", or mercy + forgiveness'>
-              <p class="search-syntax-hint"><strong>Syntax:</strong> words find any match; <code>"eternal life"</code> finds that exact phrase; <code>mercy + forgiveness</code> requires both in the same verse, hadith, or passage.</p>
+              <div class="global-search-wrap">
+                <i class="ti ti-search" aria-hidden="true"></i>
+                <input id="globalSearch" class="wide-search" type="search" inputmode="search" enterkeyhint="search" autocomplete="off" placeholder='Try mercy, "eternal life", or mercy + forgiveness'>
+                <button id="globalSearchHelpButton" class="search-help-button" type="button" aria-label="Search instructions" aria-controls="globalSearchHelp" aria-expanded="false"><i class="ti ti-help-circle" aria-hidden="true"></i></button>
+              </div>
+              <div id="globalSearchHelp" class="search-syntax-hint search-help-panel help-guide" hidden><strong>Searching the library</strong><p>Choose books with <b>Search in</b>, then search any downloaded Quran translation, tafsir, Bible book, commentary, or hadith collection. Results appear as each book finishes, so you can open or select them immediately.</p><p><code>"eternal life"</code> finds an exact phrase. <code>mercy + forgiveness</code> requires both terms in the same passage. Use <b>Select results</b> to collect several passages into one note.</p></div>
               <button id="searchFilterButton" class="source-filter-button" type="button" aria-haspopup="dialog">
                 <span>Search in</span>
                 <strong id="searchFilterSummary">Quran, Shia hadith & more</strong>
@@ -493,24 +503,27 @@
           </div>
           <button class="icon-button" value="close" aria-label="Close note"><i class="ti ti-x" aria-hidden="true"></i></button>
         </div>
-        <label class="note-field">
-          <span>Title</span>
-          <input id="noteName" type="text" maxlength="120" placeholder="Give this note a name">
-        </label>
-        <label class="note-field">
-          <span>Tags</span>
-          <input id="noteTags" type="text" placeholder="mercy, prayer, study">
-        </label>
-        <div class="cross-ref-panel">
-          <label class="field">
-            <span>Add cross-reference</span>
-            <input id="referenceSearch" type="search" placeholder="Surah, Bible or hadith book; e.g. Bukhari 1:1">
+        <div class="note-editor-identity">
+          <label class="note-field">
+            <span><i class="ti ti-heading" aria-hidden="true"></i> Title</span>
+            <input id="noteName" type="text" maxlength="120" placeholder="Give this note a name">
+          </label>
+          <label class="note-field">
+            <span><i class="ti ti-tags" aria-hidden="true"></i> Tags</span>
+            <input id="noteTags" type="text" placeholder="mercy, prayer, study">
+          </label>
+        </div>
+        <div class="cross-ref-panel note-editor-section">
+          <div class="note-editor-section-heading"><span class="note-editor-icon"><i class="ti ti-link" aria-hidden="true"></i></span><div><strong>Cross-references</strong><small>Connect any Quran verse, Bible passage, or hadith</small></div></div>
+          <label class="reference-search-field">
+            <i class="ti ti-search" aria-hidden="true"></i>
+            <input id="referenceSearch" type="search" autocomplete="off" placeholder="Try Al-Baqarah, John 3, Bukhari 52, or a phrase">
           </label>
           <div id="referenceResults" class="reference-results"></div>
           <div id="noteReferences" class="note-references"></div>
         </div>
-        <label class="note-field">
-          <span>Note</span>
+        <label class="note-field note-body-field note-editor-section">
+          <span><i class="ti ti-pencil" aria-hidden="true"></i> Reflection</span>
           <textarea id="noteEditor" rows="9" placeholder="Write your reflection, question, reminder, or action..."></textarea>
         </label>
         <div class="sheet-actions">
