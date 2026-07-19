@@ -708,8 +708,7 @@ function setupSwipeNavigation() {
       const travel = Math.max(-72, Math.min(72, deltaX * 0.34));
       activeView?.classList.add("gesture-tracking");
       if (activeView) {
-        activeView.style.transform = `translate3d(${travel}px, 0, 0) scale(${1 - Math.min(.014, Math.abs(travel) / 5200)})`;
-        activeView.style.opacity = String(1 - Math.min(.18, Math.abs(travel) / 390));
+        activeView.style.transform = `translate3d(${travel}px, 0, 0)`;
       }
     }
   }, { passive: false });
@@ -727,10 +726,10 @@ function setupSwipeNavigation() {
     const current = views.indexOf(state.currentView);
     if (current < 0) return;
     // The sections form a loop: swiping past either edge arrives at the other.
-    const next = (current + (deltaX < 0 ? -1 : 1) + views.length) % views.length;
+    const next = (current + (deltaX < 0 ? 1 : -1) + views.length) % views.length;
     transitioning = true;
     switchView(views[next], false, null, deltaX < 0 ? "swipe-left" : "swipe-right");
-    setTimeout(() => { transitioning = false; }, 480);
+    setTimeout(() => { transitioning = false; }, 360);
   }, { passive: true });
   main?.addEventListener("touchcancel", () => {
     const activeView = document.querySelector(`#${state.currentView}`);
@@ -1928,9 +1927,10 @@ async function collectReferenceSuggestions(query, token) {
 
 function renderNoteReferences() {
   els.openReferences.disabled = state.currentNoteReferences.length === 0;
-  els.openReferences.textContent = state.currentNoteReferences.length
+  const referenceLabel = state.currentNoteReferences.length
     ? `View ${state.currentNoteReferences.length} ${state.currentNoteReferences.length === 1 ? "reference" : "references"}`
     : "View references";
+  els.openReferences.innerHTML = `<i class="ti ti-books" aria-hidden="true"></i><span>${referenceLabel}</span>`;
   els.noteReferences.innerHTML = state.currentNoteReferences.length
     ? state.currentNoteReferences.map((key) => `
       <div class="reference-pill">
@@ -1953,12 +1953,14 @@ function renderNoteReferences() {
   });
 }
 
-async function showReferenceOverview() {
-  const references = [...state.currentNoteReferences];
+async function showReferenceOverview(referenceOverride = null) {
+  const references = Array.isArray(referenceOverride) ? [...new Set(referenceOverride)] : [...state.currentNoteReferences];
   if (!references.length) return;
   state.focusedVerseKey = null;
   if (els.noteSheet.open) els.noteSheet.close();
-  els.referenceOverviewSubtitle.textContent = `${references.length} ${references.length === 1 ? "reference" : "references"} from this note`;
+  els.referenceOverviewSubtitle.textContent = Array.isArray(referenceOverride)
+    ? `${references.length} shared ${references.length === 1 ? "passage" : "passages"}`
+    : `${references.length} ${references.length === 1 ? "reference" : "references"} from this note`;
   els.referenceOverviewContent.innerHTML = `<div class="status">Loading referenced verses...</div>`;
   openDialog(els.referenceOverviewSheet);
 
@@ -1975,7 +1977,7 @@ async function showReferenceOverview() {
       repairedReferences.push(key);
     }
   }
-  if (repairedReferences.some((key, index) => key !== state.currentNoteReferences[index])) {
+  if (!Array.isArray(referenceOverride) && repairedReferences.some((key, index) => key !== state.currentNoteReferences[index])) {
     state.currentNoteReferences = [...new Set(repairedReferences)];
     saveCurrentNote();
   }
@@ -2004,7 +2006,7 @@ function renderReferenceOverviewCard({ key, verse, error = "" }) {
       <strong>${escapeHTML(formatReferenceKey(key))}</strong>
       <p>${escapeHTML(error || "This reference could not be loaded.")}</p>
       <div class="reference-overview-actions">
-        <button class="text-button primary" type="button" data-continue-reference="${escapeHTML(key)}">Continue reading</button>
+        <button class="text-button primary" type="button" data-continue-reference="${escapeHTML(key)}"><i class="ti ti-book-2" aria-hidden="true"></i><span>Continue reading</span></button>
         <button class="text-button share-text-button" type="button" data-share-reference="${escapeHTML(key)}">${shareIcon()}<span>Share</span></button>
       </div>
     </article>`;
@@ -2023,8 +2025,8 @@ function renderReferenceOverviewCard({ key, verse, error = "" }) {
       <div><span class="reference-language-label">English</span><p class="reference-overview-translation">${escapeHTML(translation)}</p></div>
       ${metadata ? `<div class="verse-meta reference-overview-meta">${metadata}</div>` : ""}
       <div class="reference-overview-actions">
-        <button class="text-button primary" type="button" data-continue-reference="${escapeHTML(key)}">Continue reading</button>
-        ${isQuran ? `<button class="text-button" type="button" data-tafsir-reference="${escapeHTML(key)}">Tafsir</button>` : ""}
+        <button class="text-button primary" type="button" data-continue-reference="${escapeHTML(key)}"><i class="ti ti-book-2" aria-hidden="true"></i><span>Continue reading</span></button>
+        ${isQuran ? `<button class="text-button" type="button" data-tafsir-reference="${escapeHTML(key)}"><i class="ti ti-notes" aria-hidden="true"></i><span>Tafsir</span></button>` : ""}
         <button class="text-button share-text-button" type="button" data-share-reference="${escapeHTML(key)}">${shareIcon()}<span>Share</span></button>
       </div>
     </article>`;
@@ -2720,6 +2722,13 @@ async function openSharedLink() {
   const reference = queryParams.get("ref") || hashParams.get("ref");
   if (reference) {
     await jumpToReference(reference, "auto");
+    return;
+  }
+  const referenceCollection = queryParams.get("refs");
+  if (referenceCollection) {
+    const references = referenceCollection.split(",").map((item) => item.trim()).filter(Boolean).slice(0, 50);
+    if (!references.length) { setStatus("This shared passage collection is empty."); return; }
+    await showReferenceOverview(references);
     return;
   }
   const encodedNotes = hashParams.get("notes");
@@ -3678,7 +3687,7 @@ function updateReadSelectionUI() {
     ? state.verses.filter((verse) => verse.verse_key === state.focusedVerseKey)
     : state.verses;
   const allSelected = visible.length > 0 && visible.every((verse) => state.selectedReadVerses.has(verse.verse_key));
-  els.selectAllRead.textContent = allSelected ? "Deselect all" : "Select all";
+  els.selectAllRead.innerHTML = `<i class="ti ti-${allSelected ? "square-minus" : "checks"}" aria-hidden="true"></i><span>${allSelected ? "Deselect all" : "Select all"}</span>`;
   els.verses.querySelectorAll(".ayah-card").forEach((card) => {
     card.classList.toggle("selected", state.selectedReadVerses.has(card.dataset.key));
   });
@@ -3689,7 +3698,7 @@ async function shareReadSelection() {
     .filter((verse) => state.selectedReadVerses.has(verse.verse_key))
     .map((verse) => verse.verse_key);
   if (!references.length) return;
-  const text = references.map((key) => makePublicLink(`?ref=${encodeURIComponent(key)}`)).join("\n");
+  const text = makePublicLink(`?refs=${encodeURIComponent(references.join(","))}`);
   try {
     if (Capacitor.isNativePlatform()) {
       await Share.share({ text, dialogTitle: "Share selected verses" });
@@ -3706,7 +3715,7 @@ async function shareReadSelection() {
   }
   if (await copyShareLink(text)) {
     showCopiedState(els.shareReadSelection);
-    setStatus(`${references.length} verse links copied.`);
+    setStatus(`One link for ${references.length} selected verses copied.`);
   } else window.prompt("Copy selected verse links:", text);
 }
 
@@ -3751,11 +3760,11 @@ function updateSearchSelectionUI() {
   els.searchSelectionBar.hidden = !state.searchSelectMode;
   els.toggleSearchSelect.classList.toggle("active", state.searchSelectMode);
   els.toggleSearchSelect.setAttribute("aria-pressed", String(state.searchSelectMode));
-  els.toggleSearchSelect.textContent = state.searchSelectMode ? "Done selecting" : "Select results";
+  els.toggleSearchSelect.innerHTML = `<i class="ti ti-${state.searchSelectMode ? "check" : "square-dashed"}" aria-hidden="true"></i><span>${state.searchSelectMode ? "Done selecting" : "Select results"}</span>`;
   els.searchSelectionCount.textContent = `${count} selected`;
   els.noteSearchSelection.disabled = count === 0;
   const allSelected = state.searchResults.length > 0 && state.searchResults.every((result) => state.selectedSearchResults.has(result.searchId));
-  els.selectAllSearch.textContent = allSelected ? "Deselect all" : "Select all";
+  els.selectAllSearch.innerHTML = `<i class="ti ti-${allSelected ? "square-minus" : "checks"}" aria-hidden="true"></i><span>${allSelected ? "Deselect all" : "Select all"}</span>`;
   els.searchResults.querySelectorAll(".search-result").forEach((card) => {
     const checked = state.selectedSearchResults.has(card.dataset.searchId);
     card.classList.toggle("selected", checked);

@@ -709,6 +709,10 @@ button:disabled {
 }
 
 .text-button {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 7px;
   min-height: 42px;
   padding: 0 14px;
   border-radius: 8px;
@@ -3509,8 +3513,8 @@ dialog::backdrop { animation: backdrop-in 300ms ease-out both; }
   will-change: transform, opacity;
 }
 
-.view.active.view-enter.swipe-left { animation: swipe-in-left 420ms cubic-bezier(.16, 1, .3, 1) both; }
-.view.active.view-enter.swipe-right { animation: swipe-in-right 420ms cubic-bezier(.16, 1, .3, 1) both; }
+.view.active.view-enter.swipe-left { animation: swipe-in-left 340ms cubic-bezier(.22, 1, .36, 1) both; }
+.view.active.view-enter.swipe-right { animation: swipe-in-right 340ms cubic-bezier(.22, 1, .36, 1) both; }
 
 @keyframes topbar-drop {
   from { opacity: 0; transform: translateY(-18px); }
@@ -3520,14 +3524,12 @@ dialog::backdrop { animation: backdrop-in 300ms ease-out both; }
 @keyframes search-spin { to { transform: rotate(360deg); } }
 @keyframes status-breathe { 50% { box-shadow: 0 8px 24px color-mix(in srgb, var(--green-2) 12%, transparent); } }
 @keyframes swipe-in-left {
-  0% { opacity: .18; transform: translate3d(18vw, 0, 0) scale(.975); }
-  68% { opacity: 1; transform: translate3d(-5px, 0, 0) scale(1.002); }
-  100% { opacity: 1; transform: translate3d(0, 0, 0) scale(1); }
+  from { transform: translate3d(32vw, 0, 0); }
+  to { transform: translate3d(0, 0, 0); }
 }
 @keyframes swipe-in-right {
-  0% { opacity: .18; transform: translate3d(-18vw, 0, 0) scale(.975); }
-  68% { opacity: 1; transform: translate3d(5px, 0, 0) scale(1.002); }
-  100% { opacity: 1; transform: translate3d(0, 0, 0) scale(1); }
+  from { transform: translate3d(-32vw, 0, 0); }
+  to { transform: translate3d(0, 0, 0); }
 }
 
 /* Settings and filter sheets share one calm, scannable control language. */
@@ -3767,22 +3769,7 @@ a.pill-button { position: relative; isolation: isolate; }
 }
 @keyframes study-header-in { from { opacity: 0; transform: translateY(8px); } to { opacity: 1; transform: none; } }
 
-/* Expressive navigation and study surfaces */
-.view.active.view-enter > .view-toolbar {
-  animation: view-toolbar-arrive 460ms 45ms cubic-bezier(.16,1,.3,1) both;
-}
-.view.active.view-enter > :is(.verses, .notes-list, .search-results, .search-book-index) {
-  animation: view-content-arrive 500ms 80ms cubic-bezier(.16,1,.3,1) both;
-}
-@keyframes view-toolbar-arrive {
-  from { opacity: .35; transform: translateY(-12px) scale(.99); }
-  to { opacity: 1; transform: none; }
-}
-@keyframes view-content-arrive {
-  from { opacity: .28; transform: translateY(18px) scale(.992); }
-  to { opacity: 1; transform: none; }
-}
-
+/* Clear search and study surfaces */
 .global-search-wrap {
   position: relative;
   display: flex;

@@ -84,16 +84,16 @@
               <span>Focused verse</span>
               <strong id="focusedVerseLabel">Reference</strong>
             </div>
-            <button id="continueReading" class="text-button primary" type="button">Continue reading</button>
+            <button id="continueReading" class="text-button primary" type="button"><i class="ti ti-list" aria-hidden="true"></i><span>Continue reading</span></button>
           </div>
           <div id="readSelectionBar" class="selection-bar read-selection-bar" hidden>
             <strong id="readSelectionCount">0 selected</strong>
             <div>
-              <button id="selectAllRead" class="text-button" type="button">Select all</button>
-              <button id="clearReadSelection" class="text-button" type="button">Clear</button>
+              <button id="selectAllRead" class="text-button" type="button"><i class="ti ti-checks" aria-hidden="true"></i><span>Select all</span></button>
+              <button id="clearReadSelection" class="text-button" type="button"><i class="ti ti-x" aria-hidden="true"></i><span>Clear</span></button>
               <button id="shareReadSelection" class="text-button" type="button"><i class="ti ti-share" aria-hidden="true"></i><span>Share</span></button>
-              <button id="noteReadSelection" class="text-button primary" type="button">Add to note</button>
-              <button id="doneReadSelection" class="text-button" type="button">Done</button>
+              <button id="noteReadSelection" class="text-button primary" type="button"><i class="ti ti-notebook" aria-hidden="true"></i><span>Add to note</span></button>
+              <button id="doneReadSelection" class="text-button" type="button"><i class="ti ti-check" aria-hidden="true"></i><span>Done</span></button>
             </div>
           </div>
           <div id="verses" class="verses" aria-live="polite"></div>
@@ -128,7 +128,7 @@
               <button id="newStudyNote" class="text-button primary notes-new-button" type="button"><i class="ti ti-file-plus" aria-hidden="true"></i><span>New note</span></button>
               <button id="toggleNoteSelect" class="text-button notes-select-button" type="button" aria-pressed="false"><i class="ti ti-square-dashed" aria-hidden="true"></i><span>Select</span></button>
             </div>
-            <div id="noteSelectionBar" class="selection-bar" hidden><strong id="noteSelectionCount">0 selected</strong><div><button id="selectAllNotes" class="text-button" type="button">Select all</button><button id="shareSelectedNotes" class="text-button" type="button">Share</button><button id="deleteSelectedNotes" class="text-button danger" type="button">Delete</button><button id="doneNoteSelection" class="text-button" type="button">Done</button></div></div>
+            <div id="noteSelectionBar" class="selection-bar" hidden><strong id="noteSelectionCount">0 selected</strong><div><button id="selectAllNotes" class="text-button" type="button"><i class="ti ti-checks" aria-hidden="true"></i><span>Select all</span></button><button id="shareSelectedNotes" class="text-button" type="button"><i class="ti ti-share" aria-hidden="true"></i><span>Share</span></button><button id="deleteSelectedNotes" class="text-button danger" type="button"><i class="ti ti-trash" aria-hidden="true"></i><span>Delete</span></button><button id="doneNoteSelection" class="text-button" type="button"><i class="ti ti-check" aria-hidden="true"></i><span>Done</span></button></div></div>
             <div class="notes-discovery-zone">
               <div class="notes-search-wrap">
                 <i class="ti ti-search" aria-hidden="true"></i>
@@ -160,7 +160,7 @@
                 <h2>Search</h2>
                 <p id="searchSummary">Search bundled offline texts</p>
               </div>
-              <button id="toggleSearchSelect" class="text-button" type="button" aria-pressed="false">Select results</button>
+              <button id="toggleSearchSelect" class="text-button" type="button" aria-pressed="false"><i class="ti ti-square-dashed" aria-hidden="true"></i><span>Select results</span></button>
             </div>
             <div class="search-panel">
               <div class="global-search-wrap">
@@ -173,14 +173,14 @@
                 <span>Search in</span>
                 <strong id="searchFilterSummary">Quran, Shia hadith & more</strong>
               </button>
-              <button id="runSearch" class="text-button primary" type="button">Search</button>
+              <button id="runSearch" class="text-button primary" type="button"><i class="ti ti-search" aria-hidden="true"></i><span>Search</span></button>
             </div>
             <div id="searchSelectionBar" class="selection-bar" hidden>
               <strong id="searchSelectionCount">0 selected</strong>
               <div>
-                <button id="selectAllSearch" class="text-button" type="button">Select all</button>
-                <button id="clearSearchSelection" class="text-button" type="button">Clear</button>
-                <button id="noteSearchSelection" class="text-button primary" type="button">Add to note</button>
+                <button id="selectAllSearch" class="text-button" type="button"><i class="ti ti-checks" aria-hidden="true"></i><span>Select all</span></button>
+                <button id="clearSearchSelection" class="text-button" type="button"><i class="ti ti-x" aria-hidden="true"></i><span>Clear</span></button>
+                <button id="noteSearchSelection" class="text-button primary" type="button"><i class="ti ti-notebook" aria-hidden="true"></i><span>Add to note</span></button>
               </div>
             </div>
           </div>
@@ -527,14 +527,14 @@
           <textarea id="noteEditor" rows="9" placeholder="Write your reflection, question, reminder, or action..."></textarea>
         </label>
         <div class="sheet-actions">
-          <button id="deleteNote" class="text-button danger" type="button">Delete</button>
+          <button id="deleteNote" class="text-button danger" type="button"><i class="ti ti-trash" aria-hidden="true"></i><span>Delete</span></button>
           <div class="note-window-actions">
-            <button id="openReferences" class="text-button" type="button">View references</button>
+            <button id="openReferences" class="text-button" type="button"><i class="ti ti-books" aria-hidden="true"></i><span>View references</span></button>
             <button id="shareNote" class="text-button share-text-button" type="button">
               <i class="ti ti-share" aria-hidden="true"></i>
               <span>Share note</span>
             </button>
-            <button class="text-button primary" value="close">Done</button>
+            <button class="text-button primary" value="close"><i class="ti ti-check" aria-hidden="true"></i><span>Done</span></button>
           </div>
         </div>
       </form>
