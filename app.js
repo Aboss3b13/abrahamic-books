@@ -800,6 +800,8 @@ let lastStableAppPosition = null;
 let appPositionFrame = 0;
 let lastScrollIntentAt = 0;
 let resumeRestoreToken = 0;
+let controlsMotion = null;
+let controlsMotionToolbar = null;
 
 function markScrollIntent() {
   lastScrollIntentAt = performance.now();
@@ -962,13 +964,41 @@ function setControlsCollapsed(collapsed, compensateScroll = true) {
   }
   if (document.body.classList.contains("controls-collapsed") === collapsed) return;
   const toolbar = getActiveToolbar();
-  const anchor = compensateScroll ? getToolbarViewportAnchor(toolbar) : null;
+  const startHeight = toolbar?.getBoundingClientRect().height || 0;
+  if (controlsMotion) {
+    controlsMotion.cancel();
+    controlsMotionToolbar?.classList.remove("toolbar-in-motion");
+    controlsMotion = null;
+    controlsMotionToolbar = null;
+  }
   document.body.classList.toggle("controls-collapsed", collapsed);
-  // Keep the first visible card fixed while only the toolbar changes size.
-  // Avoid animating the toolbar's layout height: that animation fed synthetic
-  // scroll deltas back into the collapse handler and moved the whole screen.
-  viewSwitchingUntil = performance.now() + 180;
-  stabilizeToolbarAnchor(anchor);
+  const endHeight = toolbar?.getBoundingClientRect().height || startHeight;
+  const reduceMotion = matchMedia("(prefers-reduced-motion: reduce)").matches;
+  if (!toolbar || reduceMotion || Math.abs(endHeight - startHeight) < 1) {
+    captureAppPosition(true);
+    return;
+  }
+
+  // Animate only the toolbar's layout. Continuously calling scrollBy while a
+  // sticky element changes height makes mobile WebViews feed synthetic scroll
+  // events back into this handler, which causes the visible vibration.
+  toolbar.classList.add("toolbar-in-motion");
+  controlsMotionToolbar = toolbar;
+  controlsMotion = toolbar.animate(
+    [
+      { height: `${startHeight}px`, opacity: collapsed ? 1 : .86 },
+      { height: `${endHeight}px`, opacity: 1 },
+    ],
+    { duration: 420, easing: "cubic-bezier(.16,1,.3,1)" },
+  );
+  viewSwitchingUntil = performance.now() + 500;
+  controlsMotion.addEventListener("finish", () => {
+    toolbar.classList.remove("toolbar-in-motion");
+    controlsMotion = null;
+    controlsMotionToolbar = null;
+    previousToolbarScrollY = window.scrollY;
+    captureAppPosition(true);
+  }, { once: true });
 }
 
 function getToolbarViewportAnchor(toolbar) {
@@ -980,14 +1010,13 @@ function getToolbarViewportAnchor(toolbar) {
   return element ? { element, top: element.getBoundingClientRect().top } : null;
 }
 
-function stabilizeToolbarAnchor(anchor, animation = null) {
+function stabilizeToolbarAnchor(anchor) {
   if (!anchor?.element?.isConnected) return;
   const keep = () => {
     if (!anchor.element.isConnected) return;
     const delta = anchor.element.getBoundingClientRect().top - anchor.top;
     if (Math.abs(delta) > .25) window.scrollBy({ top: delta, behavior: "auto" });
-    if (animation?.playState === "running") requestAnimationFrame(keep);
-    else captureAppPosition(true);
+    captureAppPosition(true);
   };
   requestAnimationFrame(keep);
 }
@@ -1725,7 +1754,7 @@ function revealStudyContent(html) {
   }
 }
 
-function renderNotes() {
+function renderNotes({ animate = true } = {}) {
   const query = els.notesSearch.value.trim();
   const searchExpression = parseSearchExpression(query);
   renderNoteFolderBrowser();
@@ -1742,7 +1771,7 @@ function renderNotes() {
       const haystack = `${key} ${note.title || ""} ${formatReferenceKey(key)} ${note.text || ""} ${(note.references || []).map(formatReferenceKey).join(" ")} ${tags.join(" ")} ${tagDescriptions} ${folderName}`;
       const matchesSearch = !query || searchExpression.matches(normalizeSearchText(haystack));
       const matchesTag = !state.noteTagFilter || tags.includes(state.noteTagFilter);
-      const matchesFolder = state.noteViewMode !== "folders" || state.selectedFolderId === "all" || (note.folderId || "") === state.selectedFolderId;
+      const matchesFolder = state.noteViewMode !== "folders" || (note.folderId || "") === (state.selectedFolderId === "all" ? "" : state.selectedFolderId);
       return matchesSearch && matchesTag && matchesFolder;
     });
 
@@ -1755,6 +1784,9 @@ function renderNotes() {
   els.notesList.hidden = locked;
   renderTagFilters();
 
+  els.notesList.classList.toggle("notes-simple-list", state.noteViewMode === "flat");
+  els.notesList.classList.toggle("selecting", state.noteSelectMode);
+  els.notesList.classList.toggle("notes-sync-update", !animate);
   els.notesList.innerHTML = entries.length
     ? entries.map(([key, note]) => {
         const tags = note.tags || [];
@@ -1780,7 +1812,7 @@ function renderNotes() {
           </article>
         `;
       }).join("")
-    : `<div class="notes-empty"><i class="ti ti-notebook" aria-hidden="true"></i><h3>${query || state.noteTagFilter ? "No matching notes" : "Your notes start here"}</h3><p>${query || state.noteTagFilter ? "Try another search or filter." : "Capture a reflection, verse, or study thought and keep it close."}</p>${query || state.noteTagFilter ? "" : '<button class="text-button primary" type="button" data-empty-new><i class="ti ti-file-plus" aria-hidden="true"></i>Create your first note</button>'}</div>`;
+    : `<div class="notes-empty"><i class="ti ti-notebook" aria-hidden="true"></i><h3>${query || state.noteTagFilter ? "No matching notes" : state.noteViewMode === "folders" ? "This folder is empty" : "Your notes start here"}</h3><p>${query || state.noteTagFilter ? "Try another search or filter." : state.noteViewMode === "folders" ? "Create a note here or open another folder." : "Capture a reflection, verse, or study thought and keep it close."}</p>${query || state.noteTagFilter ? "" : '<button class="text-button primary" type="button" data-empty-new><i class="ti ti-file-plus" aria-hidden="true"></i>Create a note</button>'}</div>`;
 
   els.notesList.querySelectorAll("button[data-key]").forEach((button) => {
     button.addEventListener("click", () => {
@@ -1803,6 +1835,7 @@ function renderNotes() {
   els.notesList.querySelectorAll("input[data-select-key]").forEach((input) => input.addEventListener("change", () => toggleSelectedNote(input.dataset.selectKey)));
   els.notesList.querySelector("[data-empty-new]")?.addEventListener("click", createStandaloneNote);
   updateNoteSelectionUI();
+  if (!animate) requestAnimationFrame(() => requestAnimationFrame(() => els.notesList.classList.remove("notes-sync-update")));
 }
 
 function renderNoteFolderBrowser() {
@@ -1813,20 +1846,53 @@ function renderNoteFolderBrowser() {
   els.notesFolderMode.setAttribute("aria-pressed", String(folderMode));
   els.noteFolderBrowser.hidden = !folderMode;
   if (!folderMode) return;
-  const counts = new Map();
   const folderNotes = state.notesSection === "shared" ? state.sharedNotes : Object.values(state.notes);
-  folderNotes.forEach((note) => counts.set(note.folderId || "", (counts.get(note.folderId || "") || 0) + 1));
-  const buttons = [
-    { id: "all", name: "All notes", count: folderNotes.length, icon: "folders" },
-    { id: "", name: "Unfiled", count: counts.get("") || 0, icon: "folder-off" },
-    ...state.noteFolders.map((folder) => ({ ...folder, count: counts.get(folder.id) || 0, icon: "folder" })),
-  ];
-  els.noteFolderBrowser.innerHTML = buttons.map((folder) => `<button class="note-folder-tile ${state.selectedFolderId === folder.id ? "active" : ""}" type="button" data-folder-id="${escapeHTML(folder.id)}" aria-pressed="${state.selectedFolderId === folder.id}"><i class="ti ti-${folder.icon}" aria-hidden="true"></i><span><strong>${escapeHTML(folder.name)}</strong><small>${folder.count} ${folder.count === 1 ? "note" : "notes"}</small></span></button>`).join("");
+  const currentId = state.selectedFolderId === "all" ? "" : state.selectedFolderId;
+  const children = state.noteFolders
+    .filter((folder) => (folder.parentId || "") === currentId)
+    .sort((a, b) => a.name.localeCompare(b.name, undefined, { sensitivity: "base" }));
+  const currentNotes = folderNotes.filter((note) => (note.folderId || "") === currentId).length;
+  const path = getFolderPath(currentId);
+  const itemCount = currentNotes + children.length;
+  els.noteFolderBrowser.innerHTML = `
+    <div class="note-folder-browser-heading">
+      <nav class="note-folder-path" aria-label="Current folder"><button type="button" data-folder-crumb=""><i class="ti ti-home" aria-hidden="true"></i><span>Notes</span></button>${path.map((folder) => `<i class="ti ti-chevron-right" aria-hidden="true"></i><button type="button" data-folder-crumb="${escapeHTML(folder.id)}"><span>${escapeHTML(folder.name)}</span></button>`).join("")}</nav>
+      <small>${itemCount} ${itemCount === 1 ? "item" : "items"}</small>
+    </div>
+    <div class="note-folder-grid">
+      ${children.map((folder) => {
+        const noteCount = folderNotes.filter((note) => (note.folderId || "") === folder.id).length;
+        const folderCount = state.noteFolders.filter((candidate) => (candidate.parentId || "") === folder.id).length;
+        const contents = noteCount + folderCount;
+        return `<button class="note-folder-tile" type="button" data-folder-id="${escapeHTML(folder.id)}" title="Open ${escapeHTML(folder.name)}"><i class="ti ti-folder" aria-hidden="true"></i><span><strong>${escapeHTML(folder.name)}</strong><small>${contents} ${contents === 1 ? "item" : "items"}</small></span><i class="ti ti-chevron-right folder-open-arrow" aria-hidden="true"></i></button>`;
+      }).join("") || `<p class="note-folder-empty"><i class="ti ti-folder-open" aria-hidden="true"></i>No folders here</p>`}
+    </div>`;
+  els.noteFolderBrowser.querySelectorAll("[data-folder-crumb]").forEach((button) => button.addEventListener("click", () => openNoteFolder(button.dataset.folderCrumb)));
   els.noteFolderBrowser.querySelectorAll("[data-folder-id]").forEach((button) => button.addEventListener("click", () => {
-    state.selectedFolderId = button.dataset.folderId;
-    saveNotesOrganizer();
-    renderNotes();
+    openNoteFolder(button.dataset.folderId);
   }));
+}
+
+function getFolderPath(folderId) {
+  const path = [];
+  const visited = new Set();
+  let current = state.noteFolders.find((folder) => folder.id === folderId);
+  while (current && !visited.has(current.id)) {
+    visited.add(current.id);
+    path.unshift(current);
+    current = state.noteFolders.find((folder) => folder.id === (current.parentId || ""));
+  }
+  return path;
+}
+
+function getFolderDisplayPath(folderId) {
+  return getFolderPath(folderId).map((folder) => folder.name).join(" / ");
+}
+
+function openNoteFolder(folderId = "") {
+  state.selectedFolderId = state.noteFolders.some((folder) => folder.id === folderId) ? folderId : "";
+  saveNotesOrganizer();
+  renderNotes();
 }
 
 function compareNotes(a, b, sort) {
@@ -1873,6 +1939,7 @@ function updateNoteSelectionUI() {
   els.toggleNoteSelect.setAttribute("aria-pressed", String(state.noteSelectMode));
   els.toggleNoteSelect.classList.toggle("active", state.noteSelectMode);
   els.toggleNoteSelect.innerHTML = `<i class="ti ti-${state.noteSelectMode ? "check" : "square-dashed"}" aria-hidden="true"></i><span>${state.noteSelectMode ? "Done selecting" : "Select"}</span>`;
+  els.notesList.classList.toggle("selecting", state.noteSelectMode);
   [els.shareSelectedNotes, els.moveSelectedNotes, els.copySelectedNotes, els.deleteSelectedNotes].forEach((button) => { button.disabled = !count; });
   els.notesList.querySelectorAll(".note-card[data-note-key]").forEach((card) => {
     const key = card.dataset.noteKey;
@@ -1934,8 +2001,8 @@ function openNoteTransfer(mode) {
   els.noteTransferSheet.dataset.mode = copying ? "copy" : "move";
   els.noteTransferTitle.textContent = copying ? "Copy notes to" : "Move notes to";
   els.noteTransferSubtitle.textContent = `${state.selectedNotes.size} selected · choose a destination`;
-  const folders = [{ id: "", name: "Unfiled", icon: "folder-off" }, ...state.noteFolders.map((folder) => ({ ...folder, icon: "folder" }))];
-  els.noteTransferFolders.innerHTML = folders.map((folder) => `<button class="note-transfer-folder" type="button" data-transfer-folder="${escapeHTML(folder.id)}"><i class="ti ti-${folder.icon}" aria-hidden="true"></i><span><strong>${escapeHTML(folder.name)}</strong><small>${copying ? "Create copies here" : "Move here"}</small></span><i class="ti ti-chevron-right" aria-hidden="true"></i></button>`).join("");
+  const folders = [{ id: "", name: "Notes", path: "Top level", icon: "home" }, ...state.noteFolders.map((folder) => ({ ...folder, path: getFolderDisplayPath(folder.id), icon: "folder" }))];
+  els.noteTransferFolders.innerHTML = folders.map((folder) => `<button class="note-transfer-folder" type="button" data-transfer-folder="${escapeHTML(folder.id)}"><i class="ti ti-${folder.icon}" aria-hidden="true"></i><span><strong>${escapeHTML(folder.path || folder.name)}</strong><small>${copying ? "Create copies here" : "Move here"}</small></span><i class="ti ti-chevron-right" aria-hidden="true"></i></button>`).join("");
   els.noteTransferFolders.querySelectorAll("[data-transfer-folder]").forEach((button) => button.addEventListener("click", () => applyNoteTransfer(mode, button.dataset.transferFolder)));
   openDialog(els.noteTransferSheet, copying ? els.copySelectedNotes : els.moveSelectedNotes);
 }
@@ -2051,13 +2118,15 @@ function createNoteTag() {
 
 function renderNoteFolderOptions(selectedId = els.noteFolderSelect?.value || "") {
   if (!els.noteFolderSelect) return;
-  els.noteFolderSelect.innerHTML = `<option value="">All notes (no folder)</option>${state.noteFolders.map((folder) => `<option value="${escapeHTML(folder.id)}">${escapeHTML(folder.name)}</option>`).join("")}`;
+  const folders = [...state.noteFolders].sort((a, b) => getFolderDisplayPath(a.id).localeCompare(getFolderDisplayPath(b.id), undefined, { sensitivity: "base" }));
+  els.noteFolderSelect.innerHTML = `<option value="">Notes (top level)</option>${folders.map((folder) => `<option value="${escapeHTML(folder.id)}">${escapeHTML(getFolderDisplayPath(folder.id))}</option>`).join("")}`;
   els.noteFolderSelect.value = state.noteFolders.some((folder) => folder.id === selectedId) ? selectedId : "";
 }
 
 function setNotesViewMode(mode) {
   state.noteViewMode = mode === "folders" ? "folders" : "flat";
   if (state.noteViewMode === "flat") state.selectedFolderId = "all";
+  else if (state.selectedFolderId === "all") state.selectedFolderId = "";
   saveNotesOrganizer();
   renderNotes();
 }
@@ -2067,8 +2136,10 @@ function createNoteFolder(fromEditor = false) {
   if (rawName === null) return;
   const name = rawName.trim().replace(/\s+/g, " ").slice(0, 60);
   if (!name) return;
-  const existing = state.noteFolders.find((folder) => folder.name.localeCompare(name, undefined, { sensitivity: "base" }) === 0);
-  const folder = existing || { id: `folder:${crypto.randomUUID()}`, name, createdAt: new Date().toISOString() };
+  const requestedParentId = fromEditor ? (els.noteFolderSelect.value || "") : (state.selectedFolderId === "all" ? "" : state.selectedFolderId);
+  const parentId = state.noteFolders.some((folder) => folder.id === requestedParentId) ? requestedParentId : "";
+  const existing = state.noteFolders.find((folder) => (folder.parentId || "") === parentId && folder.name.localeCompare(name, undefined, { sensitivity: "base" }) === 0);
+  const folder = existing || { id: `folder:${crypto.randomUUID()}`, name, parentId, createdAt: new Date().toISOString() };
   if (!existing) state.noteFolders.push(folder);
   state.noteFolders.sort((a, b) => a.name.localeCompare(b.name, undefined, { sensitivity: "base" }));
   state.noteViewMode = "folders";
@@ -2099,12 +2170,13 @@ function applyNotesOrganizer(organizer = {}) {
   state.noteViewMode = organizer.viewMode === "folders" ? "folders" : "flat";
   state.selectedFolderId = typeof organizer.selectedFolderId === "string" ? organizer.selectedFolderId : "all";
   state.noteFolders = Array.isArray(organizer.folders)
-    ? organizer.folders.filter((folder) => folder && typeof folder.id === "string" && typeof folder.name === "string")
+    ? organizer.folders.filter((folder) => folder && typeof folder.id === "string" && typeof folder.name === "string").map((folder) => ({ ...folder, parentId: typeof folder.parentId === "string" ? folder.parentId : "" }))
     : [];
   state.tagCatalog = organizer.tagCatalog && typeof organizer.tagCatalog === "object" ? organizer.tagCatalog : {};
   if (state.selectedFolderId !== "all" && state.selectedFolderId !== "" && !state.noteFolders.some((folder) => folder.id === state.selectedFolderId)) {
-    state.selectedFolderId = "all";
+    state.selectedFolderId = state.noteViewMode === "folders" ? "" : "all";
   }
+  if (state.noteViewMode === "folders" && state.selectedFolderId === "all") state.selectedFolderId = "";
   localStorage.setItem(STORE.notesOrganizer, JSON.stringify({ ...organizer, folders: state.noteFolders, tagCatalog: state.tagCatalog }));
   renderNoteFolderOptions();
   renderNotes();
@@ -2771,10 +2843,25 @@ async function restoreLastRead() {
 }
 
 async function exportNotes() {
+  const buildFolderTree = (parentId = "", ancestors = new Set()) => state.noteFolders
+    .filter((folder) => (folder.parentId || "") === parentId && !ancestors.has(folder.id))
+    .sort((a, b) => a.name.localeCompare(b.name, undefined, { sensitivity: "base" }))
+    .map((folder) => ({
+      id: folder.id,
+      name: folder.name,
+      notes: Object.entries(state.notes).filter(([, note]) => (note.folderId || "") === folder.id).map(([key, note]) => ({ key, ...note })),
+      folders: buildFolderTree(folder.id, new Set([...ancestors, folder.id])),
+    }));
   const payload = {
+    format: "abrahamic-books-folder-export-v1",
     exportedAt: new Date().toISOString(),
     notes: state.notes,
-    organizer: { folders: state.noteFolders, tagCatalog: state.tagCatalog },
+    organizer: { viewMode: state.noteViewMode, selectedFolderId: state.selectedFolderId, folders: state.noteFolders, tagCatalog: state.tagCatalog },
+    folderStructure: {
+      name: "Notes",
+      notes: Object.entries(state.notes).filter(([, note]) => !(note.folderId || "")).map(([key, note]) => ({ key, ...note })),
+      folders: buildFolderTree(),
+    },
   };
   const json = JSON.stringify(payload, null, 2);
   const filename = `abrahamic-books-notes-${new Date().toISOString().slice(0, 10)}.json`;
@@ -3030,7 +3117,8 @@ async function importEncryptedBackup(event) {
   if (!file) return;
   try {
     const password = window.prompt("Backup password or recovery key (leave blank for an unencrypted backup):") || "";
-    await notesSystem.importBackup(await file.text(), password);
+    const organizer = await notesSystem.importBackup(await file.text(), password);
+    if (organizer) applyNotesOrganizer(organizer);
     setStatus("Notes backup imported locally.");
   } catch (error) { setStatus(`Could not import backup: ${error.message}`); }
   event.target.value = "";
@@ -3175,12 +3263,8 @@ async function importNotes(event) {
   try {
     const text = await file.text();
     const backup = JSON.parse(text);
-    await notesSystem.importBackup(text);
-    if (backup.organizer && typeof backup.organizer === "object") {
-      state.noteFolders = Array.isArray(backup.organizer.folders) ? backup.organizer.folders : state.noteFolders;
-      state.tagCatalog = backup.organizer.tagCatalog && typeof backup.organizer.tagCatalog === "object" ? backup.organizer.tagCatalog : state.tagCatalog;
-      saveNotesOrganizer();
-    }
+    const organizer = await notesSystem.importBackup(text);
+    if (organizer) applyNotesOrganizer(organizer);
     renderVerses(); renderNotes(); setStatus("Imported notes locally.");
     setTimeout(() => setStatus(""), 1600);
   } catch { setStatus("Could not import that notes file."); }
@@ -4191,13 +4275,46 @@ function createNoteFromSearchSelection() {
   updateSearchSelectionUI();
 }
 
+function noteRenderSignature(notes) {
+  return JSON.stringify(Object.entries(notes || {}).sort(([left], [right]) => left.localeCompare(right)).map(([key, note]) => [
+    key,
+    note?.title || "",
+    note?.text || "",
+    note?.folderId || "",
+    note?.updatedAt || "",
+    Boolean(note?.deleted),
+    Boolean(note?.standalone),
+    note?.tags || [],
+    note?.references || [],
+  ]));
+}
+
+function applySyncedNotes(notes) {
+  const changed = noteRenderSignature(state.notes) !== noteRenderSignature(notes);
+  state.notes = notes;
+  if (!changed) return;
+
+  const visibleCard = [...els.notesList.querySelectorAll(".note-card[data-note-key]")]
+    .find((card) => card.getBoundingClientRect().bottom > (els.topbar?.getBoundingClientRect().bottom || 0));
+  const anchor = visibleCard ? { key: visibleCard.dataset.noteKey, top: visibleCard.getBoundingClientRect().top } : null;
+  renderNotes({ animate: false });
+  renderVerses();
+  updateDashboard();
+  syncWidgetNotes();
+  if (anchor) requestAnimationFrame(() => {
+    const replacement = [...els.notesList.querySelectorAll(".note-card[data-note-key]")]
+      .find((card) => card.dataset.noteKey === anchor.key);
+    if (replacement) window.scrollBy({ top: replacement.getBoundingClientRect().top - anchor.top, behavior: "auto" });
+  });
+}
+
 async function loadLocalState() {
   try {
     const organizer = JSON.parse(localStorage.getItem(STORE.notesOrganizer) || "null") || {};
     state.noteViewMode = organizer.viewMode === "folders" ? "folders" : "flat";
     state.selectedFolderId = typeof organizer.selectedFolderId === "string" ? organizer.selectedFolderId : "all";
     state.noteFolders = Array.isArray(organizer.folders)
-      ? organizer.folders.filter((folder) => folder && typeof folder.id === "string" && typeof folder.name === "string")
+      ? organizer.folders.filter((folder) => folder && typeof folder.id === "string" && typeof folder.name === "string").map((folder) => ({ ...folder, parentId: typeof folder.parentId === "string" ? folder.parentId : "" }))
       : [];
     state.tagCatalog = organizer.tagCatalog && typeof organizer.tagCatalog === "object" ? organizer.tagCatalog : {};
   } catch {
@@ -4211,7 +4328,7 @@ async function loadLocalState() {
     legacyNotes = {};
   }
 
-  notesSystem = new NotesSystem({ isNative: Capacitor.isNativePlatform(), onChange: (notes) => { state.notes = notes; renderNotes(); renderVerses(); updateDashboard(); syncWidgetNotes(); } });
+  notesSystem = new NotesSystem({ isNative: Capacitor.isNativePlatform(), onChange: applySyncedNotes });
   state.notes = await notesSystem.init(legacyNotes);
   const organizer = await notesSystem.initOrganizer({
     viewMode: state.noteViewMode,
