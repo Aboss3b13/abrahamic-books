@@ -899,7 +899,8 @@ function handleToolbarScroll() {
     const scrollingDown = y > previousToolbarScrollY + 2;
 
     if (y < 56) {
-      setControlsCollapsed(false, false);
+      // A collapsed toolbar only reopens when the user presses it. Layout
+      // changes and browser scroll restoration must never reopen controls.
       document.body.classList.remove("controls-manually-expanded");
     } else if (manuallyExpanded && scrollingDown && y - controlsExpandedAt > 140) {
       document.body.classList.remove("controls-manually-expanded");
@@ -961,24 +962,13 @@ function setControlsCollapsed(collapsed, compensateScroll = true) {
   }
   if (document.body.classList.contains("controls-collapsed") === collapsed) return;
   const toolbar = getActiveToolbar();
-  const before = toolbar?.getBoundingClientRect().height || 0;
   const anchor = compensateScroll ? getToolbarViewportAnchor(toolbar) : null;
   document.body.classList.toggle("controls-collapsed", collapsed);
-  const after = toolbar?.getBoundingClientRect().height || 0;
-  if (!toolbar || !toolbar.animate || matchMedia("(prefers-reduced-motion: reduce)").matches || before === after) {
-    stabilizeToolbarAnchor(anchor);
-    return;
-  }
-  viewSwitchingUntil = performance.now() + 560;
-  toolbar.getAnimations().forEach((animation) => animation.cancel());
-  const animation = toolbar.animate(
-    [
-      { height: `${before}px`, opacity: collapsed ? 1 : .72, transform: collapsed ? "translateY(0) scale(1)" : "translateY(-5px) scale(.992)", overflow: "clip" },
-      { height: `${after}px`, opacity: 1, transform: "translateY(0) scale(1)", overflow: "clip" },
-    ],
-    { duration: collapsed ? 380 : 480, easing: "cubic-bezier(.16,1,.3,1)" },
-  );
-  stabilizeToolbarAnchor(anchor, animation);
+  // Keep the first visible card fixed while only the toolbar changes size.
+  // Avoid animating the toolbar's layout height: that animation fed synthetic
+  // scroll deltas back into the collapse handler and moved the whole screen.
+  viewSwitchingUntil = performance.now() + 180;
+  stabilizeToolbarAnchor(anchor);
 }
 
 function getToolbarViewportAnchor(toolbar) {
@@ -1778,7 +1768,7 @@ function renderNotes() {
           <article class="note-card ${state.selectedNotes.has(key) ? "selected" : ""} ${referencesExpanded ? "references-expanded" : ""}" data-note-key="${escapeHTML(key)}" style="--note-order:${Math.min(8, entries.findIndex(([entryKey]) => entryKey === key))}">
             ${state.noteSelectMode ? `<label class="note-select"><input type="checkbox" data-select-key="${escapeHTML(key)}" ${state.selectedNotes.has(key) ? "checked" : ""}><span aria-hidden="true"></span></label>` : ""}
             <button class="note-card-main" type="button" data-key="${escapeHTML(key)}">
-              <span class="note-card-heading"><strong>${escapeHTML(note.title?.trim() || "Untitled note")}</strong><time>${escapeHTML(updatedLabel)}</time></span>
+              <span class="note-card-heading"><span class="note-card-title"><span class="note-card-icon"><i class="ti ti-notes" aria-hidden="true"></i></span><strong>${escapeHTML(note.title?.trim() || "Untitled note")}</strong></span><time>${escapeHTML(updatedLabel)}</time></span>
               ${folderName ? `<span class="note-folder-label"><i class="ti ti-folder" aria-hidden="true"></i>${escapeHTML(folderName)}</span>` : ""}
               <p>${escapeHTML(note.text || "No text added yet.")}</p>
               ${tags.length ? `<div class="note-tags">${tags.map((tag) => `<span>#${escapeHTML(tag)}</span>`).join("")}</div>` : ""}
@@ -2093,12 +2083,28 @@ function createNoteFolder(fromEditor = false) {
 }
 
 function saveNotesOrganizer() {
-  localStorage.setItem(STORE.notesOrganizer, JSON.stringify({
+  const organizer = {
     viewMode: state.noteViewMode,
     selectedFolderId: state.selectedFolderId,
     folders: state.noteFolders,
     tagCatalog: state.tagCatalog,
-  }));
+  };
+  localStorage.setItem(STORE.notesOrganizer, JSON.stringify(organizer));
+  notesSystem?.saveOrganizer(organizer).then((saved) => {
+    localStorage.setItem(STORE.notesOrganizer, JSON.stringify(saved));
+  }).catch(() => {});
+}
+
+function applyNotesOrganizer(organizer = {}) {
+  state.noteViewMode = organizer.viewMode === "folders" ? "folders" : "flat";
+  state.selectedFolderId = typeof organizer.selectedFolderId === "string" ? organizer.selectedFolderId : "all";
+  state.noteFolders = Array.isArray(organizer.folders)
+    ? organizer.folders.filter((folder) => folder && typeof folder.id === "string" && typeof folder.name === "string")
+    : [];
+  state.tagCatalog = organizer.tagCatalog && typeof organizer.tagCatalog === "object" ? organizer.tagCatalog : {};
+  localStorage.setItem(STORE.notesOrganizer, JSON.stringify({ ...organizer, folders: state.noteFolders, tagCatalog: state.tagCatalog }));
+  renderNoteFolderOptions();
+  renderNotes();
 }
 
 function renderReferenceResults() {
@@ -4204,6 +4210,14 @@ async function loadLocalState() {
 
   notesSystem = new NotesSystem({ isNative: Capacitor.isNativePlatform(), onChange: (notes) => { state.notes = notes; renderNotes(); renderVerses(); updateDashboard(); syncWidgetNotes(); } });
   state.notes = await notesSystem.init(legacyNotes);
+  const organizer = await notesSystem.initOrganizer({
+    viewMode: state.noteViewMode,
+    selectedFolderId: state.selectedFolderId,
+    folders: state.noteFolders,
+    tagCatalog: state.tagCatalog,
+  });
+  applyNotesOrganizer(organizer);
+  notesSystem.watchOrganizer(applyNotesOrganizer);
   startSharedNotes();
   startAccountLastReadSync();
   notesSystem.addEventListener("status", (event) => updateSyncUI(event.detail.state, event.detail.detail));

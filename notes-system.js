@@ -66,6 +66,7 @@ export class NotesSystem extends EventTarget {
     this.unsubscribeRemote = null;
     this.sharedUnsubscribers = [];
     this.lastReadUnsubscribe = null;
+    this.organizerOnChange = () => {};
   }
 
   async init(legacy = {}) {
@@ -317,7 +318,46 @@ export class NotesSystem extends EventTarget {
       this.config.legacyNotesClaimedBy = uid;
       await this.setMeta("config", this.config);
     }
+    const accountOrganizerKey = `organizer:${uid}`;
+    if (!(await this.getMeta(accountOrganizerKey))) {
+      const localOrganizer = await this.getMeta(`organizer:${LOCAL_OWNER}`);
+      // A cloud organizer must win when an existing account is first used on
+      // this device. The old local organizer is only a migration fallback for
+      // accounts that do not have a cloud organizer yet.
+      if (localOrganizer) await this.setMeta(accountOrganizerKey, { ...localOrganizer, updatedAt: "1970-01-01T00:00:00.000Z" });
+    }
     this.onChange(await this.visibleMap());
+  }
+
+  async initOrganizer(organizer = {}) {
+    const key = `organizer:${this.currentOwnerUid()}`;
+    const existing = await this.getMeta(key);
+    if (existing) return existing;
+    const initial = {
+      ...organizer,
+      updatedAt: organizer.updatedAt || "1970-01-01T00:00:00.000Z",
+      deviceId: organizer.deviceId || this.config.deviceId,
+    };
+    await this.setMeta(key, initial);
+    return initial;
+  }
+
+  watchOrganizer(onChange = () => {}) {
+    this.organizerOnChange = onChange;
+  }
+
+  async saveOrganizer(organizer = {}) {
+    const clean = {
+      viewMode: organizer.viewMode === "folders" ? "folders" : "flat",
+      selectedFolderId: typeof organizer.selectedFolderId === "string" ? organizer.selectedFolderId : "all",
+      folders: Array.isArray(organizer.folders) ? organizer.folders : [],
+      tagCatalog: organizer.tagCatalog && typeof organizer.tagCatalog === "object" ? organizer.tagCatalog : {},
+      updatedAt: new Date().toISOString(),
+      deviceId: this.config.deviceId,
+    };
+    await this.setMeta(`organizer:${this.currentOwnerUid()}`, clean);
+    this.scheduleSync(250);
+    return clean;
   }
 
   startRealtimeSync() {
@@ -397,6 +437,7 @@ export class NotesSystem extends EventTarget {
         if (duplicate.id === cloudIdForKey(duplicate.key)) continue;
         await deleteDoc(doc(this.firestore, "users", this.user.uid, "notes", duplicate.id));
       }
+      await this.syncOrganizer();
       this.emit("synced", uploaded ? `${uploaded} local ${uploaded === 1 ? "note" : "notes"} synced with ${this.accountEmail}.` : `All notes are synced with ${this.accountEmail}.`);
     } catch (error) {
       this.emit(navigator.onLine ? "conflict" : "offline", error.message);
@@ -404,6 +445,23 @@ export class NotesSystem extends EventTarget {
     } finally {
       this.syncing = false;
       this.onChange(await this.visibleMap());
+    }
+  }
+
+  async syncOrganizer() {
+    if (!this.user) return;
+    const localKey = `organizer:${this.user.uid}`;
+    const local = await this.getMeta(localKey);
+    const reference = doc(this.firestore, "users", this.user.uid, "notes", "notes-organizer-v1");
+    const snapshot = await getDoc(reference);
+    const remote = snapshot.exists() ? snapshot.data() : null;
+    const localTime = Date.parse(local?.updatedAt || 0) || 0;
+    const remoteTime = Date.parse(remote?.updatedAt || 0) || 0;
+    if (remote && remoteTime > localTime) {
+      await this.setMeta(localKey, remote);
+      this.organizerOnChange(remote);
+    } else if (local && (!remote || localTime > remoteTime)) {
+      await setDoc(reference, local);
     }
   }
 

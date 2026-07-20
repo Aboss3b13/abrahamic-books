@@ -3026,9 +3026,9 @@ html[dir="rtl"] .note-select { right: auto; left: 12px; }
   top: calc(var(--topbar-height) + 8px);
   display: grid;
   z-index: 10;
-  gap: 12px;
+  gap: 8px;
   margin: 0 -4px 14px;
-  padding: 12px;
+  padding: 10px;
   border: 1px solid var(--line);
   border-radius: 18px;
   background: var(--paper);
@@ -3158,8 +3158,8 @@ html[dir="rtl"] .note-select { right: auto; left: 12px; }
 
 .notes-discovery-zone {
   display: grid;
-  gap: 10px;
-  padding: 12px;
+  gap: 8px;
+  padding: 9px;
   border: 1px solid color-mix(in srgb, var(--green-2) 16%, var(--line));
   border-radius: 18px;
   background: color-mix(in srgb, var(--green-2) 4%, var(--panel));
@@ -3181,7 +3181,7 @@ html[dir="rtl"] .note-select { right: auto; left: 12px; }
 }
 
 .notes-search-wrap .wide-search {
-  min-height: 52px;
+  min-height: 46px;
   margin: 0;
   padding: 0 50px 0 44px;
   border-radius: 14px;
@@ -4336,22 +4336,27 @@ a.pill-button { position: relative; isolation: isolate; }
 .notes-create-folder { flex: 0 0 auto; min-height: 46px; white-space: nowrap; }
 
 .note-folder-browser {
-  display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(145px, 1fr));
+  display: flex;
   gap: 8px;
-  padding: 2px;
+  margin: -4px 0 12px;
+  padding: 4px 2px 7px;
+  overflow-x: auto;
+  overscroll-behavior-x: contain;
+  scrollbar-width: none;
 }
 
 .note-folder-browser[hidden] { display: none; }
+.note-folder-browser::-webkit-scrollbar { display: none; }
 
 .note-folder-tile {
   display: grid;
-  grid-template-columns: 34px minmax(0, 1fr);
-  min-width: 0;
-  min-height: 58px;
+  grid-template-columns: 30px minmax(0, 1fr);
+  width: 138px;
+  min-width: 138px;
+  min-height: 52px;
   align-items: center;
   gap: 9px;
-  padding: 9px 10px;
+  padding: 7px 9px;
   border: 1px solid var(--line);
   border-radius: 13px;
   color: var(--ink);
@@ -4359,13 +4364,43 @@ a.pill-button { position: relative; isolation: isolate; }
   text-align: start;
 }
 
-.note-folder-tile > .ti { color: var(--gold); font-size: 1.3rem; }
+.note-folder-tile > .ti {
+  display: grid;
+  width: 30px;
+  height: 30px;
+  place-items: center;
+  border-radius: 9px;
+  color: color-mix(in srgb, var(--gold) 82%, var(--ink));
+  background: var(--gold-soft);
+  font-size: 1.12rem;
+}
 .note-folder-tile > span { min-width: 0; }
 .note-folder-tile strong,
 .note-folder-tile small { display: block; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .note-folder-tile strong { font-size: .76rem; }
 .note-folder-tile small { margin-top: 2px; color: var(--muted); font-size: .66rem; }
-.note-folder-tile.active { border-color: var(--green); background: color-mix(in srgb, var(--green-2) 10%, var(--panel)); box-shadow: 0 0 0 2px color-mix(in srgb, var(--green) 12%, transparent); }
+.note-folder-tile.active { border-color: var(--green); background: color-mix(in srgb, var(--green-2) 10%, var(--panel)); box-shadow: 0 5px 16px color-mix(in srgb, var(--green) 13%, transparent); }
+.note-folder-tile.active > .ti { color: #fff; background: var(--green); }
+
+.note-card-title {
+  display: flex;
+  min-width: 0;
+  align-items: center;
+  gap: 9px;
+}
+
+.note-card-icon {
+  display: grid;
+  width: 32px;
+  height: 32px;
+  flex: 0 0 32px;
+  place-items: center;
+  border-radius: 10px;
+  color: var(--green);
+  background: color-mix(in srgb, var(--green-2) 10%, var(--paper));
+}
+
+.note-card-title strong { min-width: 0; }
 
 .note-folder-label {
   display: inline-flex;
@@ -4412,13 +4447,13 @@ a.pill-button { position: relative; isolation: isolate; }
   .notes-view-switch { flex: 1 1 auto; }
   .notes-create-folder { width: 44px; padding: 0; justify-content: center; }
   .notes-create-folder span { display: none; }
-  .note-folder-browser { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  .note-folder-browser { margin-inline: -2px; }
   .note-save-location-row { display: grid; grid-template-columns: 1fr; }
   .note-save-location-row .text-button { width: 100%; }
 }
 
 @media (min-width: 600px) and (max-width: 959px) {
-  .note-folder-browser { grid-template-columns: repeat(3, minmax(0, 1fr)); }
+  .note-folder-tile { width: 152px; min-width: 152px; }
   .note-sheet { width: min(calc(100% - 48px), 820px); }
   .note-sheet .sheet-inner { padding: 22px; }
   .note-editor-identity { grid-template-columns: minmax(220px, .8fr) minmax(300px, 1.2fr); }
