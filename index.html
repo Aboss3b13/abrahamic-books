@@ -128,6 +128,14 @@
               <button id="newStudyNote" class="text-button primary notes-new-button" type="button"><i class="ti ti-file-plus" aria-hidden="true"></i><span>New note</span></button>
               <button id="toggleNoteSelect" class="text-button notes-select-button" type="button" aria-pressed="false"><i class="ti ti-square-dashed" aria-hidden="true"></i><span>Select</span></button>
             </div>
+            <div class="notes-layout-row" aria-label="Notes layout">
+              <div class="notes-view-switch" role="group" aria-label="View notes as">
+                <button id="notesFlatMode" class="active" type="button" aria-pressed="true"><i class="ti ti-list" aria-hidden="true"></i><span>All notes</span></button>
+                <button id="notesFolderMode" type="button" aria-pressed="false"><i class="ti ti-folders" aria-hidden="true"></i><span>Folders</span></button>
+              </div>
+              <button id="createNoteFolder" class="text-button notes-create-folder" type="button"><i class="ti ti-folder-plus" aria-hidden="true"></i><span>New folder</span></button>
+            </div>
+            <div id="noteFolderBrowser" class="note-folder-browser" aria-label="Note folders" hidden></div>
             <div id="noteSelectionBar" class="selection-bar" hidden><strong id="noteSelectionCount">0 selected</strong><div><button id="selectAllNotes" class="text-button" type="button"><i class="ti ti-checks" aria-hidden="true"></i><span>Select all</span></button><button id="shareSelectedNotes" class="text-button" type="button"><i class="ti ti-share" aria-hidden="true"></i><span>Share</span></button><button id="deleteSelectedNotes" class="text-button danger" type="button"><i class="ti ti-trash" aria-hidden="true"></i><span>Delete</span></button><button id="doneNoteSelection" class="text-button" type="button"><i class="ti ti-check" aria-hidden="true"></i><span>Done</span></button></div></div>
             <div class="notes-discovery-zone">
               <div class="notes-search-wrap">
@@ -508,10 +516,23 @@
             <span><i class="ti ti-heading" aria-hidden="true"></i> Title</span>
             <input id="noteName" type="text" maxlength="120" placeholder="Give this note a name">
           </label>
-          <label class="note-field">
+          <div class="note-field note-tag-field">
             <span><i class="ti ti-tags" aria-hidden="true"></i> Tags</span>
-            <input id="noteTags" type="text" placeholder="mercy, prayer, study">
-          </label>
+            <input id="noteTags" type="hidden">
+            <div id="noteTagChoices" class="note-tag-choices" aria-label="Available tags"></div>
+            <div class="note-tag-create-row">
+              <input id="noteTagCreate" type="text" maxlength="40" autocomplete="off" placeholder="Create a new tag">
+              <button id="addNoteTag" class="text-button" type="button"><i class="ti ti-plus" aria-hidden="true"></i><span>Add tag</span></button>
+            </div>
+            <textarea id="noteTagDescription" rows="2" maxlength="240" placeholder="Optional description for the new tag"></textarea>
+          </div>
+        </div>
+        <div class="note-save-location note-editor-section">
+          <div class="note-editor-section-heading"><span class="note-editor-icon"><i class="ti ti-folder" aria-hidden="true"></i></span><div><strong>Save location</strong><small>Keep this note with everything or place it in a folder</small></div></div>
+          <div class="note-save-location-row">
+            <label class="note-field"><span>Folder</span><select id="noteFolderSelect"></select></label>
+            <button id="createFolderFromEditor" class="text-button" type="button"><i class="ti ti-folder-plus" aria-hidden="true"></i><span>New folder</span></button>
+          </div>
         </div>
         <div class="cross-ref-panel note-editor-section">
           <div class="note-editor-section-heading"><span class="note-editor-icon"><i class="ti ti-link" aria-hidden="true"></i></span><div><strong>Cross-references</strong><small>Connect any Quran verse, Bible passage, or hadith</small></div></div>

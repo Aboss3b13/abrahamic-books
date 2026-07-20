@@ -130,6 +130,7 @@ export class NotesSystem extends EventTarget {
     return {
       id: note.id || uuid(), key: resolvedKey, title: String(note.title || ""), text: String(note.text || ""),
       tags: Array.isArray(note.tags) ? note.tags.map(String) : [], references: Array.isArray(note.references) ? note.references.map(String) : [],
+      folderId: String(note.folderId || ""),
       standalone: note.standalone ?? resolvedKey.startsWith("note:"), revision: Number(note.revision) || 1,
       createdAt: note.createdAt || note.updatedAt || now, updatedAt: note.updatedAt || now,
       deviceId: note.deviceId || this.config.deviceId, deletedAt: note.deletedAt || null,
@@ -280,6 +281,7 @@ export class NotesSystem extends EventTarget {
     return addDoc(collection(this.firestore, "sharedNotes"), {
       title: String(note.title || "Untitled shared note"), text: String(note.text || ""),
       tags: Array.isArray(note.tags) ? note.tags.map(String) : [], references: Array.isArray(note.references) ? note.references.map(String) : [],
+      folderId: String(note.folderId || ""),
       ownerUid: this.user.uid, ownerEmail: this.user.email.toLowerCase(), memberEmails,
       createdAt: now, updatedAt: now, updatedBy: this.user.email.toLowerCase(),
     });
@@ -288,7 +290,7 @@ export class NotesSystem extends EventTarget {
   async updateSharedNote(id, changes) {
     if (!this.user) throw new Error("Sign in to edit shared notes.");
     const clean = {};
-    for (const key of ["title", "text", "tags", "references", "memberEmails"]) if (key in changes) clean[key] = changes[key];
+    for (const key of ["title", "text", "tags", "references", "folderId", "memberEmails"]) if (key in changes) clean[key] = changes[key];
     clean.updatedAt = new Date().toISOString(); clean.updatedBy = this.accountEmail.toLowerCase();
     await updateDoc(doc(this.firestore, "sharedNotes", id), clean);
   }

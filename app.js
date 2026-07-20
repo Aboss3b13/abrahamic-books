@@ -17,6 +17,7 @@ const STORE = {
   downloadedTranslations: "quran-downloaded-translations",
   downloadedTafsirs: "quran-downloaded-tafsirs",
   downloadedCommentaries: "bible-downloaded-commentaries",
+  notesOrganizer: "abrahamic-books-notes-organizer-v1",
 };
 const PUBLIC_APP_URL = "https://abbas2.ali-raza.net/AbrahamicBooks/";
 let notesSystem;
@@ -115,6 +116,10 @@ const state = {
   expandedNoteReferences: new Set(),
   currentNoteReferences: [],
   noteTagFilter: "",
+  noteViewMode: "flat",
+  selectedFolderId: "all",
+  noteFolders: [],
+  tagCatalog: {},
   originalWordCache: {},
   currentNoteKey: null,
   focusedVerseKey: null,
@@ -204,6 +209,12 @@ const els = {
   wordSubtitle: document.querySelector("#wordSubtitle"),
   wordContent: document.querySelector("#wordContent"),
   noteTags: document.querySelector("#noteTags"),
+  noteTagChoices: document.querySelector("#noteTagChoices"),
+  noteTagCreate: document.querySelector("#noteTagCreate"),
+  addNoteTag: document.querySelector("#addNoteTag"),
+  noteTagDescription: document.querySelector("#noteTagDescription"),
+  noteFolderSelect: document.querySelector("#noteFolderSelect"),
+  createFolderFromEditor: document.querySelector("#createFolderFromEditor"),
   noteName: document.querySelector("#noteName"),
   referenceSearch: document.querySelector("#referenceSearch"),
   referenceResults: document.querySelector("#referenceResults"),
@@ -257,6 +268,10 @@ const els = {
   doneNoteSelection: document.querySelector("#doneNoteSelection"),
   sharedNotesSignIn: document.querySelector("#sharedNotesSignIn"),
   newStudyNote: document.querySelector("#newStudyNote"),
+  notesFlatMode: document.querySelector("#notesFlatMode"),
+  notesFolderMode: document.querySelector("#notesFolderMode"),
+  createNoteFolder: document.querySelector("#createNoteFolder"),
+  noteFolderBrowser: document.querySelector("#noteFolderBrowser"),
   exportNotes: document.querySelector("#exportNotes"),
   importNotes: document.querySelector("#importNotes"),
   globalSearch: document.querySelector("#globalSearch"),
@@ -372,6 +387,7 @@ async function setupAppLinks() {
   });
   window.addEventListener("pagehide", () => captureAppPosition(true));
   window.addEventListener("pageshow", restoreOnResume);
+  window.addEventListener("popstate", () => openSharedLink());
   if (!Capacitor.isNativePlatform()) return;
   const openAppUrl = async (url) => {
     const incoming = new URL(url);
@@ -507,6 +523,15 @@ function bindEvents() {
   els.noteEditor.addEventListener("input", saveCurrentNote);
   els.noteName.addEventListener("input", saveCurrentNote);
   els.noteTags.addEventListener("input", saveCurrentNote);
+  els.addNoteTag.addEventListener("click", createNoteTag);
+  els.noteTagCreate.addEventListener("keydown", (event) => {
+    if (event.key === "Enter") {
+      event.preventDefault();
+      createNoteTag();
+    }
+  });
+  els.noteFolderSelect.addEventListener("change", saveCurrentNote);
+  els.createFolderFromEditor.addEventListener("click", () => createNoteFolder(true));
   els.referenceSearch.addEventListener("input", renderReferenceResults);
   els.referenceSearch.addEventListener("keydown", (event) => {
     if (event.key === "Enter") {
@@ -519,6 +544,9 @@ function bindEvents() {
   els.openReferences.addEventListener("click", showReferenceOverview);
   els.continueReading.addEventListener("click", continueReadingFromFocus);
   els.newStudyNote.addEventListener("click", createStandaloneNote);
+  els.notesFlatMode.addEventListener("click", () => setNotesViewMode("flat"));
+  els.notesFolderMode.addEventListener("click", () => setNotesViewMode("folders"));
+  els.createNoteFolder.addEventListener("click", () => createNoteFolder(false));
   els.notesSearch.addEventListener("input", renderNotes);
   els.notesSearchHelpButton.addEventListener("click", () => {
     const open = els.notesSearchHelp.hidden;
@@ -777,6 +805,30 @@ function captureAppPosition(protectFromSystemReset = false) {
   if (!looksLikeSystemReset) lastStableAppPosition = nextPosition;
   state.viewScrollPositions[state.currentView] = suspendedAppPosition.windowTop;
   try { sessionStorage.setItem("abrahamic-app-position-v1", JSON.stringify(suspendedAppPosition)); } catch {}
+  syncUrlState();
+}
+
+function getReaderAnchorKey() {
+  if (state.focusedVerseKey) return state.focusedVerseKey;
+  const offset = (els.topbar?.getBoundingClientRect().height || 0) + (getActiveToolbar()?.getBoundingClientRect().height || 0) + 24;
+  const cards = [...els.verses.querySelectorAll(".ayah-card[data-key]")];
+  const visible = cards.find((card) => card.getBoundingClientRect().bottom > offset);
+  return visible?.dataset.key || cards[0]?.dataset.key || "";
+}
+
+function syncUrlState() {
+  if (location.protocol === "file:" || location.hash.includes("note=") || location.hash.includes("notes=")) return;
+  const url = new URL(location.href);
+  url.searchParams.set("view", state.currentView);
+  if (state.currentView === "readView") {
+    const key = getReaderAnchorKey();
+    if (key) url.searchParams.set("at", key);
+  } else {
+    url.searchParams.delete("at");
+  }
+  url.searchParams.delete("ref");
+  const next = `${url.pathname}${url.search}${url.hash}`;
+  if (`${location.pathname}${location.search}${location.hash}` !== next) history.replaceState({ appNavigation: true }, "", next);
 }
 
 function rememberAppPosition() {
@@ -845,9 +897,10 @@ function handleToolbarScroll() {
 }
 
 function expandActiveToolbar() {
-  // Expanding a sticky toolbar must not compensate the page scroll. Doing so
-  // creates a synthetic downward scroll that immediately collapses it again.
-  setControlsCollapsed(false, false);
+  // Preserve the passage under the user's eyes while the sticky controls grow.
+  // Ignore the compensating scroll briefly so it cannot re-collapse the panel.
+  viewSwitchingUntil = performance.now() + 520;
+  setControlsCollapsed(false, true);
   document.body.classList.add("controls-manually-expanded");
   controlsExpandedAt = window.scrollY;
   previousToolbarScrollY = window.scrollY;
@@ -1445,6 +1498,10 @@ function openNote(key) {
   els.noteName.value = existing.title || "";
   els.noteEditor.value = existing.text || "";
   els.noteTags.value = (existing.tags || []).join(", ");
+  els.noteTagCreate.value = "";
+  els.noteTagDescription.value = "";
+  renderNoteFolderOptions(existing.folderId || "");
+  renderNoteTagPicker();
   els.referenceSearch.value = "";
   renderNoteReferences();
   renderReferenceResults();
@@ -1455,7 +1512,8 @@ function openNote(key) {
 
 function createStandaloneNote() {
   const key = `note:${crypto.randomUUID()}`;
-  state.notes[key] = { title: "", text: "", tags: [], references: [], updatedAt: new Date().toISOString(), standalone: true };
+  const folderId = state.noteViewMode === "folders" && state.selectedFolderId !== "all" ? state.selectedFolderId : "";
+  state.notes[key] = { title: "", text: "", tags: [], references: [], folderId, updatedAt: new Date().toISOString(), standalone: true };
   saveNotes();
   renderNotes();
   openNote(key);
@@ -1468,20 +1526,21 @@ function saveCurrentNote() {
   const title = els.noteName.value;
   els.noteTitle.textContent = title.trim() || "Edit note";
   const tags = parseTags(els.noteTags.value);
+  const folderId = els.noteFolderSelect.value || "";
 
   if (key.startsWith("shared:")) {
     const id = key.slice(7);
     const shared = state.sharedNotes.find((note) => note.id === id);
     if (!shared) return;
-    Object.assign(shared, { title, text, tags, references: state.currentNoteReferences, updatedAt: new Date().toISOString() });
+    Object.assign(shared, { title, text, tags, folderId, references: state.currentNoteReferences, updatedAt: new Date().toISOString() });
     clearTimeout(saveCurrentNote.sharedTimer);
-    saveCurrentNote.sharedTimer = setTimeout(() => notesSystem.updateSharedNote(id, { title, text, tags, references: state.currentNoteReferences }).catch((error) => setStatus(error.message)), 450);
+    saveCurrentNote.sharedTimer = setTimeout(() => notesSystem.updateSharedNote(id, { title, text, tags, folderId, references: state.currentNoteReferences }).catch((error) => setStatus(error.message)), 450);
     renderNotes();
     return;
   }
 
   if (title.trim() || text.trim() || tags.length || state.currentNoteReferences.length || key.startsWith("note:")) {
-    state.notes[key] = { ...(state.notes[key] || {}), title, text, tags, references: state.currentNoteReferences, updatedAt: new Date().toISOString(), standalone: key.startsWith("note:") };
+    state.notes[key] = { ...(state.notes[key] || {}), title, text, tags, folderId, references: state.currentNoteReferences, updatedAt: new Date().toISOString(), standalone: key.startsWith("note:") };
   } else {
     delete state.notes[key];
   }
@@ -1507,6 +1566,8 @@ async function deleteCurrentNote() {
   els.noteEditor.value = "";
   els.noteName.value = "";
   els.noteTags.value = "";
+  els.noteTagCreate.value = "";
+  renderNoteTagPicker();
   els.referenceSearch.value = "";
   state.currentNoteReferences = [];
   state.currentNoteKey = null;
@@ -1629,6 +1690,7 @@ function revealStudyContent(html) {
 function renderNotes() {
   const query = els.notesSearch.value.trim();
   const searchExpression = parseSearchExpression(query);
+  renderNoteFolderBrowser();
   const sourceEntries = state.notesSection === "shared"
     ? state.sharedNotes.map((note) => [`shared:${note.id}`, note])
     : Object.entries(state.notes);
@@ -1637,10 +1699,13 @@ function renderNotes() {
     .sort((a, b) => compareNotes(a[1], b[1], state.notesSort))
     .filter(([key, note]) => {
       const tags = note.tags || [];
-      const haystack = `${key} ${note.title || ""} ${formatReferenceKey(key)} ${note.text || ""} ${(note.references || []).map(formatReferenceKey).join(" ")} ${tags.join(" ")}`;
+      const folderName = state.noteFolders.find((folder) => folder.id === note.folderId)?.name || "";
+      const tagDescriptions = tags.map((tag) => state.tagCatalog[tag]?.description || "").join(" ");
+      const haystack = `${key} ${note.title || ""} ${formatReferenceKey(key)} ${note.text || ""} ${(note.references || []).map(formatReferenceKey).join(" ")} ${tags.join(" ")} ${tagDescriptions} ${folderName}`;
       const matchesSearch = !query || searchExpression.matches(normalizeSearchText(haystack));
       const matchesTag = !state.noteTagFilter || tags.includes(state.noteTagFilter);
-      return matchesSearch && matchesTag;
+      const matchesFolder = state.noteViewMode !== "folders" || state.selectedFolderId === "all" || (note.folderId || "") === state.selectedFolderId;
+      return matchesSearch && matchesTag && matchesFolder;
     });
 
   const privateTotal = Object.values(state.notes).filter((note) => note.title?.trim() || note.text?.trim() || note.tags?.length || note.references?.length || note.standalone).length;
@@ -1659,12 +1724,14 @@ function renderNotes() {
         const referencesExpanded = state.expandedNoteReferences.has(key);
         const visibleRefs = referencesExpanded ? refs : refs.slice(0, 4);
         const updatedLabel = formatNoteDate(note.updatedAt);
+        const folderName = state.noteFolders.find((folder) => folder.id === note.folderId)?.name || "";
         const visibility = state.notesSection === "shared" ? "Shared" : "Private";
         return `
           <article class="note-card ${state.selectedNotes.has(key) ? "selected" : ""} ${referencesExpanded ? "references-expanded" : ""}" data-note-key="${escapeHTML(key)}" style="--note-order:${Math.min(8, entries.findIndex(([entryKey]) => entryKey === key))}">
             ${state.noteSelectMode ? `<label class="note-select"><input type="checkbox" data-select-key="${escapeHTML(key)}" ${state.selectedNotes.has(key) ? "checked" : ""}><span aria-hidden="true"></span></label>` : ""}
             <button class="note-card-main" type="button" data-key="${escapeHTML(key)}">
               <span class="note-card-heading"><strong>${escapeHTML(note.title?.trim() || "Untitled note")}</strong><time>${escapeHTML(updatedLabel)}</time></span>
+              ${folderName ? `<span class="note-folder-label"><i class="ti ti-folder" aria-hidden="true"></i>${escapeHTML(folderName)}</span>` : ""}
               <p>${escapeHTML(note.text || "No text added yet.")}</p>
               ${tags.length ? `<div class="note-tags">${tags.map((tag) => `<span>#${escapeHTML(tag)}</span>`).join("")}</div>` : ""}
             </button>
@@ -1698,6 +1765,29 @@ function renderNotes() {
   els.notesList.querySelectorAll("input[data-select-key]").forEach((input) => input.addEventListener("change", () => toggleSelectedNote(input.dataset.selectKey)));
   els.notesList.querySelector("[data-empty-new]")?.addEventListener("click", createStandaloneNote);
   updateNoteSelectionUI();
+}
+
+function renderNoteFolderBrowser() {
+  const folderMode = state.noteViewMode === "folders";
+  els.notesFlatMode.classList.toggle("active", !folderMode);
+  els.notesFolderMode.classList.toggle("active", folderMode);
+  els.notesFlatMode.setAttribute("aria-pressed", String(!folderMode));
+  els.notesFolderMode.setAttribute("aria-pressed", String(folderMode));
+  els.noteFolderBrowser.hidden = !folderMode;
+  if (!folderMode) return;
+  const counts = new Map();
+  Object.values(state.notes).forEach((note) => counts.set(note.folderId || "", (counts.get(note.folderId || "") || 0) + 1));
+  const buttons = [
+    { id: "all", name: "All notes", count: Object.keys(state.notes).length, icon: "folders" },
+    { id: "", name: "Unfiled", count: counts.get("") || 0, icon: "folder-off" },
+    ...state.noteFolders.map((folder) => ({ ...folder, count: counts.get(folder.id) || 0, icon: "folder" })),
+  ];
+  els.noteFolderBrowser.innerHTML = buttons.map((folder) => `<button class="note-folder-tile ${state.selectedFolderId === folder.id ? "active" : ""}" type="button" data-folder-id="${escapeHTML(folder.id)}" aria-pressed="${state.selectedFolderId === folder.id}"><i class="ti ti-${folder.icon}" aria-hidden="true"></i><span><strong>${escapeHTML(folder.name)}</strong><small>${folder.count} ${folder.count === 1 ? "note" : "notes"}</small></span></button>`).join("");
+  els.noteFolderBrowser.querySelectorAll("[data-folder-id]").forEach((button) => button.addEventListener("click", () => {
+    state.selectedFolderId = button.dataset.folderId;
+    saveNotesOrganizer();
+    renderNotes();
+  }));
 }
 
 function compareNotes(a, b, sort) {
@@ -1785,6 +1875,106 @@ function renderTagFilters() {
   });
 }
 
+function getKnownNoteTags() {
+  const notes = [...Object.values(state.notes), ...state.sharedNotes];
+  return [...new Set([...Object.keys(state.tagCatalog), ...notes.flatMap((note) => Array.isArray(note.tags) ? note.tags : [])].map(String).filter(Boolean))]
+    .sort((a, b) => a.localeCompare(b, undefined, { sensitivity: "base" }));
+}
+
+function renderNoteTagPicker() {
+  const selected = new Set(parseTags(els.noteTags.value));
+  const tags = [...new Set([...getKnownNoteTags(), ...selected])];
+  els.noteTagChoices.innerHTML = tags.length
+    ? tags.map((tag) => {
+        const description = state.tagCatalog[tag]?.description || "";
+        return `<button class="note-tag-choice ${selected.has(tag) ? "active" : ""}" type="button" data-note-tag="${escapeHTML(tag)}" aria-pressed="${selected.has(tag)}" ${description ? `title="${escapeHTML(description)}"` : ""}><i class="ti ti-${selected.has(tag) ? "check" : "tag"}" aria-hidden="true"></i><span><b>#${escapeHTML(tag)}</b>${description ? `<small>${escapeHTML(description)}</small>` : ""}</span></button>`;
+      }).join("")
+    : `<p class="note-tag-empty">No tags yet. Create the first one below.</p>`;
+  els.noteTagChoices.querySelectorAll("[data-note-tag]").forEach((button) => {
+    button.addEventListener("click", () => toggleCurrentNoteTag(button.dataset.noteTag));
+  });
+}
+
+function toggleCurrentNoteTag(tag) {
+  const tags = new Set(parseTags(els.noteTags.value));
+  if (tags.has(tag)) tags.delete(tag);
+  else if (tags.size < 12) tags.add(tag);
+  else {
+    setStatus("A note can have up to 12 tags.");
+    return;
+  }
+  els.noteTags.value = [...tags].join(", ");
+  renderNoteTagPicker();
+  saveCurrentNote();
+}
+
+function createNoteTag() {
+  const tag = String(els.noteTagCreate.value || "")
+    .trim().toLowerCase().replace(/^#+/, "").replace(/\s+/g, "-").replace(/[^\p{L}\p{N}_-]+/gu, "")
+    .slice(0, 40);
+  if (!tag) {
+    els.noteTagCreate.focus();
+    return;
+  }
+  const selected = new Set(parseTags(els.noteTags.value));
+  if (selected.size >= 12 && !selected.has(tag)) {
+    setStatus("A note can have up to 12 tags.");
+    return;
+  }
+  selected.add(tag);
+  const description = String(els.noteTagDescription.value || "").trim().slice(0, 240);
+  state.tagCatalog[tag] = { ...(state.tagCatalog[tag] || {}), description };
+  saveNotesOrganizer();
+  els.noteTags.value = [...selected].join(", ");
+  els.noteTagCreate.value = "";
+  els.noteTagDescription.value = "";
+  renderNoteTagPicker();
+  saveCurrentNote();
+  els.noteTagCreate.focus();
+}
+
+function renderNoteFolderOptions(selectedId = els.noteFolderSelect?.value || "") {
+  if (!els.noteFolderSelect) return;
+  els.noteFolderSelect.innerHTML = `<option value="">All notes (no folder)</option>${state.noteFolders.map((folder) => `<option value="${escapeHTML(folder.id)}">${escapeHTML(folder.name)}</option>`).join("")}`;
+  els.noteFolderSelect.value = state.noteFolders.some((folder) => folder.id === selectedId) ? selectedId : "";
+}
+
+function setNotesViewMode(mode) {
+  state.noteViewMode = mode === "folders" ? "folders" : "flat";
+  if (state.noteViewMode === "flat") state.selectedFolderId = "all";
+  saveNotesOrganizer();
+  renderNotes();
+}
+
+function createNoteFolder(fromEditor = false) {
+  const rawName = window.prompt("Folder name:");
+  if (rawName === null) return;
+  const name = rawName.trim().replace(/\s+/g, " ").slice(0, 60);
+  if (!name) return;
+  const existing = state.noteFolders.find((folder) => folder.name.localeCompare(name, undefined, { sensitivity: "base" }) === 0);
+  const folder = existing || { id: `folder:${crypto.randomUUID()}`, name, createdAt: new Date().toISOString() };
+  if (!existing) state.noteFolders.push(folder);
+  state.noteFolders.sort((a, b) => a.name.localeCompare(b.name, undefined, { sensitivity: "base" }));
+  state.noteViewMode = "folders";
+  state.selectedFolderId = folder.id;
+  saveNotesOrganizer();
+  renderNoteFolderOptions(folder.id);
+  if (fromEditor) {
+    els.noteFolderSelect.value = folder.id;
+    saveCurrentNote();
+  }
+  renderNotes();
+}
+
+function saveNotesOrganizer() {
+  localStorage.setItem(STORE.notesOrganizer, JSON.stringify({
+    viewMode: state.noteViewMode,
+    selectedFolderId: state.selectedFolderId,
+    folders: state.noteFolders,
+    tagCatalog: state.tagCatalog,
+  }));
+}
+
 function renderReferenceResults() {
   const query = els.referenceSearch.value.trim();
   const token = (renderReferenceResults.token || 0) + 1;
@@ -1792,6 +1982,10 @@ function renderReferenceResults() {
   clearTimeout(renderReferenceResults.timer);
   if (!query) {
     els.referenceResults.innerHTML = "";
+    return;
+  }
+  if (normalizeSearchText(query).length < 2 && !parseLooseReference(query)) {
+    els.referenceResults.innerHTML = `<div class="status">Type at least 2 characters to search the complete library.</div>`;
     return;
   }
   els.referenceResults.innerHTML = `<div class="reference-searching"><span aria-hidden="true"></span>Finding real passages…</div>`;
@@ -1829,18 +2023,24 @@ async function addNoteReference(key) {
 }
 
 async function collectReferenceSuggestions(query, token) {
-  // Large enough to show every verse in the longest Quran chapter or Bible
-  // chapter, while keeping an unrefined whole-library query responsive.
-  const limit = 320;
+  // Keep broad searches useful across every tradition. Each source gets its
+  // own allowance so a common Quran word cannot crowd Bible or hadith results
+  // out of the list before those collections have been searched.
+  const limit = 1080;
+  const sourceLimit = 360;
   const suggestions = [];
   const seen = new Set();
+  const sourceCounts = new Map();
   let truncated = false;
   const add = (item) => {
     if (!item?.key || seen.has(item.key)) return;
-    if (suggestions.length >= limit) { truncated = true; return; }
+    const kind = item.kind || "Passage";
+    if (suggestions.length >= limit || (sourceCounts.get(kind) || 0) >= sourceLimit) { truncated = true; return; }
     seen.add(item.key);
+    sourceCounts.set(kind, (sourceCounts.get(kind) || 0) + 1);
     suggestions.push(item);
   };
+  const sourceFull = (kind) => (sourceCounts.get(kind) || 0) >= sourceLimit;
   const stopped = () => renderReferenceResults.token !== token;
   const normalized = normalizeSearchText(query).replace(/\b(quran|surah|chapter|book|hadith)\b/g, " ").replace(/\s+/g, " ").trim();
   const parsed = parseLooseReference(query);
@@ -1857,6 +2057,7 @@ async function collectReferenceSuggestions(query, token) {
     const verses = quranVerse ? [quranVerse] : Array.from({ length: chapter.verses_count || 0 }, (_, index) => index + 1);
     verses.filter((verse) => verse <= chapter.verses_count).forEach((verse) => add({ key: `${chapter.id}:${verse}`, label: `${chapter.name_simple} ${chapter.id}:${verse}`, kind: "Quran" }));
     if (stopped()) return { suggestions: [], truncated: false };
+    if (sourceFull("Quran")) break;
   }
 
   const bibleBooks = [...OLD_TESTAMENT, ...NEW_TESTAMENT];
@@ -1871,9 +2072,9 @@ async function collectReferenceSuggestions(query, token) {
       const data = await getOfflineJSON(`bible/${getBookSet(book)}-${bookId}-${chapter}.json`).catch(() => null);
       const verses = extractBibleVerses(data?.english);
       (verses.length ? verses : [{ number: 1, text: "" }]).forEach((verse) => add({ key: bibleKey(book, chapter, verse.number), label: `${book} ${chapter}:${verse.number}`, kind: "Bible", preview: verse.text.slice(0, 110) }));
-      if (stopped() || suggestions.length >= limit) break;
+      if (stopped() || sourceFull("Bible")) break;
     }
-    if (stopped() || suggestions.length >= limit) break;
+    if (stopped() || sourceFull("Bible")) break;
   }
 
   const hadithQuery = normalizeHadithSearchText(query.replace(/\d+[\s:]?\d*$/, ""));
@@ -1893,7 +2094,7 @@ async function collectReferenceSuggestions(query, token) {
       const records = await getOfflineJSON(`hadith-search/${book.key}.json`).catch(() => []);
       for (const item of records) {
         add({ key: hadithKey(book.key, item.section, item.id), label: `${book.name} · Hadith ${item.id}`, kind: "Hadith", preview: String(item.text || "").slice(0, 110) });
-        if (suggestions.length >= limit) break;
+        if (sourceFull("Hadith")) break;
       }
     } else {
       const sectionMap = state.hadithInfo?.[book.key]?.metadata?.sections || {};
@@ -1901,16 +2102,17 @@ async function collectReferenceSuggestions(query, token) {
         const data = await getOfflineJSON(`hadith/${book.key}/section-${section}.json`).catch(() => null);
         for (const item of data?.english?.hadiths || []) {
           add({ key: hadithKey(book.key, section, item.hadithnumber), label: `${book.name} · Hadith ${item.hadithnumber}`, kind: "Hadith", preview: String(item.text || "").slice(0, 110) });
-          if (suggestions.length >= limit) break;
+          if (sourceFull("Hadith")) break;
         }
-        if (suggestions.length >= limit || stopped()) break;
+        if (sourceFull("Hadith") || stopped()) break;
       }
     }
-    if (stopped() || suggestions.length >= limit) break;
+    if (stopped() || sourceFull("Hadith")) break;
   }
 
-  // If the text is not a recognisable book name, search actual bundled text
-  // across traditions instead of inventing placeholder references.
+  // If the text is not a recognisable reference or book name, search the
+  // actual bundled text across Quran, every Bible book, and every hadith
+  // collection. Results remain real, resolvable offline references.
   if (!suggestions.length && normalized.length >= 3) {
     const expression = parseSearchExpression(query);
     for (const chapter of state.chapters) {
@@ -1919,7 +2121,51 @@ async function collectReferenceSuggestions(query, token) {
         const text = [verse.text_uthmani, ...(verse.translations || []).map((item) => stripHTML(item.text))].join(" ");
         if (expression.matches(normalizeSearchText(text))) add({ key: verse.verse_key, label: `${chapter.name_simple} ${verse.verse_key}`, kind: "Quran", preview: stripHTML(verse.translations?.[0]?.text || "").slice(0, 110) });
       }
-      if (suggestions.length >= 80 || stopped()) break;
+      if (sourceFull("Quran") || stopped()) break;
+    }
+
+    for (const [book, chapterCount] of [...OLD_TESTAMENT, ...NEW_TESTAMENT]) {
+      const testament = getBookSet(book);
+      const bookId = BOOK_IDS[book];
+      for (let chapter = 1; chapter <= chapterCount; chapter += 1) {
+        const data = await getOfflineJSON(`bible/${testament}-${bookId}-${chapter}.json`).catch(() => null);
+        for (const verse of extractBibleVerses(data?.english)) {
+          if (expression.matches(normalizeSearchText(`${book} ${chapter} ${verse.number} ${verse.text}`))) {
+            add({ key: bibleKey(book, chapter, verse.number), label: `${book} ${chapter}:${verse.number}`, kind: "Bible", preview: verse.text.slice(0, 110) });
+          }
+        }
+        if (sourceFull("Bible") || stopped()) break;
+      }
+      if (sourceFull("Bible") || stopped()) break;
+    }
+
+    for (const book of state.hadithBooks) {
+      if (book.source === "thaqalayn") {
+        const records = await getOfflineJSON(`hadith-search/${book.key}.json`).catch(() => []);
+        for (const item of records) {
+          const text = `${book.name} ${item.chapter || ""} ${item.text || ""} ${item.arabic || ""}`;
+          if (expression.matches(normalizeSearchText(text))) {
+            add({ key: hadithKey(book.key, item.section, item.id), label: `${book.name} · Hadith ${item.id}`, kind: "Hadith", preview: String(item.text || "").slice(0, 110) });
+          }
+          if (sourceFull("Hadith") || stopped()) break;
+        }
+      } else {
+        const sectionMap = state.hadithInfo?.[book.key]?.metadata?.sections || {};
+        const sections = Object.keys(sectionMap).map(Number).filter(Boolean).sort((a, b) => a - b);
+        for (const section of sections) {
+          const data = await getOfflineJSON(`hadith/${book.key}/section-${section}.json`).catch(() => null);
+          const arabicByNumber = new Map((data?.arabic?.hadiths || []).map((item) => [Number(item.hadithnumber), item.text]));
+          for (const item of data?.english?.hadiths || []) {
+            const text = `${book.name} ${sectionMap[section] || ""} ${item.text || ""} ${arabicByNumber.get(Number(item.hadithnumber)) || ""}`;
+            if (expression.matches(normalizeSearchText(text))) {
+              add({ key: hadithKey(book.key, section, item.hadithnumber), label: `${book.name} · Hadith ${item.hadithnumber}`, kind: "Hadith", preview: String(item.text || "").slice(0, 110) });
+            }
+            if (sourceFull("Hadith") || stopped()) break;
+          }
+          if (sourceFull("Hadith") || stopped()) break;
+        }
+      }
+      if (sourceFull("Hadith") || stopped()) break;
     }
   }
   return { suggestions, truncated };
@@ -2280,8 +2526,6 @@ function saveLastRead(key) {
   refreshVerse(key);
   const marker = els.verses.querySelector(`[data-key="${CSS.escape(key)}"] [data-action="bookmark"]`);
   playLastReadAnimation(marker);
-  setStatus(`${formatReferenceKey(key)} is now your last read.`);
-  setTimeout(() => setStatus(""), 1600);
 }
 
 function isLastRead(key) {
@@ -2385,6 +2629,7 @@ async function exportNotes() {
   const payload = {
     exportedAt: new Date().toISOString(),
     notes: state.notes,
+    organizer: { folders: state.noteFolders, tagCatalog: state.tagCatalog },
   };
   const json = JSON.stringify(payload, null, 2);
   const filename = `abrahamic-books-notes-${new Date().toISOString().slice(0, 10)}.json`;
@@ -2724,6 +2969,11 @@ async function openSharedLink() {
     await jumpToReference(reference, "auto");
     return;
   }
+  const resumeReference = queryParams.get("at");
+  if (resumeReference) {
+    await jumpToReference(resumeReference, "auto", false);
+    return;
+  }
   const referenceCollection = queryParams.get("refs");
   if (referenceCollection) {
     const references = referenceCollection.split(",").map((item) => item.trim()).filter(Boolean).slice(0, 50);
@@ -2778,7 +3028,14 @@ async function importNotes(event) {
   const file = event.target.files[0];
   if (!file) return;
   try {
-    await notesSystem.importBackup(await file.text());
+    const text = await file.text();
+    const backup = JSON.parse(text);
+    await notesSystem.importBackup(text);
+    if (backup.organizer && typeof backup.organizer === "object") {
+      state.noteFolders = Array.isArray(backup.organizer.folders) ? backup.organizer.folders : state.noteFolders;
+      state.tagCatalog = backup.organizer.tagCatalog && typeof backup.organizer.tagCatalog === "object" ? backup.organizer.tagCatalog : state.tagCatalog;
+      saveNotesOrganizer();
+    }
     renderVerses(); renderNotes(); setStatus("Imported notes locally.");
     setTimeout(() => setStatus(""), 1600);
   } catch { setStatus("Could not import that notes file."); }
@@ -2837,6 +3094,7 @@ function switchView(viewId, reselectedFromNav = false, currentScrollOverride = n
   // scrollTo forces the newly displayed view to lay out before the browser can
   // paint it, so the user never sees an intermediate scroll position.
   window.scrollTo({ top: restoreTop, behavior: "auto" });
+  requestAnimationFrame(syncUrlState);
 }
 
 function isLandscapeWorkspace() {
@@ -3789,6 +4047,18 @@ function createNoteFromSearchSelection() {
 }
 
 async function loadLocalState() {
+  try {
+    const organizer = JSON.parse(localStorage.getItem(STORE.notesOrganizer) || "null") || {};
+    state.noteViewMode = organizer.viewMode === "folders" ? "folders" : "flat";
+    state.selectedFolderId = typeof organizer.selectedFolderId === "string" ? organizer.selectedFolderId : "all";
+    state.noteFolders = Array.isArray(organizer.folders)
+      ? organizer.folders.filter((folder) => folder && typeof folder.id === "string" && typeof folder.name === "string")
+      : [];
+    state.tagCatalog = organizer.tagCatalog && typeof organizer.tagCatalog === "object" ? organizer.tagCatalog : {};
+  } catch {
+    state.noteFolders = [];
+    state.tagCatalog = {};
+  }
   let legacyNotes = {};
   try {
     legacyNotes = JSON.parse(localStorage.getItem(STORE.notes)) || {};
