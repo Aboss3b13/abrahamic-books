@@ -4381,6 +4381,8 @@ a.pill-button { position: relative; isolation: isolate; }
 .note-folder-tile small { margin-top: 2px; color: var(--muted); font-size: .66rem; }
 .note-folder-tile.active { border-color: var(--green); background: color-mix(in srgb, var(--green-2) 10%, var(--panel)); box-shadow: 0 5px 16px color-mix(in srgb, var(--green) 13%, transparent); }
 .note-folder-tile.active > .ti { color: #fff; background: var(--green); }
+.note-folder-tile:hover { border-color: color-mix(in srgb, var(--green) 55%, var(--line)); transform: translateY(-1px); }
+.note-folder-tile:focus-visible { outline: 3px solid color-mix(in srgb, var(--green-2) 28%, transparent); outline-offset: 2px; }
 
 .note-card-title {
   display: flex;

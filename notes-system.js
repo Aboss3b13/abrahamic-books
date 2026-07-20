@@ -347,11 +347,27 @@ export class NotesSystem extends EventTarget {
   }
 
   async saveOrganizer(organizer = {}) {
+    const folders = Array.isArray(organizer.folders)
+      ? organizer.folders
+        .filter((folder) => folder && typeof folder.id === "string" && typeof folder.name === "string")
+        .map((folder) => ({
+          id: folder.id.slice(0, 120),
+          name: folder.name.trim().slice(0, 60),
+          createdAt: folder.createdAt || new Date().toISOString(),
+        }))
+        .filter((folder) => folder.id && folder.name)
+      : [];
+    const tagCatalog = organizer.tagCatalog && typeof organizer.tagCatalog === "object"
+      ? Object.fromEntries(Object.entries(organizer.tagCatalog).slice(0, 250).map(([tag, details]) => [
+        String(tag).slice(0, 40),
+        { description: String(details?.description || "").slice(0, 240) },
+      ]))
+      : {};
     const clean = {
       viewMode: organizer.viewMode === "folders" ? "folders" : "flat",
       selectedFolderId: typeof organizer.selectedFolderId === "string" ? organizer.selectedFolderId : "all",
-      folders: Array.isArray(organizer.folders) ? organizer.folders : [],
-      tagCatalog: organizer.tagCatalog && typeof organizer.tagCatalog === "object" ? organizer.tagCatalog : {},
+      folders,
+      tagCatalog,
       updatedAt: new Date().toISOString(),
       deviceId: this.config.deviceId,
     };

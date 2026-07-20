@@ -904,9 +904,9 @@ function handleToolbarScroll() {
       document.body.classList.remove("controls-manually-expanded");
     } else if (manuallyExpanded && scrollingDown && y - controlsExpandedAt > 140) {
       document.body.classList.remove("controls-manually-expanded");
-      setControlsCollapsed(true, false);
+      setControlsCollapsed(true, true);
     } else if (!manuallyExpanded && scrollingDown && y > 220) {
-      setControlsCollapsed(true, false);
+      setControlsCollapsed(true, true);
     }
 
     if (state.currentView === "searchView" && performance.now() - lastSearchSpyAt >= 80) {
@@ -2102,6 +2102,9 @@ function applyNotesOrganizer(organizer = {}) {
     ? organizer.folders.filter((folder) => folder && typeof folder.id === "string" && typeof folder.name === "string")
     : [];
   state.tagCatalog = organizer.tagCatalog && typeof organizer.tagCatalog === "object" ? organizer.tagCatalog : {};
+  if (state.selectedFolderId !== "all" && state.selectedFolderId !== "" && !state.noteFolders.some((folder) => folder.id === state.selectedFolderId)) {
+    state.selectedFolderId = "all";
+  }
   localStorage.setItem(STORE.notesOrganizer, JSON.stringify({ ...organizer, folders: state.noteFolders, tagCatalog: state.tagCatalog }));
   renderNoteFolderOptions();
   renderNotes();
