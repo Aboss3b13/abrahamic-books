@@ -6,7 +6,7 @@ It works as:
 
 - A website
 - An installable web app (PWA)
-- An offline Android app
+- An offline Android app 
 
 The live app is available at [abbas2.ali-raza.net/AbrahamicBooks](https://abbas2.ali-raza.net/AbrahamicBooks/).
 
