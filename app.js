@@ -264,6 +264,9 @@ const els = {
   noteSelectionCount: document.querySelector("#noteSelectionCount"),
   selectAllNotes: document.querySelector("#selectAllNotes"),
   shareSelectedNotes: document.querySelector("#shareSelectedNotes"),
+  clearNoteSelection: document.querySelector("#clearNoteSelection"),
+  moveSelectedNotes: document.querySelector("#moveSelectedNotes"),
+  copySelectedNotes: document.querySelector("#copySelectedNotes"),
   deleteSelectedNotes: document.querySelector("#deleteSelectedNotes"),
   doneNoteSelection: document.querySelector("#doneNoteSelection"),
   sharedNotesSignIn: document.querySelector("#sharedNotesSignIn"),
@@ -295,6 +298,11 @@ const els = {
   selectAllSearch: document.querySelector("#selectAllSearch"),
   clearSearchSelection: document.querySelector("#clearSearchSelection"),
   noteSearchSelection: document.querySelector("#noteSearchSelection"),
+  doneSearchSelection: document.querySelector("#doneSearchSelection"),
+  noteTransferSheet: document.querySelector("#noteTransferSheet"),
+  noteTransferTitle: document.querySelector("#noteTransferTitle"),
+  noteTransferSubtitle: document.querySelector("#noteTransferSubtitle"),
+  noteTransferFolders: document.querySelector("#noteTransferFolders"),
   notesSyncStatus: document.querySelector("#notesSyncStatus"),
   notesSyncIcon: document.querySelector("#notesSyncIcon"),
   notesSyncLabel: document.querySelector("#notesSyncLabel"),
@@ -388,6 +396,9 @@ async function setupAppLinks() {
   window.addEventListener("pagehide", () => captureAppPosition(true));
   window.addEventListener("pageshow", restoreOnResume);
   window.addEventListener("popstate", () => openSharedLink());
+  const incoming = new URL(location.href);
+  const isSharedNavigation = incoming.searchParams.has("ref") || incoming.searchParams.has("refs") || incoming.searchParams.has("note") || /(?:^|[&#])(note|notes)=/.test(incoming.hash);
+  if (!isSharedNavigation) await restoreOnResume();
   if (!Capacitor.isNativePlatform()) return;
   const openAppUrl = async (url) => {
     const incoming = new URL(url);
@@ -568,6 +579,9 @@ function bindEvents() {
   els.toggleNoteSelect.addEventListener("click", toggleNoteSelection);
   els.doneNoteSelection.addEventListener("click", () => toggleNoteSelection(false));
   els.selectAllNotes.addEventListener("click", selectAllNotes);
+  els.clearNoteSelection.addEventListener("click", () => { state.selectedNotes.clear(); updateNoteSelectionUI(); });
+  els.moveSelectedNotes.addEventListener("click", () => openNoteTransfer("move"));
+  els.copySelectedNotes.addEventListener("click", () => openNoteTransfer("copy"));
   els.deleteSelectedNotes.addEventListener("click", deleteSelectedNotes);
   els.shareSelectedNotes.addEventListener("click", shareSelectedNotes);
   els.exportNotes.addEventListener("click", exportNotes);
@@ -622,6 +636,7 @@ function bindEvents() {
   els.selectAllSearch.addEventListener("click", selectAllSearchResults);
   els.clearSearchSelection.addEventListener("click", clearSearchSelection);
   els.noteSearchSelection.addEventListener("click", createNoteFromSearchSelection);
+  els.doneSearchSelection.addEventListener("click", () => toggleSearchSelectMode(false));
   els.selectAllRead.addEventListener("click", selectAllReadVerses);
   els.clearReadSelection.addEventListener("click", clearReadSelection);
   els.shareReadSelection.addEventListener("click", shareReadSelection);
@@ -652,7 +667,14 @@ function bindEvents() {
       const workspaceCollapsed = isLandscapeWorkspace()
         && document.body.classList.contains("workspace-tool-collapsed")
         && toolbar.closest("#workspaceLeft");
-      if (!document.body.classList.contains("controls-collapsed") && !workspaceCollapsed) return;
+      const headerTap = event.target.closest(".filter-toolbar-heading, .notes-header") && !event.target.closest("button, input, select, textarea, a, label");
+      if (!document.body.classList.contains("controls-collapsed") && !workspaceCollapsed) {
+        if (headerTap && !isLandscapeWorkspace()) {
+          document.body.classList.remove("controls-manually-expanded");
+          setControlsCollapsed(true, true);
+        }
+        return;
+      }
       event.preventDefault();
       event.stopPropagation();
       if (workspaceCollapsed) expandWorkspaceToolbar();
@@ -940,18 +962,44 @@ function setControlsCollapsed(collapsed, compensateScroll = true) {
   if (document.body.classList.contains("controls-collapsed") === collapsed) return;
   const toolbar = getActiveToolbar();
   const before = toolbar?.getBoundingClientRect().height || 0;
+  const anchor = compensateScroll ? getToolbarViewportAnchor(toolbar) : null;
   document.body.classList.toggle("controls-collapsed", collapsed);
   const after = toolbar?.getBoundingClientRect().height || 0;
-  if (compensateScroll && window.scrollY > 100 && before !== after) window.scrollBy({ top: after - before, behavior: "auto" });
-  if (toolbar?.animate) {
-    toolbar.getAnimations().forEach((animation) => animation.cancel());
-    toolbar.animate(
-      collapsed
-        ? [{ opacity: 0.76, transform: "translateY(-6px) scale(.985)" }, { opacity: 1, transform: "translateY(0) scale(1)" }]
-        : [{ opacity: 0.8, transform: "translateY(-4px) scale(.99)" }, { opacity: 1, transform: "translateY(0) scale(1)" }],
-      { duration: collapsed ? 260 : 340, easing: "cubic-bezier(.16,1,.3,1)" },
-    );
+  if (!toolbar || !toolbar.animate || matchMedia("(prefers-reduced-motion: reduce)").matches || before === after) {
+    stabilizeToolbarAnchor(anchor);
+    return;
   }
+  viewSwitchingUntil = performance.now() + 560;
+  toolbar.getAnimations().forEach((animation) => animation.cancel());
+  const animation = toolbar.animate(
+    [
+      { height: `${before}px`, opacity: collapsed ? 1 : .72, transform: collapsed ? "translateY(0) scale(1)" : "translateY(-5px) scale(.992)", overflow: "clip" },
+      { height: `${after}px`, opacity: 1, transform: "translateY(0) scale(1)", overflow: "clip" },
+    ],
+    { duration: collapsed ? 380 : 480, easing: "cubic-bezier(.16,1,.3,1)" },
+  );
+  stabilizeToolbarAnchor(anchor, animation);
+}
+
+function getToolbarViewportAnchor(toolbar) {
+  if (!toolbar || window.scrollY < 80) return null;
+  const cutoff = toolbar.getBoundingClientRect().bottom + 8;
+  const activeView = document.querySelector(`#${state.currentView}`);
+  const candidates = [...(activeView?.querySelectorAll(".ayah-card, .search-result, .note-card") || [])];
+  const element = candidates.find((item) => item.getBoundingClientRect().bottom > cutoff);
+  return element ? { element, top: element.getBoundingClientRect().top } : null;
+}
+
+function stabilizeToolbarAnchor(anchor, animation = null) {
+  if (!anchor?.element?.isConnected) return;
+  const keep = () => {
+    if (!anchor.element.isConnected) return;
+    const delta = anchor.element.getBoundingClientRect().top - anchor.top;
+    if (Math.abs(delta) > .25) window.scrollBy({ top: delta, behavior: "auto" });
+    if (animation?.playState === "running") requestAnimationFrame(keep);
+    else captureAppPosition(true);
+  };
+  requestAnimationFrame(keep);
 }
 
 async function loadChapter(chapterNumber) {
@@ -1776,9 +1824,10 @@ function renderNoteFolderBrowser() {
   els.noteFolderBrowser.hidden = !folderMode;
   if (!folderMode) return;
   const counts = new Map();
-  Object.values(state.notes).forEach((note) => counts.set(note.folderId || "", (counts.get(note.folderId || "") || 0) + 1));
+  const folderNotes = state.notesSection === "shared" ? state.sharedNotes : Object.values(state.notes);
+  folderNotes.forEach((note) => counts.set(note.folderId || "", (counts.get(note.folderId || "") || 0) + 1));
   const buttons = [
-    { id: "all", name: "All notes", count: Object.keys(state.notes).length, icon: "folders" },
+    { id: "all", name: "All notes", count: folderNotes.length, icon: "folders" },
     { id: "", name: "Unfiled", count: counts.get("") || 0, icon: "folder-off" },
     ...state.noteFolders.map((folder) => ({ ...folder, count: counts.get(folder.id) || 0, icon: "folder" })),
   ];
@@ -1818,19 +1867,47 @@ function switchNotesSection(section) {
   renderNotes();
 }
 
-function toggleNoteSelection(force = !state.noteSelectMode) { state.noteSelectMode = force; if (!force) state.selectedNotes.clear(); renderNotes(); }
-function toggleSelectedNote(key) { state.selectedNotes.has(key) ? state.selectedNotes.delete(key) : state.selectedNotes.add(key); renderNotes(); }
+function toggleNoteSelection(force = !state.noteSelectMode) {
+  state.noteSelectMode = force;
+  if (!force) state.selectedNotes.clear();
+  updateNoteSelectionUI();
+}
+function toggleSelectedNote(key) {
+  state.selectedNotes.has(key) ? state.selectedNotes.delete(key) : state.selectedNotes.add(key);
+  updateNoteSelectionUI();
+}
 function updateNoteSelectionUI() {
   const count = state.selectedNotes.size;
   els.noteSelectionBar.hidden = !state.noteSelectMode;
   els.noteSelectionCount.textContent = `${count} selected`;
   els.toggleNoteSelect.setAttribute("aria-pressed", String(state.noteSelectMode));
-  els.shareSelectedNotes.disabled = !count; els.deleteSelectedNotes.disabled = !count;
+  els.toggleNoteSelect.classList.toggle("active", state.noteSelectMode);
+  els.toggleNoteSelect.innerHTML = `<i class="ti ti-${state.noteSelectMode ? "check" : "square-dashed"}" aria-hidden="true"></i><span>${state.noteSelectMode ? "Done selecting" : "Select"}</span>`;
+  [els.shareSelectedNotes, els.moveSelectedNotes, els.copySelectedNotes, els.deleteSelectedNotes].forEach((button) => { button.disabled = !count; });
+  els.notesList.querySelectorAll(".note-card[data-note-key]").forEach((card) => {
+    const key = card.dataset.noteKey;
+    const selected = state.selectedNotes.has(key);
+    card.classList.toggle("selected", selected);
+    let control = card.querySelector(".note-select");
+    if (state.noteSelectMode && !control) {
+      control = document.createElement("label");
+      control.className = "note-select selection-control-enter";
+      control.innerHTML = `<input type="checkbox" data-select-key="${escapeHTML(key)}"><span aria-hidden="true"></span>`;
+      control.querySelector("input").addEventListener("change", () => toggleSelectedNote(key));
+      card.prepend(control);
+    } else if (!state.noteSelectMode && control) {
+      const outro = control.animate?.([{ opacity: 1, transform: "scale(1)" }, { opacity: 0, transform: "scale(.72)" }], { duration: 160, easing: "ease-in" });
+      if (outro) outro.finished.then(() => control.remove()).catch(() => control.remove());
+      else control.remove();
+    }
+    const input = control?.querySelector("input");
+    if (input) input.checked = selected;
+  });
 }
 function selectAllNotes() {
   const keys = [...els.notesList.querySelectorAll("[data-note-key]")].map((item) => item.dataset.noteKey);
   state.selectedNotes = keys.length && keys.every((key) => state.selectedNotes.has(key)) ? new Set() : new Set(keys);
-  renderNotes();
+  updateNoteSelectionUI();
 }
 async function deleteSelectedNotes() {
   if (!state.selectedNotes.size || !window.confirm(`Delete ${state.selectedNotes.size} selected notes?`)) return;
@@ -1859,6 +1936,55 @@ async function shareSelectedNotes() {
     else if (navigator.share) await navigator.share({ title, text: "Open this link to import the complete notes, tags, and references.", url });
     else if (!(await copyShareLink(url))) window.prompt("Copy notes link:", url);
   } catch (error) { if (error?.name !== "AbortError" && !(await copyShareLink(url))) window.prompt("Copy notes link:", url); }
+}
+
+function openNoteTransfer(mode) {
+  if (!state.selectedNotes.size) return;
+  const copying = mode === "copy";
+  els.noteTransferSheet.dataset.mode = copying ? "copy" : "move";
+  els.noteTransferTitle.textContent = copying ? "Copy notes to" : "Move notes to";
+  els.noteTransferSubtitle.textContent = `${state.selectedNotes.size} selected · choose a destination`;
+  const folders = [{ id: "", name: "Unfiled", icon: "folder-off" }, ...state.noteFolders.map((folder) => ({ ...folder, icon: "folder" }))];
+  els.noteTransferFolders.innerHTML = folders.map((folder) => `<button class="note-transfer-folder" type="button" data-transfer-folder="${escapeHTML(folder.id)}"><i class="ti ti-${folder.icon}" aria-hidden="true"></i><span><strong>${escapeHTML(folder.name)}</strong><small>${copying ? "Create copies here" : "Move here"}</small></span><i class="ti ti-chevron-right" aria-hidden="true"></i></button>`).join("");
+  els.noteTransferFolders.querySelectorAll("[data-transfer-folder]").forEach((button) => button.addEventListener("click", () => applyNoteTransfer(mode, button.dataset.transferFolder)));
+  openDialog(els.noteTransferSheet, copying ? els.copySelectedNotes : els.moveSelectedNotes);
+}
+
+async function applyNoteTransfer(mode, folderId) {
+  const selectedKeys = [...state.selectedNotes];
+  els.noteTransferFolders.classList.add("working");
+  try {
+    for (const key of selectedKeys) {
+      const shared = key.startsWith("shared:") ? state.sharedNotes.find((note) => `shared:${note.id}` === key) : null;
+      const note = shared || state.notes[key];
+      if (!note) continue;
+      if (mode === "copy") {
+        const copyKey = `note:${crypto.randomUUID()}`;
+        const copy = {
+          title: String(note.title || ""), text: String(note.text || ""),
+          tags: Array.isArray(note.tags) ? [...note.tags] : [], references: Array.isArray(note.references) ? [...note.references] : [],
+          folderId, standalone: true, createdAt: new Date().toISOString(), updatedAt: new Date().toISOString(),
+        };
+        state.notes[copyKey] = await notesSystem.save(copyKey, copy);
+      } else if (shared) {
+        shared.folderId = folderId;
+        await notesSystem.updateSharedNote(shared.id, { folderId });
+      } else {
+        state.notes[key] = await notesSystem.save(key, { ...note, folderId });
+      }
+    }
+    state.noteViewMode = "folders";
+    state.selectedFolderId = folderId;
+    saveNotesOrganizer();
+    els.noteTransferSheet.close();
+    state.noteSelectMode = false;
+    state.selectedNotes.clear();
+    renderNotes();
+  } catch (error) {
+    setStatus(`Could not ${mode} every note. ${error.message}`);
+  } finally {
+    els.noteTransferFolders.classList.remove("working");
+  }
 }
 
 function renderTagFilters() {
@@ -2522,10 +2648,19 @@ function saveLastRead(key) {
   const previousKey = localStorage.getItem("quran-reader-last-read-v1");
   recordLastRead(key);
   updateDashboard(key);
-  if (previousKey && previousKey !== key) refreshVerse(previousKey);
-  refreshVerse(key);
+  if (previousKey && previousKey !== key) updateLastReadMarker(previousKey, false);
+  updateLastReadMarker(key, true);
   const marker = els.verses.querySelector(`[data-key="${CSS.escape(key)}"] [data-action="bookmark"]`);
   playLastReadAnimation(marker);
+}
+
+function updateLastReadMarker(key, active = isLastRead(key)) {
+  const marker = els.verses.querySelector(`[data-key="${CSS.escape(key)}"] [data-action="bookmark"]`);
+  if (!marker) return;
+  marker.classList.toggle("active", active);
+  const icon = marker.querySelector(".ti");
+  if (icon) icon.className = `ti ti-bookmark${active ? "-filled" : ""}`;
+  marker.setAttribute("aria-pressed", String(active));
 }
 
 function isLastRead(key) {
@@ -2575,6 +2710,7 @@ function applyAccountLastRead(remote) {
       notesSystem.setLastRead({ reference: localReference, label: formatReferenceKey(localReference), text: "", updatedAt: localUpdatedAt || new Date().toISOString() }).catch(() => {});
     } else if (!localBelongsToAccount) {
       localStorage.removeItem("quran-reader-last-read-v1");
+      updateLastReadMarker(localReference, false);
       updateDashboard("");
     }
     return;
@@ -2587,8 +2723,8 @@ function applyAccountLastRead(remote) {
   localStorage.setItem("quran-reader-last-read-v1", remote.reference);
   localStorage.setItem("quran-reader-last-read-updated-v1", remote.updatedAt || new Date().toISOString());
   localStorage.setItem("quran-reader-last-read-owner-v1", accountUid);
-  if (previousKey && previousKey !== remote.reference) refreshVerse(previousKey);
-  refreshVerse(remote.reference);
+  if (previousKey && previousKey !== remote.reference) updateLastReadMarker(previousKey, false);
+  updateLastReadMarker(remote.reference, true);
   updateDashboard(remote.reference);
   if (Capacitor.isNativePlatform()) WidgetData.setLastRead(remote).catch(() => {});
 }
@@ -3846,8 +3982,8 @@ function updateSearchSourceSummary() {
   els.searchFilterButton.classList.toggle("empty", selected.length === 0);
 }
 
-function toggleSearchSelectMode() {
-  state.searchSelectMode = !state.searchSelectMode;
+function toggleSearchSelectMode(force = !state.searchSelectMode) {
+  state.searchSelectMode = force;
   if (!state.searchSelectMode) state.selectedSearchResults.clear();
   updateSearchSelectionUI();
 }

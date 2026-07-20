@@ -130,13 +130,13 @@
             </div>
             <div class="notes-layout-row" aria-label="Notes layout">
               <div class="notes-view-switch" role="group" aria-label="View notes as">
-                <button id="notesFlatMode" class="active" type="button" aria-pressed="true"><i class="ti ti-list" aria-hidden="true"></i><span>All notes</span></button>
+                <button id="notesFlatMode" class="active" type="button" aria-pressed="true"><i class="ti ti-list" aria-hidden="true"></i><span>List</span></button>
                 <button id="notesFolderMode" type="button" aria-pressed="false"><i class="ti ti-folders" aria-hidden="true"></i><span>Folders</span></button>
               </div>
               <button id="createNoteFolder" class="text-button notes-create-folder" type="button"><i class="ti ti-folder-plus" aria-hidden="true"></i><span>New folder</span></button>
             </div>
             <div id="noteFolderBrowser" class="note-folder-browser" aria-label="Note folders" hidden></div>
-            <div id="noteSelectionBar" class="selection-bar" hidden><strong id="noteSelectionCount">0 selected</strong><div><button id="selectAllNotes" class="text-button" type="button"><i class="ti ti-checks" aria-hidden="true"></i><span>Select all</span></button><button id="shareSelectedNotes" class="text-button" type="button"><i class="ti ti-share" aria-hidden="true"></i><span>Share</span></button><button id="deleteSelectedNotes" class="text-button danger" type="button"><i class="ti ti-trash" aria-hidden="true"></i><span>Delete</span></button><button id="doneNoteSelection" class="text-button" type="button"><i class="ti ti-check" aria-hidden="true"></i><span>Done</span></button></div></div>
+            <div id="noteSelectionBar" class="selection-bar" hidden><strong id="noteSelectionCount">0 selected</strong><div><button id="selectAllNotes" class="text-button" type="button"><i class="ti ti-checks" aria-hidden="true"></i><span>Select all</span></button><button id="clearNoteSelection" class="text-button" type="button"><i class="ti ti-x" aria-hidden="true"></i><span>Clear</span></button><button id="moveSelectedNotes" class="text-button" type="button"><i class="ti ti-folder-symlink" aria-hidden="true"></i><span>Move to</span></button><button id="copySelectedNotes" class="text-button" type="button"><i class="ti ti-copy" aria-hidden="true"></i><span>Copy to</span></button><button id="shareSelectedNotes" class="text-button" type="button"><i class="ti ti-share" aria-hidden="true"></i><span>Share</span></button><button id="deleteSelectedNotes" class="text-button danger" type="button"><i class="ti ti-trash" aria-hidden="true"></i><span>Delete</span></button><button id="doneNoteSelection" class="text-button primary" type="button"><i class="ti ti-check" aria-hidden="true"></i><span>Done</span></button></div></div>
             <div class="notes-discovery-zone">
               <div class="notes-search-wrap">
                 <i class="ti ti-search" aria-hidden="true"></i>
@@ -150,7 +150,7 @@
                 <p><b>Search:</b> words find any match, <code>"exact phrase"</code> keeps words together, and <code>mercy + prayer</code> requires both.</p>
               </div>
               <div class="tag-filters notes-filter-row" role="tablist" aria-label="Filter notes">
-                <button id="privateNotesTab" class="tag-chip active" type="button" role="tab" aria-selected="true">All</button>
+                <button id="privateNotesTab" class="tag-chip active" type="button" role="tab" aria-selected="true">Private</button>
                 <button id="sharedNotesTab" class="tag-chip" type="button" role="tab" aria-selected="false">Shared <span id="sharedNotesBadge">0</span></button>
                 <div id="tagFilters" class="custom-tag-filters"></div>
               </div>
@@ -189,6 +189,7 @@
                 <button id="selectAllSearch" class="text-button" type="button"><i class="ti ti-checks" aria-hidden="true"></i><span>Select all</span></button>
                 <button id="clearSearchSelection" class="text-button" type="button"><i class="ti ti-x" aria-hidden="true"></i><span>Clear</span></button>
                 <button id="noteSearchSelection" class="text-button primary" type="button"><i class="ti ti-notebook" aria-hidden="true"></i><span>Add to note</span></button>
+                <button id="doneSearchSelection" class="text-button" type="button"><i class="ti ti-check" aria-hidden="true"></i><span>Done</span></button>
               </div>
             </div>
           </div>
@@ -558,6 +559,13 @@
             <button class="text-button primary" value="close"><i class="ti ti-check" aria-hidden="true"></i><span>Done</span></button>
           </div>
         </div>
+      </form>
+    </dialog>
+
+    <dialog id="noteTransferSheet" class="sheet note-transfer-sheet">
+      <form method="dialog" class="sheet-inner">
+        <div class="sheet-header"><div><h2 id="noteTransferTitle">Move notes</h2><p id="noteTransferSubtitle">Choose a destination folder</p></div><button class="icon-button" value="close" aria-label="Close"><i class="ti ti-x" aria-hidden="true"></i></button></div>
+        <div id="noteTransferFolders" class="note-transfer-folders"></div>
       </form>
     </dialog>
 
