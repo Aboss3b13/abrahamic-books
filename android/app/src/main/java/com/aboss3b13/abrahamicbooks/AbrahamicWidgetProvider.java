@@ -70,7 +70,6 @@ public class AbrahamicWidgetProvider extends AppWidgetProvider {
         views.setTextViewText(R.id.widget_title, content.title);
         views.setTextViewText(R.id.widget_subtitle, content.text);
         views.setTextViewText(R.id.widget_meta, content.meta);
-        views.setTextViewText(R.id.widget_badge, content.badge);
         views.setTextViewText(R.id.widget_action, content.action);
         views.setViewVisibility(R.id.widget_refresh, content.refreshable ? View.VISIBLE : View.GONE);
 
@@ -92,7 +91,6 @@ public class AbrahamicWidgetProvider extends AppWidgetProvider {
         views.setTextColor(R.id.widget_meta, secondary);
         views.setTextColor(R.id.widget_action, primary);
         views.setTextColor(R.id.widget_refresh, primary);
-        views.setTextColor(R.id.widget_badge, primary);
 
         Intent open = new Intent(Intent.ACTION_VIEW, Uri.parse(content.url), context, MainActivity.class);
         open.setPackage(context.getPackageName());

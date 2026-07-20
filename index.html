@@ -27,21 +27,6 @@
 
       <main>
         <section id="readView" class="view active" aria-label="Read Quran">
-          <div class="reading-dashboard">
-            <div>
-              <span class="dashboard-label">Now reading</span>
-              <strong id="dashboardSurah">Surah</strong>
-            </div>
-            <div>
-              <span class="dashboard-label">Progress</span>
-              <strong id="dashboardProgress">0 / 0</strong>
-            </div>
-            <div>
-              <span class="dashboard-label">Notes</span>
-              <strong id="dashboardNotes">0</strong>
-            </div>
-          </div>
-
           <div class="reader-controls">
             <div class="filter-toolbar-heading">
               <div>
@@ -50,7 +35,7 @@
               </div>
               <button id="lastReadButton" class="last-read-filter-button" type="button">
                 <i class="ti ti-bookmark" aria-hidden="true"></i>
-                <span>Last read</span>
+                <span>Resume last read</span>
               </button>
             </div>
             <label class="field">
@@ -99,15 +84,16 @@
               <span>Focused verse</span>
               <strong id="focusedVerseLabel">Reference</strong>
             </div>
-            <button id="continueReading" class="text-button primary" type="button">Continue reading</button>
+            <button id="continueReading" class="text-button primary" type="button"><i class="ti ti-list" aria-hidden="true"></i><span>Continue reading</span></button>
           </div>
           <div id="readSelectionBar" class="selection-bar read-selection-bar" hidden>
             <strong id="readSelectionCount">0 selected</strong>
             <div>
-              <button id="selectAllRead" class="text-button" type="button">Select all</button>
-              <button id="clearReadSelection" class="text-button" type="button">Clear</button>
-              <button id="noteReadSelection" class="text-button primary" type="button">Add to note</button>
-              <button id="doneReadSelection" class="text-button" type="button">Done</button>
+              <button id="selectAllRead" class="text-button" type="button"><i class="ti ti-checks" aria-hidden="true"></i><span>Select all</span></button>
+              <button id="clearReadSelection" class="text-button" type="button"><i class="ti ti-x" aria-hidden="true"></i><span>Clear</span></button>
+              <button id="shareReadSelection" class="text-button" type="button"><i class="ti ti-share" aria-hidden="true"></i><span>Share</span></button>
+              <button id="noteReadSelection" class="text-button primary" type="button"><i class="ti ti-notebook" aria-hidden="true"></i><span>Add to note</span></button>
+              <button id="doneReadSelection" class="text-button" type="button"><i class="ti ti-check" aria-hidden="true"></i><span>Done</span></button>
             </div>
           </div>
           <div id="verses" class="verses" aria-live="polite"></div>
@@ -142,14 +128,27 @@
               <button id="newStudyNote" class="text-button primary notes-new-button" type="button"><i class="ti ti-file-plus" aria-hidden="true"></i><span>New note</span></button>
               <button id="toggleNoteSelect" class="text-button notes-select-button" type="button" aria-pressed="false"><i class="ti ti-square-dashed" aria-hidden="true"></i><span>Select</span></button>
             </div>
-            <div id="noteSelectionBar" class="selection-bar" hidden><strong id="noteSelectionCount">0 selected</strong><div><button id="selectAllNotes" class="text-button" type="button">Select all</button><button id="shareSelectedNotes" class="text-button" type="button">Share</button><button id="deleteSelectedNotes" class="text-button danger" type="button">Delete</button><button id="doneNoteSelection" class="text-button" type="button">Done</button></div></div>
+            <div class="notes-layout-row" aria-label="Notes layout">
+              <div class="notes-view-switch" role="group" aria-label="View notes as">
+                <button id="notesFlatMode" class="active" type="button" aria-pressed="true"><i class="ti ti-list" aria-hidden="true"></i><span>All notes</span></button>
+                <button id="notesFolderMode" type="button" aria-pressed="false"><i class="ti ti-folders" aria-hidden="true"></i><span>Folders</span></button>
+              </div>
+              <button id="createNoteFolder" class="text-button notes-create-folder" type="button"><i class="ti ti-folder-plus" aria-hidden="true"></i><span>New folder</span></button>
+            </div>
+            <div id="noteFolderBrowser" class="note-folder-browser" aria-label="Note folders" hidden></div>
+            <div id="noteSelectionBar" class="selection-bar" hidden><strong id="noteSelectionCount">0 selected</strong><div><button id="selectAllNotes" class="text-button" type="button"><i class="ti ti-checks" aria-hidden="true"></i><span>Select all</span></button><button id="shareSelectedNotes" class="text-button" type="button"><i class="ti ti-share" aria-hidden="true"></i><span>Share</span></button><button id="deleteSelectedNotes" class="text-button danger" type="button"><i class="ti ti-trash" aria-hidden="true"></i><span>Delete</span></button><button id="doneNoteSelection" class="text-button" type="button"><i class="ti ti-check" aria-hidden="true"></i><span>Done</span></button></div></div>
             <div class="notes-discovery-zone">
               <div class="notes-search-wrap">
                 <i class="ti ti-search" aria-hidden="true"></i>
                 <input id="notesSearch" class="wide-search" type="search" autocomplete="off" placeholder="Search notes, verses, or phrases">
                 <button id="notesSearchHelpButton" class="search-help-button" type="button" aria-label="Search syntax help" aria-controls="notesSearchHelp" aria-expanded="false"><i class="ti ti-help-circle" aria-hidden="true"></i></button>
               </div>
-              <p id="notesSearchHelp" class="search-syntax-hint search-help-panel" hidden><strong>Search tips:</strong> words find any match, <code>"exact phrase"</code> keeps words together, and <code>mercy + prayer</code> requires both.</p>
+              <div id="notesSearchHelp" class="search-syntax-hint search-help-panel help-guide" hidden>
+                <strong>Using Notes</strong>
+                <p>Tap <b>New note</b> for a standalone study note, or use a verse’s note button to attach a note directly to it. Add comma-separated tags to organise a topic.</p>
+                <p>Cross-references can connect Quran verses, Bible passages, and hadith. Tap a reference on a note to read it, or use <b>View references</b> in the editor to compare them together.</p>
+                <p><b>Search:</b> words find any match, <code>"exact phrase"</code> keeps words together, and <code>mercy + prayer</code> requires both.</p>
+              </div>
               <div class="tag-filters notes-filter-row" role="tablist" aria-label="Filter notes">
                 <button id="privateNotesTab" class="tag-chip active" type="button" role="tab" aria-selected="true">All</button>
                 <button id="sharedNotesTab" class="tag-chip" type="button" role="tab" aria-selected="false">Shared <span id="sharedNotesBadge">0</span></button>
@@ -169,23 +168,27 @@
                 <h2>Search</h2>
                 <p id="searchSummary">Search bundled offline texts</p>
               </div>
-              <button id="toggleSearchSelect" class="text-button" type="button" aria-pressed="false">Select results</button>
+              <button id="toggleSearchSelect" class="text-button" type="button" aria-pressed="false"><i class="ti ti-square-dashed" aria-hidden="true"></i><span>Select results</span></button>
             </div>
             <div class="search-panel">
-              <input id="globalSearch" class="wide-search" type="search" inputmode="search" enterkeyhint="search" autocomplete="off" placeholder='Try mercy, "eternal life", or mercy + forgiveness'>
-              <p class="search-syntax-hint"><strong>Syntax:</strong> words find any match; <code>"eternal life"</code> finds that exact phrase; <code>mercy + forgiveness</code> requires both in the same verse, hadith, or passage.</p>
+              <div class="global-search-wrap">
+                <i class="ti ti-search" aria-hidden="true"></i>
+                <input id="globalSearch" class="wide-search" type="search" inputmode="search" enterkeyhint="search" autocomplete="off" placeholder='Try mercy, "eternal life", or mercy + forgiveness'>
+                <button id="globalSearchHelpButton" class="search-help-button" type="button" aria-label="Search instructions" aria-controls="globalSearchHelp" aria-expanded="false"><i class="ti ti-help-circle" aria-hidden="true"></i></button>
+              </div>
+              <div id="globalSearchHelp" class="search-syntax-hint search-help-panel help-guide" hidden><strong>Searching the library</strong><p>Choose books with <b>Search in</b>, then search any downloaded Quran translation, tafsir, Bible book, commentary, or hadith collection. Results appear as each book finishes, so you can open or select them immediately.</p><p><code>"eternal life"</code> finds an exact phrase. <code>mercy + forgiveness</code> requires both terms in the same passage. Use <b>Select results</b> to collect several passages into one note.</p></div>
               <button id="searchFilterButton" class="source-filter-button" type="button" aria-haspopup="dialog">
                 <span>Search in</span>
                 <strong id="searchFilterSummary">Quran, Shia hadith & more</strong>
               </button>
-              <button id="runSearch" class="text-button primary" type="button">Search</button>
+              <button id="runSearch" class="text-button primary" type="button"><i class="ti ti-search" aria-hidden="true"></i><span>Search</span></button>
             </div>
             <div id="searchSelectionBar" class="selection-bar" hidden>
               <strong id="searchSelectionCount">0 selected</strong>
               <div>
-                <button id="selectAllSearch" class="text-button" type="button">Select all</button>
-                <button id="clearSearchSelection" class="text-button" type="button">Clear</button>
-                <button id="noteSearchSelection" class="text-button primary" type="button">Add to note</button>
+                <button id="selectAllSearch" class="text-button" type="button"><i class="ti ti-checks" aria-hidden="true"></i><span>Select all</span></button>
+                <button id="clearSearchSelection" class="text-button" type="button"><i class="ti ti-x" aria-hidden="true"></i><span>Clear</span></button>
+                <button id="noteSearchSelection" class="text-button primary" type="button"><i class="ti ti-notebook" aria-hidden="true"></i><span>Add to note</span></button>
               </div>
             </div>
           </div>
@@ -508,35 +511,51 @@
           </div>
           <button class="icon-button" value="close" aria-label="Close note"><i class="ti ti-x" aria-hidden="true"></i></button>
         </div>
-        <label class="note-field">
-          <span>Title</span>
-          <input id="noteName" type="text" maxlength="120" placeholder="Give this note a name">
-        </label>
-        <label class="note-field">
-          <span>Tags</span>
-          <input id="noteTags" type="text" placeholder="mercy, prayer, study">
-        </label>
-        <div class="cross-ref-panel">
-          <label class="field">
-            <span>Add cross-reference</span>
-            <input id="referenceSearch" type="search" placeholder="Surah, Bible or hadith book; e.g. Bukhari 1:1">
+        <div class="note-editor-identity">
+          <label class="note-field">
+            <span><i class="ti ti-heading" aria-hidden="true"></i> Title</span>
+            <input id="noteName" type="text" maxlength="120" placeholder="Give this note a name">
+          </label>
+          <div class="note-field note-tag-field">
+            <span><i class="ti ti-tags" aria-hidden="true"></i> Tags</span>
+            <input id="noteTags" type="hidden">
+            <div id="noteTagChoices" class="note-tag-choices" aria-label="Available tags"></div>
+            <div class="note-tag-create-row">
+              <input id="noteTagCreate" type="text" maxlength="40" autocomplete="off" placeholder="Create a new tag">
+              <button id="addNoteTag" class="text-button" type="button"><i class="ti ti-plus" aria-hidden="true"></i><span>Add tag</span></button>
+            </div>
+            <textarea id="noteTagDescription" rows="2" maxlength="240" placeholder="Optional description for the new tag"></textarea>
+          </div>
+        </div>
+        <div class="note-save-location note-editor-section">
+          <div class="note-editor-section-heading"><span class="note-editor-icon"><i class="ti ti-folder" aria-hidden="true"></i></span><div><strong>Save location</strong><small>Keep this note with everything or place it in a folder</small></div></div>
+          <div class="note-save-location-row">
+            <label class="note-field"><span>Folder</span><select id="noteFolderSelect"></select></label>
+            <button id="createFolderFromEditor" class="text-button" type="button"><i class="ti ti-folder-plus" aria-hidden="true"></i><span>New folder</span></button>
+          </div>
+        </div>
+        <div class="cross-ref-panel note-editor-section">
+          <div class="note-editor-section-heading"><span class="note-editor-icon"><i class="ti ti-link" aria-hidden="true"></i></span><div><strong>Cross-references</strong><small>Connect any Quran verse, Bible passage, or hadith</small></div></div>
+          <label class="reference-search-field">
+            <i class="ti ti-search" aria-hidden="true"></i>
+            <input id="referenceSearch" type="search" autocomplete="off" placeholder="Try Al-Baqarah, John 3, Bukhari 52, or a phrase">
           </label>
           <div id="referenceResults" class="reference-results"></div>
           <div id="noteReferences" class="note-references"></div>
         </div>
-        <label class="note-field">
-          <span>Note</span>
+        <label class="note-field note-body-field note-editor-section">
+          <span><i class="ti ti-pencil" aria-hidden="true"></i> Reflection</span>
           <textarea id="noteEditor" rows="9" placeholder="Write your reflection, question, reminder, or action..."></textarea>
         </label>
         <div class="sheet-actions">
-          <button id="deleteNote" class="text-button danger" type="button">Delete</button>
+          <button id="deleteNote" class="text-button danger" type="button"><i class="ti ti-trash" aria-hidden="true"></i><span>Delete</span></button>
           <div class="note-window-actions">
-            <button id="openReferences" class="text-button" type="button">View references</button>
+            <button id="openReferences" class="text-button" type="button"><i class="ti ti-books" aria-hidden="true"></i><span>View references</span></button>
             <button id="shareNote" class="text-button share-text-button" type="button">
               <i class="ti ti-share" aria-hidden="true"></i>
               <span>Share note</span>
             </button>
-            <button class="text-button primary" value="close">Done</button>
+            <button class="text-button primary" value="close"><i class="ti ti-check" aria-hidden="true"></i><span>Done</span></button>
           </div>
         </div>
       </form>

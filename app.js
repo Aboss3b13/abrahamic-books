@@ -17,6 +17,7 @@ const STORE = {
   downloadedTranslations: "quran-downloaded-translations",
   downloadedTafsirs: "quran-downloaded-tafsirs",
   downloadedCommentaries: "bible-downloaded-commentaries",
+  notesOrganizer: "abrahamic-books-notes-organizer-v1",
 };
 const PUBLIC_APP_URL = "https://abbas2.ali-raza.net/AbrahamicBooks/";
 let notesSystem;
@@ -112,8 +113,13 @@ const state = {
   notesSort: "updated-desc",
   noteSelectMode: false,
   selectedNotes: new Set(),
+  expandedNoteReferences: new Set(),
   currentNoteReferences: [],
   noteTagFilter: "",
+  noteViewMode: "flat",
+  selectedFolderId: "all",
+  noteFolders: [],
+  tagCatalog: {},
   originalWordCache: {},
   currentNoteKey: null,
   focusedVerseKey: null,
@@ -148,14 +154,12 @@ const els = {
   hadithSectionSelect: document.querySelector("#hadithSectionSelect"),
   verseControlLabel: document.querySelector("#verseControlLabel"),
   ayahSearch: document.querySelector("#ayahSearch"),
-  dashboardSurah: document.querySelector("#dashboardSurah"),
-  dashboardProgress: document.querySelector("#dashboardProgress"),
-  dashboardNotes: document.querySelector("#dashboardNotes"),
   verses: document.querySelector("#verses"),
   readSelectionBar: document.querySelector("#readSelectionBar"),
   readSelectionCount: document.querySelector("#readSelectionCount"),
   selectAllRead: document.querySelector("#selectAllRead"),
   clearReadSelection: document.querySelector("#clearReadSelection"),
+  shareReadSelection: document.querySelector("#shareReadSelection"),
   noteReadSelection: document.querySelector("#noteReadSelection"),
   doneReadSelection: document.querySelector("#doneReadSelection"),
   focusedVerseBar: document.querySelector("#focusedVerseBar"),
@@ -205,6 +209,12 @@ const els = {
   wordSubtitle: document.querySelector("#wordSubtitle"),
   wordContent: document.querySelector("#wordContent"),
   noteTags: document.querySelector("#noteTags"),
+  noteTagChoices: document.querySelector("#noteTagChoices"),
+  noteTagCreate: document.querySelector("#noteTagCreate"),
+  addNoteTag: document.querySelector("#addNoteTag"),
+  noteTagDescription: document.querySelector("#noteTagDescription"),
+  noteFolderSelect: document.querySelector("#noteFolderSelect"),
+  createFolderFromEditor: document.querySelector("#createFolderFromEditor"),
   noteName: document.querySelector("#noteName"),
   referenceSearch: document.querySelector("#referenceSearch"),
   referenceResults: document.querySelector("#referenceResults"),
@@ -258,9 +268,15 @@ const els = {
   doneNoteSelection: document.querySelector("#doneNoteSelection"),
   sharedNotesSignIn: document.querySelector("#sharedNotesSignIn"),
   newStudyNote: document.querySelector("#newStudyNote"),
+  notesFlatMode: document.querySelector("#notesFlatMode"),
+  notesFolderMode: document.querySelector("#notesFolderMode"),
+  createNoteFolder: document.querySelector("#createNoteFolder"),
+  noteFolderBrowser: document.querySelector("#noteFolderBrowser"),
   exportNotes: document.querySelector("#exportNotes"),
   importNotes: document.querySelector("#importNotes"),
   globalSearch: document.querySelector("#globalSearch"),
+  globalSearchHelpButton: document.querySelector("#globalSearchHelpButton"),
+  globalSearchHelp: document.querySelector("#globalSearchHelp"),
   searchFilterButton: document.querySelector("#searchFilterButton"),
   searchFilterSummary: document.querySelector("#searchFilterSummary"),
   searchFilterSheet: document.querySelector("#searchFilterSheet"),
@@ -359,6 +375,19 @@ async function init() {
 }
 
 async function setupAppLinks() {
+  if ("scrollRestoration" in history) history.scrollRestoration = "manual";
+  const restoreOnResume = async () => {
+    await refreshAccountLastRead();
+    await waitForStableLayout();
+    restoreAppPosition();
+  };
+  document.addEventListener("visibilitychange", () => {
+    if (document.visibilityState === "hidden") captureAppPosition(true);
+    else restoreOnResume();
+  });
+  window.addEventListener("pagehide", () => captureAppPosition(true));
+  window.addEventListener("pageshow", restoreOnResume);
+  window.addEventListener("popstate", () => openSharedLink());
   if (!Capacitor.isNativePlatform()) return;
   const openAppUrl = async (url) => {
     const incoming = new URL(url);
@@ -368,6 +397,14 @@ async function setupAppLinks() {
     await openSharedLink();
   };
   await CapacitorApp.addListener("appUrlOpen", ({ url }) => openAppUrl(url));
+  await CapacitorApp.addListener("appStateChange", ({ isActive }) => {
+    if (!isActive) {
+      captureAppPosition(true);
+      syncSavedLastReadToWidget();
+      return;
+    }
+    restoreOnResume();
+  });
   const launch = await CapacitorApp.getLaunchUrl();
   if (launch?.url) await openAppUrl(launch.url);
 }
@@ -376,6 +413,9 @@ function bindEvents() {
   bindRenderedSearchResults();
   if ("ResizeObserver" in window) new ResizeObserver(syncStickyOffset).observe(els.topbar);
   window.addEventListener("resize", syncStickyOffset, { passive: true });
+  window.addEventListener("wheel", markScrollIntent, { passive: true });
+  window.addEventListener("touchstart", markScrollIntent, { passive: true });
+  window.addEventListener("pointerdown", markScrollIntent, { passive: true });
   els.traditionSelect.addEventListener("change", () => {
     state.focusedVerseKey = null;
     state.tradition = els.traditionSelect.value;
@@ -447,7 +487,7 @@ function bindEvents() {
     els.readerSettingsSheet.close();
     openNotesSyncSettings();
   });
-  els.tafsirButton.addEventListener("click", () => openDialog(state.scripture === "quran" ? els.tafsirSheet : els.commentarySheet));
+  els.tafsirButton.addEventListener("click", () => openDialog(state.scripture === "quran" ? els.tafsirSheet : els.commentarySheet, els.tafsirButton));
   els.commentarySearch.addEventListener("input", renderCommentaryList);
   els.lastReadButton.addEventListener("click", restoreLastRead);
   els.copyOriginalOnly.addEventListener("click", () => applyVerseCopyPreset("original"));
@@ -483,6 +523,15 @@ function bindEvents() {
   els.noteEditor.addEventListener("input", saveCurrentNote);
   els.noteName.addEventListener("input", saveCurrentNote);
   els.noteTags.addEventListener("input", saveCurrentNote);
+  els.addNoteTag.addEventListener("click", createNoteTag);
+  els.noteTagCreate.addEventListener("keydown", (event) => {
+    if (event.key === "Enter") {
+      event.preventDefault();
+      createNoteTag();
+    }
+  });
+  els.noteFolderSelect.addEventListener("change", saveCurrentNote);
+  els.createFolderFromEditor.addEventListener("click", () => createNoteFolder(true));
   els.referenceSearch.addEventListener("input", renderReferenceResults);
   els.referenceSearch.addEventListener("keydown", (event) => {
     if (event.key === "Enter") {
@@ -495,11 +544,19 @@ function bindEvents() {
   els.openReferences.addEventListener("click", showReferenceOverview);
   els.continueReading.addEventListener("click", continueReadingFromFocus);
   els.newStudyNote.addEventListener("click", createStandaloneNote);
+  els.notesFlatMode.addEventListener("click", () => setNotesViewMode("flat"));
+  els.notesFolderMode.addEventListener("click", () => setNotesViewMode("folders"));
+  els.createNoteFolder.addEventListener("click", () => createNoteFolder(false));
   els.notesSearch.addEventListener("input", renderNotes);
   els.notesSearchHelpButton.addEventListener("click", () => {
     const open = els.notesSearchHelp.hidden;
     els.notesSearchHelp.hidden = !open;
     els.notesSearchHelpButton.setAttribute("aria-expanded", String(open));
+  });
+  els.globalSearchHelpButton.addEventListener("click", () => {
+    const open = els.globalSearchHelp.hidden;
+    els.globalSearchHelp.hidden = !open;
+    els.globalSearchHelpButton.setAttribute("aria-expanded", String(open));
   });
   els.notesSort.addEventListener("change", () => {
     state.notesSort = els.notesSort.value;
@@ -519,7 +576,18 @@ function bindEvents() {
   els.connectFirebase.addEventListener("click", () => connectFirebase(false));
   els.createFirebaseAccount.addEventListener("click", () => connectFirebase(true));
   els.syncNow.addEventListener("click", () => runNotesAction(() => notesSystem.sync({ force: true })));
-  els.disconnectFirebase.addEventListener("click", () => runNotesAction(async () => { await notesSystem.disconnect(); updateSyncUI("saved locally"); }));
+  els.disconnectFirebase.addEventListener("click", () => runNotesAction(async () => {
+    await notesSystem.disconnect();
+    const localReference = localStorage.getItem("quran-reader-local-last-read-v1") || "";
+    const localUpdatedAt = localStorage.getItem("quran-reader-local-last-read-updated-v1") || "";
+    if (localReference) localStorage.setItem("quran-reader-last-read-v1", localReference);
+    else localStorage.removeItem("quran-reader-last-read-v1");
+    if (localUpdatedAt) localStorage.setItem("quran-reader-last-read-updated-v1", localUpdatedAt);
+    else localStorage.removeItem("quran-reader-last-read-updated-v1");
+    localStorage.setItem("quran-reader-last-read-owner-v1", "__local__");
+    updateDashboard(localReference);
+    updateSyncUI("saved locally");
+  }));
   els.exportEncryptedBackup.addEventListener("click", exportEncryptedBackup);
   els.importEncryptedBackup.addEventListener("change", importEncryptedBackup);
   els.shareSnapshot.addEventListener("click", shareSnapshotNote);
@@ -556,6 +624,7 @@ function bindEvents() {
   els.noteSearchSelection.addEventListener("click", createNoteFromSearchSelection);
   els.selectAllRead.addEventListener("click", selectAllReadVerses);
   els.clearReadSelection.addEventListener("click", clearReadSelection);
+  els.shareReadSelection.addEventListener("click", shareReadSelection);
   els.noteReadSelection.addEventListener("click", createNoteFromReadSelection);
   els.doneReadSelection.addEventListener("click", exitReadSelectMode);
 
@@ -611,8 +680,8 @@ function bindEvents() {
     if (!key) return;
 
     if (button.dataset.action === "note") openNote(key);
-    if (button.dataset.action === "tafsir") openTafsir(key);
-    if (button.dataset.action === "commentary") openBibleCommentary(key);
+    if (button.dataset.action === "tafsir") openTafsir(key, button);
+    if (button.dataset.action === "commentary") openBibleCommentary(key, button);
     if (button.dataset.action === "bookmark") saveLastRead(key);
     if (button.dataset.action === "copy") openVerseCopy(key);
     if (button.dataset.action === "share") shareVerseDirect(key, button);
@@ -661,19 +730,39 @@ function setupSwipeNavigation() {
     const deltaX = event.touches[0].clientX - startX;
     const deltaY = event.touches[0].clientY - startY;
     if (!axis && Math.max(Math.abs(deltaX), Math.abs(deltaY)) > 12) axis = Math.abs(deltaX) > Math.abs(deltaY) * 1.25 ? "horizontal" : "vertical";
-    if (axis === "horizontal" && event.cancelable) event.preventDefault();
+    if (axis === "horizontal") {
+      if (event.cancelable) event.preventDefault();
+      const activeView = document.querySelector(`#${state.currentView}`);
+      const travel = Math.max(-72, Math.min(72, deltaX * 0.34));
+      activeView?.classList.add("gesture-tracking");
+      if (activeView) {
+        activeView.style.transform = `translate3d(${travel}px, 0, 0)`;
+      }
+    }
   }, { passive: false });
   main?.addEventListener("touchend", (event) => {
+    const activeView = document.querySelector(`#${state.currentView}`);
+    activeView?.classList.remove("gesture-tracking");
+    if (activeView) {
+      activeView.style.transform = "";
+      activeView.style.opacity = "";
+    }
     if (blocked || event.changedTouches.length !== 1 || performance.now() - startedAt > 650) return;
     const deltaX = event.changedTouches[0].clientX - startX;
     const deltaY = event.changedTouches[0].clientY - startY;
     if (axis === "vertical" || Math.abs(deltaX) < 72 || Math.abs(deltaX) < Math.abs(deltaY) * 1.5) return;
     const current = views.indexOf(state.currentView);
-    const next = current + (deltaX < 0 ? 1 : -1);
-    if (current < 0 || next < 0 || next >= views.length) return;
+    if (current < 0) return;
+    // The sections form a loop: swiping past either edge arrives at the other.
+    const next = (current + (deltaX < 0 ? 1 : -1) + views.length) % views.length;
     transitioning = true;
     switchView(views[next], false, null, deltaX < 0 ? "swipe-left" : "swipe-right");
-    setTimeout(() => { transitioning = false; }, 320);
+    setTimeout(() => { transitioning = false; }, 360);
+  }, { passive: true });
+  main?.addEventListener("touchcancel", () => {
+    const activeView = document.querySelector(`#${state.currentView}`);
+    activeView?.classList.remove("gesture-tracking");
+    if (activeView) { activeView.style.transform = ""; activeView.style.opacity = ""; }
   }, { passive: true });
 }
 
@@ -684,6 +773,95 @@ let previousToolbarScrollY = 0;
 let viewSwitchingUntil = 0;
 let workspaceToolbarExpandedAt = 0;
 let previousWorkspaceToolbarScrollY = 0;
+let suspendedAppPosition = null;
+let lastStableAppPosition = null;
+let appPositionFrame = 0;
+let lastScrollIntentAt = 0;
+let resumeRestoreToken = 0;
+
+function markScrollIntent() {
+  lastScrollIntentAt = performance.now();
+  resumeRestoreToken += 1;
+}
+
+function captureAppPosition(protectFromSystemReset = false) {
+  const workspace = document.querySelector("#workspaceLeft");
+  const reader = document.querySelector("#readView");
+  const nextPosition = {
+    view: state.currentView,
+    windowTop: window.scrollY,
+    workspaceTop: workspace?.scrollTop || 0,
+    readerTop: reader?.scrollTop || 0,
+    controlsCollapsed: document.body.classList.contains("controls-collapsed"),
+    workspaceToolCollapsed: document.body.classList.contains("workspace-tool-collapsed"),
+  };
+  const previous = lastStableAppPosition;
+  const looksLikeSystemReset = protectFromSystemReset
+    && nextPosition.view === previous?.view
+    && nextPosition.windowTop < 8
+    && previous.windowTop > 80
+    && performance.now() - lastScrollIntentAt > 650;
+  suspendedAppPosition = looksLikeSystemReset ? previous : nextPosition;
+  if (!looksLikeSystemReset) lastStableAppPosition = nextPosition;
+  state.viewScrollPositions[state.currentView] = suspendedAppPosition.windowTop;
+  try { sessionStorage.setItem("abrahamic-app-position-v1", JSON.stringify(suspendedAppPosition)); } catch {}
+  syncUrlState();
+}
+
+function getReaderAnchorKey() {
+  if (state.focusedVerseKey) return state.focusedVerseKey;
+  const offset = (els.topbar?.getBoundingClientRect().height || 0) + (getActiveToolbar()?.getBoundingClientRect().height || 0) + 24;
+  const cards = [...els.verses.querySelectorAll(".ayah-card[data-key]")];
+  const visible = cards.find((card) => card.getBoundingClientRect().bottom > offset);
+  return visible?.dataset.key || cards[0]?.dataset.key || "";
+}
+
+function syncUrlState() {
+  if (location.protocol === "file:" || location.hash.includes("note=") || location.hash.includes("notes=")) return;
+  const url = new URL(location.href);
+  url.searchParams.set("view", state.currentView);
+  if (state.currentView === "readView") {
+    const key = getReaderAnchorKey();
+    if (key) url.searchParams.set("at", key);
+  } else {
+    url.searchParams.delete("at");
+  }
+  url.searchParams.delete("ref");
+  const next = `${url.pathname}${url.search}${url.hash}`;
+  if (`${location.pathname}${location.search}${location.hash}` !== next) history.replaceState({ appNavigation: true }, "", next);
+}
+
+function rememberAppPosition() {
+  if (document.visibilityState === "hidden" || appPositionFrame) return;
+  appPositionFrame = requestAnimationFrame(() => {
+    appPositionFrame = 0;
+    captureAppPosition(true);
+  });
+}
+
+function restoreAppPosition() {
+  let position = suspendedAppPosition;
+  if (!position) {
+    try { position = JSON.parse(sessionStorage.getItem("abrahamic-app-position-v1") || "null"); } catch {}
+  }
+  if (!position || position.view !== state.currentView) return;
+  const token = ++resumeRestoreToken;
+  const apply = () => {
+    if (token !== resumeRestoreToken) return;
+    viewSwitchingUntil = performance.now() + 360;
+    document.body.classList.toggle("controls-collapsed", Boolean(position.controlsCollapsed));
+    document.body.classList.toggle("workspace-tool-collapsed", Boolean(position.workspaceToolCollapsed));
+    window.scrollTo({ top: Math.max(0, Number(position.windowTop) || 0), behavior: "auto" });
+    document.querySelector("#workspaceLeft")?.scrollTo({ top: Math.max(0, Number(position.workspaceTop) || 0), behavior: "auto" });
+    document.querySelector("#readView")?.scrollTo({ top: Math.max(0, Number(position.readerTop) || 0), behavior: "auto" });
+    previousToolbarScrollY = window.scrollY;
+  };
+  apply();
+  // Android can resize its WebView twice while returning from the launcher.
+  // Re-apply after those layout passes, unless the user has already interacted.
+  setTimeout(apply, 90);
+  setTimeout(apply, 280);
+}
 
 function handleToolbarScroll() {
   if (toolbarScrollFrame) return;
@@ -713,14 +891,16 @@ function handleToolbarScroll() {
       lastSearchSpyAt = performance.now();
     }
     previousToolbarScrollY = y;
+    rememberAppPosition();
     toolbarScrollFrame = false;
   });
 }
 
 function expandActiveToolbar() {
-  // Expanding a sticky toolbar must not compensate the page scroll. Doing so
-  // creates a synthetic downward scroll that immediately collapses it again.
-  setControlsCollapsed(false, false);
+  // Preserve the passage under the user's eyes while the sticky controls grow.
+  // Ignore the compensating scroll briefly so it cannot re-collapse the panel.
+  viewSwitchingUntil = performance.now() + 520;
+  setControlsCollapsed(false, true);
   document.body.classList.add("controls-manually-expanded");
   controlsExpandedAt = window.scrollY;
   previousToolbarScrollY = window.scrollY;
@@ -929,7 +1109,6 @@ function renderBibleChapterOptions() {
 function updateBibleHeader() {
   els.chapterTitle.textContent = `${state.selectedBibleBook} ${state.selectedBibleChapter}`;
   els.chapterMeta.textContent = `${state.scripture === "old" ? "Old Testament" : "New Testament"} · World English Bible`;
-  els.dashboardSurah.textContent = state.selectedBibleBook;
 }
 
 async function loadHadithSection() {
@@ -939,7 +1118,6 @@ async function loadHadithSection() {
   savePrefs();
   els.chapterTitle.textContent = info?.name || "Hadith";
   els.chapterMeta.textContent = `Hadith · ${info?.tradition || "Available public collections"} · Section ${section}`;
-  els.dashboardSurah.textContent = info?.name || "Hadith";
   setStatus(`Loading ${info?.name || book}, section ${section}...`);
   els.verses.innerHTML = "";
 
@@ -1053,7 +1231,6 @@ function updateChapterHeader() {
   if (!chapter) return;
   els.chapterTitle.textContent = `${chapter.name_simple} · ${chapter.name_arabic}`;
   els.chapterMeta.textContent = `${chapter.translated_name?.name || ""} · ${chapter.verses_count} ayat · ${chapter.revelation_place}`;
-  els.dashboardSurah.textContent = chapter.name_simple;
 }
 
 function renderVerses() {
@@ -1091,7 +1268,7 @@ function renderVerse(verse) {
           <button class="mini-button" type="button" data-action="copy" aria-label="Copy ${escapeHTML(displayKey(verse))}" title="Copy verse"><i class="ti ti-copy" aria-hidden="true"></i></button>
           <button class="mini-button share-mini-button" type="button" data-action="share" aria-label="Share ${escapeHTML(displayKey(verse))}" title="Share verse">${shareIcon()}</button>
           ${isQuran ? `<button class="mini-button" type="button" data-action="tafsir" aria-label="Tafsir for ${verse.verse_key}">≡</button>` : !isHadith ? `<button class="mini-button" type="button" data-action="commentary" aria-label="Commentary for ${escapeHTML(displayKey(verse))}">≡</button>` : ""}
-          <button class="mini-button" type="button" data-action="bookmark" aria-label="Save ${verse.verse_key} as last read">⌖</button>
+          <button class="mini-button last-read-marker ${isLastRead(verse.verse_key) ? "active" : ""}" type="button" data-action="bookmark" aria-label="Mark ${escapeHTML(displayKey(verse))} as last read" title="Mark as last read"><i class="ti ti-bookmark${isLastRead(verse.verse_key) ? "-filled" : ""}" aria-hidden="true"></i><span>Last read</span></button>
         </div>
       </div>
       ${isQuran ? `${state.showArabic ? `<div class="arabic" lang="ar" dir="rtl">${renderArabicWords(verse)}</div>` : ""}<div class="translations">${translations}</div>` : `${state.showOriginalBible && verse.originalText ? `<div class="original-scripture" dir="${verse.scripture === "old" || isHadith ? "rtl" : "ltr"}">${isHadith ? escapeHTML(verse.originalText) : renderOriginalWords(verse)}</div>` : ""}<div class="scripture-text">${escapeHTML(verse.text || "")}</div>`}
@@ -1321,6 +1498,10 @@ function openNote(key) {
   els.noteName.value = existing.title || "";
   els.noteEditor.value = existing.text || "";
   els.noteTags.value = (existing.tags || []).join(", ");
+  els.noteTagCreate.value = "";
+  els.noteTagDescription.value = "";
+  renderNoteFolderOptions(existing.folderId || "");
+  renderNoteTagPicker();
   els.referenceSearch.value = "";
   renderNoteReferences();
   renderReferenceResults();
@@ -1331,7 +1512,8 @@ function openNote(key) {
 
 function createStandaloneNote() {
   const key = `note:${crypto.randomUUID()}`;
-  state.notes[key] = { title: "", text: "", tags: [], references: [], updatedAt: new Date().toISOString(), standalone: true };
+  const folderId = state.noteViewMode === "folders" && state.selectedFolderId !== "all" ? state.selectedFolderId : "";
+  state.notes[key] = { title: "", text: "", tags: [], references: [], folderId, updatedAt: new Date().toISOString(), standalone: true };
   saveNotes();
   renderNotes();
   openNote(key);
@@ -1344,20 +1526,21 @@ function saveCurrentNote() {
   const title = els.noteName.value;
   els.noteTitle.textContent = title.trim() || "Edit note";
   const tags = parseTags(els.noteTags.value);
+  const folderId = els.noteFolderSelect.value || "";
 
   if (key.startsWith("shared:")) {
     const id = key.slice(7);
     const shared = state.sharedNotes.find((note) => note.id === id);
     if (!shared) return;
-    Object.assign(shared, { title, text, tags, references: state.currentNoteReferences, updatedAt: new Date().toISOString() });
+    Object.assign(shared, { title, text, tags, folderId, references: state.currentNoteReferences, updatedAt: new Date().toISOString() });
     clearTimeout(saveCurrentNote.sharedTimer);
-    saveCurrentNote.sharedTimer = setTimeout(() => notesSystem.updateSharedNote(id, { title, text, tags, references: state.currentNoteReferences }).catch((error) => setStatus(error.message)), 450);
+    saveCurrentNote.sharedTimer = setTimeout(() => notesSystem.updateSharedNote(id, { title, text, tags, folderId, references: state.currentNoteReferences }).catch((error) => setStatus(error.message)), 450);
     renderNotes();
     return;
   }
 
   if (title.trim() || text.trim() || tags.length || state.currentNoteReferences.length || key.startsWith("note:")) {
-    state.notes[key] = { ...(state.notes[key] || {}), title, text, tags, references: state.currentNoteReferences, updatedAt: new Date().toISOString(), standalone: key.startsWith("note:") };
+    state.notes[key] = { ...(state.notes[key] || {}), title, text, tags, folderId, references: state.currentNoteReferences, updatedAt: new Date().toISOString(), standalone: key.startsWith("note:") };
   } else {
     delete state.notes[key];
   }
@@ -1383,6 +1566,8 @@ async function deleteCurrentNote() {
   els.noteEditor.value = "";
   els.noteName.value = "";
   els.noteTags.value = "";
+  els.noteTagCreate.value = "";
+  renderNoteTagPicker();
   els.referenceSearch.value = "";
   state.currentNoteReferences = [];
   state.currentNoteKey = null;
@@ -1454,18 +1639,18 @@ async function getWiktionaryGloss(word, lang) {
   return definitions.slice(0, 3).join("; ");
 }
 
-async function openTafsir(key) {
+async function openTafsir(key, sourceButton = null) {
   const tafsir = state.tafsirs.find((item) => item.id === state.selectedTafsir);
   els.tafsirContentTitle.textContent = `Tafsir ${key}`;
   els.tafsirContentSubtitle.textContent = tafsir ? tafsir.name : "Loading...";
   els.tafsirContent.innerHTML = "<p>Loading tafsir...</p>";
-  openDialog(els.tafsirContentSheet);
+  openDialog(els.tafsirContentSheet, sourceButton, "study");
 
   try {
     const data = await getDownloadedTafsir(key).catch(() => getBundledTafsir(key)).catch(() => getJSON(`${API}/tafsirs/${state.selectedTafsir}/by_ayah/${key}`));
-    els.tafsirContent.innerHTML = sanitizeHTML(data.tafsir?.text || "<p>No tafsir returned for this ayah.</p>");
+    revealStudyContent(sanitizeHTML(data.tafsir?.text || "<p>No tafsir returned for this ayah.</p>"));
   } catch (error) {
-    els.tafsirContent.innerHTML = `<p>${escapeHTML(error.message)}</p>`;
+    revealStudyContent(`<p>${escapeHTML(error.message)}</p>`);
   }
 }
 
@@ -1477,24 +1662,35 @@ async function getDownloadedTafsir(key) {
   if (!row) throw new Error("No downloaded entry"); return { tafsir: row };
 }
 
-async function openBibleCommentary(key) {
+async function openBibleCommentary(key, sourceButton = null) {
   const parsed = parseReferenceKey(key); const bookId = BOOK_IDS[parsed.book];
   const commentary = state.commentaries.find((item) => item.id === state.selectedCommentary);
   els.tafsirContentTitle.textContent = `${parsed.label} commentary`;
   els.tafsirContentSubtitle.textContent = commentary?.name || state.selectedCommentary;
-  els.tafsirContent.innerHTML = "<p>Loading commentary...</p>"; openDialog(els.tafsirContentSheet);
+  els.tafsirContent.innerHTML = "<p>Loading commentary...</p>"; openDialog(els.tafsirContentSheet, sourceButton, "study");
   try {
     const url = `https://bible.helloao.org/api/c/${state.selectedCommentary}/${bookId}/${parsed.chapter}.json`;
     const data = state.selectedCommentary === "matthew-henry" ? await getOfflineJSON(`commentary/matthew-henry/${bookId}-${parsed.chapter}.json`).catch(() => getJSON(url)) : await getJSON(url);
     const entry = data.chapter?.content?.find((item) => item.type === "verse" && Number(item.number) === parsed.verse);
     const paragraphs = Array.isArray(entry?.content) ? entry.content : [];
-    els.tafsirContent.innerHTML = paragraphs.length ? paragraphs.map((text) => `<p>${escapeHTML(text)}</p>`).join("") : "<p>No commentary entry is available for this verse.</p>";
-  } catch (error) { els.tafsirContent.innerHTML = `<p>${escapeHTML(error.message)}</p>`; }
+    revealStudyContent(paragraphs.length ? paragraphs.map((text) => `<p>${escapeHTML(text)}</p>`).join("") : "<p>No commentary entry is available for this verse.</p>");
+  } catch (error) { revealStudyContent(`<p>${escapeHTML(error.message)}</p>`); }
+}
+
+function revealStudyContent(html) {
+  els.tafsirContent.innerHTML = html;
+  if (!matchMedia("(prefers-reduced-motion: reduce)").matches) {
+    els.tafsirContent.animate(
+      [{ opacity: 0, transform: "translateY(10px)" }, { opacity: 1, transform: "translateY(0)" }],
+      { duration: 420, easing: "cubic-bezier(.16,1,.3,1)" },
+    );
+  }
 }
 
 function renderNotes() {
   const query = els.notesSearch.value.trim();
   const searchExpression = parseSearchExpression(query);
+  renderNoteFolderBrowser();
   const sourceEntries = state.notesSection === "shared"
     ? state.sharedNotes.map((note) => [`shared:${note.id}`, note])
     : Object.entries(state.notes);
@@ -1503,16 +1699,18 @@ function renderNotes() {
     .sort((a, b) => compareNotes(a[1], b[1], state.notesSort))
     .filter(([key, note]) => {
       const tags = note.tags || [];
-      const haystack = `${key} ${note.title || ""} ${formatReferenceKey(key)} ${note.text || ""} ${(note.references || []).map(formatReferenceKey).join(" ")} ${tags.join(" ")}`;
+      const folderName = state.noteFolders.find((folder) => folder.id === note.folderId)?.name || "";
+      const tagDescriptions = tags.map((tag) => state.tagCatalog[tag]?.description || "").join(" ");
+      const haystack = `${key} ${note.title || ""} ${formatReferenceKey(key)} ${note.text || ""} ${(note.references || []).map(formatReferenceKey).join(" ")} ${tags.join(" ")} ${tagDescriptions} ${folderName}`;
       const matchesSearch = !query || searchExpression.matches(normalizeSearchText(haystack));
       const matchesTag = !state.noteTagFilter || tags.includes(state.noteTagFilter);
-      return matchesSearch && matchesTag;
+      const matchesFolder = state.noteViewMode !== "folders" || state.selectedFolderId === "all" || (note.folderId || "") === state.selectedFolderId;
+      return matchesSearch && matchesTag && matchesFolder;
     });
 
   const privateTotal = Object.values(state.notes).filter((note) => note.title?.trim() || note.text?.trim() || note.tags?.length || note.references?.length || note.standalone).length;
   const total = state.notesSection === "shared" ? state.sharedNotes.length : privateTotal;
   els.notesCount.textContent = state.notesSection === "shared" ? `${total} shared ${total === 1 ? "note" : "notes"}` : `${total} saved ${total === 1 ? "note" : "notes"}`;
-  els.dashboardNotes.textContent = String(total);
   els.sharedNotesBadge.textContent = String(state.sharedNotes.length);
   const locked = state.notesSection === "shared" && !notesSystem?.signedIn;
   els.sharedNotesLocked.hidden = !locked;
@@ -1523,18 +1721,22 @@ function renderNotes() {
     ? entries.map(([key, note]) => {
         const tags = note.tags || [];
         const refs = note.references || [];
+        const referencesExpanded = state.expandedNoteReferences.has(key);
+        const visibleRefs = referencesExpanded ? refs : refs.slice(0, 4);
         const updatedLabel = formatNoteDate(note.updatedAt);
+        const folderName = state.noteFolders.find((folder) => folder.id === note.folderId)?.name || "";
         const visibility = state.notesSection === "shared" ? "Shared" : "Private";
         return `
-          <article class="note-card ${state.selectedNotes.has(key) ? "selected" : ""}" data-note-key="${escapeHTML(key)}" style="--note-order:${Math.min(8, entries.findIndex(([entryKey]) => entryKey === key))}">
+          <article class="note-card ${state.selectedNotes.has(key) ? "selected" : ""} ${referencesExpanded ? "references-expanded" : ""}" data-note-key="${escapeHTML(key)}" style="--note-order:${Math.min(8, entries.findIndex(([entryKey]) => entryKey === key))}">
             ${state.noteSelectMode ? `<label class="note-select"><input type="checkbox" data-select-key="${escapeHTML(key)}" ${state.selectedNotes.has(key) ? "checked" : ""}><span aria-hidden="true"></span></label>` : ""}
             <button class="note-card-main" type="button" data-key="${escapeHTML(key)}">
               <span class="note-card-heading"><strong>${escapeHTML(note.title?.trim() || "Untitled note")}</strong><time>${escapeHTML(updatedLabel)}</time></span>
+              ${folderName ? `<span class="note-folder-label"><i class="ti ti-folder" aria-hidden="true"></i>${escapeHTML(folderName)}</span>` : ""}
               <p>${escapeHTML(note.text || "No text added yet.")}</p>
               ${tags.length ? `<div class="note-tags">${tags.map((tag) => `<span>#${escapeHTML(tag)}</span>`).join("")}</div>` : ""}
             </button>
             <div class="note-card-footer">
-              <div class="note-card-references">${refs.slice(0, 3).map((ref) => `<button class="reference-link" type="button" data-ref="${escapeHTML(ref)}"><i class="ti ti-book-2" aria-hidden="true"></i><span>${escapeHTML(formatReferenceKey(ref))}</span><i class="ti ti-chevron-right reference-link-arrow" aria-hidden="true"></i></button>`).join("")}</div>
+              <div class="note-card-references">${visibleRefs.map((ref) => `<button class="reference-link" type="button" data-ref="${escapeHTML(ref)}"><i class="ti ti-book-2" aria-hidden="true"></i><span>${escapeHTML(formatReferenceKey(ref))}</span><i class="ti ti-chevron-right reference-link-arrow" aria-hidden="true"></i></button>`).join("")}${refs.length > 4 ? `<button class="reference-expand-button" type="button" data-expand-references="${escapeHTML(key)}" aria-expanded="${referencesExpanded}"><i class="ti ti-${referencesExpanded ? "chevron-up" : "chevron-down"}" aria-hidden="true"></i><span>${referencesExpanded ? "Show fewer" : `Show all ${refs.length}`}</span></button>` : ""}</div>
               <span class="note-visibility"><i class="ti ti-${state.notesSection === "shared" ? "users" : "lock"}" aria-hidden="true"></i>${visibility}</span>
             </div>
           </article>
@@ -1552,9 +1754,40 @@ function renderNotes() {
   els.notesList.querySelectorAll("button[data-ref]").forEach((button) => {
     button.addEventListener("click", () => navigateToReference(button.dataset.ref));
   });
+  els.notesList.querySelectorAll("[data-expand-references]").forEach((button) => {
+    button.addEventListener("click", () => {
+      const key = button.dataset.expandReferences;
+      if (state.expandedNoteReferences.has(key)) state.expandedNoteReferences.delete(key);
+      else state.expandedNoteReferences.add(key);
+      renderNotes();
+    });
+  });
   els.notesList.querySelectorAll("input[data-select-key]").forEach((input) => input.addEventListener("change", () => toggleSelectedNote(input.dataset.selectKey)));
   els.notesList.querySelector("[data-empty-new]")?.addEventListener("click", createStandaloneNote);
   updateNoteSelectionUI();
+}
+
+function renderNoteFolderBrowser() {
+  const folderMode = state.noteViewMode === "folders";
+  els.notesFlatMode.classList.toggle("active", !folderMode);
+  els.notesFolderMode.classList.toggle("active", folderMode);
+  els.notesFlatMode.setAttribute("aria-pressed", String(!folderMode));
+  els.notesFolderMode.setAttribute("aria-pressed", String(folderMode));
+  els.noteFolderBrowser.hidden = !folderMode;
+  if (!folderMode) return;
+  const counts = new Map();
+  Object.values(state.notes).forEach((note) => counts.set(note.folderId || "", (counts.get(note.folderId || "") || 0) + 1));
+  const buttons = [
+    { id: "all", name: "All notes", count: Object.keys(state.notes).length, icon: "folders" },
+    { id: "", name: "Unfiled", count: counts.get("") || 0, icon: "folder-off" },
+    ...state.noteFolders.map((folder) => ({ ...folder, count: counts.get(folder.id) || 0, icon: "folder" })),
+  ];
+  els.noteFolderBrowser.innerHTML = buttons.map((folder) => `<button class="note-folder-tile ${state.selectedFolderId === folder.id ? "active" : ""}" type="button" data-folder-id="${escapeHTML(folder.id)}" aria-pressed="${state.selectedFolderId === folder.id}"><i class="ti ti-${folder.icon}" aria-hidden="true"></i><span><strong>${escapeHTML(folder.name)}</strong><small>${folder.count} ${folder.count === 1 ? "note" : "notes"}</small></span></button>`).join("");
+  els.noteFolderBrowser.querySelectorAll("[data-folder-id]").forEach((button) => button.addEventListener("click", () => {
+    state.selectedFolderId = button.dataset.folderId;
+    saveNotesOrganizer();
+    renderNotes();
+  }));
 }
 
 function compareNotes(a, b, sort) {
@@ -1642,50 +1875,130 @@ function renderTagFilters() {
   });
 }
 
+function getKnownNoteTags() {
+  const notes = [...Object.values(state.notes), ...state.sharedNotes];
+  return [...new Set([...Object.keys(state.tagCatalog), ...notes.flatMap((note) => Array.isArray(note.tags) ? note.tags : [])].map(String).filter(Boolean))]
+    .sort((a, b) => a.localeCompare(b, undefined, { sensitivity: "base" }));
+}
+
+function renderNoteTagPicker() {
+  const selected = new Set(parseTags(els.noteTags.value));
+  const tags = [...new Set([...getKnownNoteTags(), ...selected])];
+  els.noteTagChoices.innerHTML = tags.length
+    ? tags.map((tag) => {
+        const description = state.tagCatalog[tag]?.description || "";
+        return `<button class="note-tag-choice ${selected.has(tag) ? "active" : ""}" type="button" data-note-tag="${escapeHTML(tag)}" aria-pressed="${selected.has(tag)}" ${description ? `title="${escapeHTML(description)}"` : ""}><i class="ti ti-${selected.has(tag) ? "check" : "tag"}" aria-hidden="true"></i><span><b>#${escapeHTML(tag)}</b>${description ? `<small>${escapeHTML(description)}</small>` : ""}</span></button>`;
+      }).join("")
+    : `<p class="note-tag-empty">No tags yet. Create the first one below.</p>`;
+  els.noteTagChoices.querySelectorAll("[data-note-tag]").forEach((button) => {
+    button.addEventListener("click", () => toggleCurrentNoteTag(button.dataset.noteTag));
+  });
+}
+
+function toggleCurrentNoteTag(tag) {
+  const tags = new Set(parseTags(els.noteTags.value));
+  if (tags.has(tag)) tags.delete(tag);
+  else if (tags.size < 12) tags.add(tag);
+  else {
+    setStatus("A note can have up to 12 tags.");
+    return;
+  }
+  els.noteTags.value = [...tags].join(", ");
+  renderNoteTagPicker();
+  saveCurrentNote();
+}
+
+function createNoteTag() {
+  const tag = String(els.noteTagCreate.value || "")
+    .trim().toLowerCase().replace(/^#+/, "").replace(/\s+/g, "-").replace(/[^\p{L}\p{N}_-]+/gu, "")
+    .slice(0, 40);
+  if (!tag) {
+    els.noteTagCreate.focus();
+    return;
+  }
+  const selected = new Set(parseTags(els.noteTags.value));
+  if (selected.size >= 12 && !selected.has(tag)) {
+    setStatus("A note can have up to 12 tags.");
+    return;
+  }
+  selected.add(tag);
+  const description = String(els.noteTagDescription.value || "").trim().slice(0, 240);
+  state.tagCatalog[tag] = { ...(state.tagCatalog[tag] || {}), description };
+  saveNotesOrganizer();
+  els.noteTags.value = [...selected].join(", ");
+  els.noteTagCreate.value = "";
+  els.noteTagDescription.value = "";
+  renderNoteTagPicker();
+  saveCurrentNote();
+  els.noteTagCreate.focus();
+}
+
+function renderNoteFolderOptions(selectedId = els.noteFolderSelect?.value || "") {
+  if (!els.noteFolderSelect) return;
+  els.noteFolderSelect.innerHTML = `<option value="">All notes (no folder)</option>${state.noteFolders.map((folder) => `<option value="${escapeHTML(folder.id)}">${escapeHTML(folder.name)}</option>`).join("")}`;
+  els.noteFolderSelect.value = state.noteFolders.some((folder) => folder.id === selectedId) ? selectedId : "";
+}
+
+function setNotesViewMode(mode) {
+  state.noteViewMode = mode === "folders" ? "folders" : "flat";
+  if (state.noteViewMode === "flat") state.selectedFolderId = "all";
+  saveNotesOrganizer();
+  renderNotes();
+}
+
+function createNoteFolder(fromEditor = false) {
+  const rawName = window.prompt("Folder name:");
+  if (rawName === null) return;
+  const name = rawName.trim().replace(/\s+/g, " ").slice(0, 60);
+  if (!name) return;
+  const existing = state.noteFolders.find((folder) => folder.name.localeCompare(name, undefined, { sensitivity: "base" }) === 0);
+  const folder = existing || { id: `folder:${crypto.randomUUID()}`, name, createdAt: new Date().toISOString() };
+  if (!existing) state.noteFolders.push(folder);
+  state.noteFolders.sort((a, b) => a.name.localeCompare(b.name, undefined, { sensitivity: "base" }));
+  state.noteViewMode = "folders";
+  state.selectedFolderId = folder.id;
+  saveNotesOrganizer();
+  renderNoteFolderOptions(folder.id);
+  if (fromEditor) {
+    els.noteFolderSelect.value = folder.id;
+    saveCurrentNote();
+  }
+  renderNotes();
+}
+
+function saveNotesOrganizer() {
+  localStorage.setItem(STORE.notesOrganizer, JSON.stringify({
+    viewMode: state.noteViewMode,
+    selectedFolderId: state.selectedFolderId,
+    folders: state.noteFolders,
+    tagCatalog: state.tagCatalog,
+  }));
+}
+
 function renderReferenceResults() {
   const query = els.referenceSearch.value.trim();
+  const token = (renderReferenceResults.token || 0) + 1;
+  renderReferenceResults.token = token;
+  clearTimeout(renderReferenceResults.timer);
   if (!query) {
     els.referenceResults.innerHTML = "";
     return;
   }
-
-  const parsed = parseLooseReference(query);
-  const suggestions = [];
-  if (parsed) suggestions.push(parsed);
-
-  if (!parsed) {
-    const numeric = query.match(/^(\d{1,3})(?::(\d{1,3}))?$/);
-    if (numeric) suggestions.push({ key: `${Number(numeric[1])}:${Number(numeric[2] || 1)}`, label: `Quran ${Number(numeric[1])}:${Number(numeric[2] || 1)}`, type: "quran" });
-
-    state.chapters
-      .filter((chapter) => `${chapter.id} ${chapter.name_simple} ${chapter.name_arabic}`.toLowerCase().includes(query.toLowerCase()))
-      .slice(0, 4)
-      .forEach((chapter) => suggestions.push({ key: `${chapter.id}:1`, label: `Quran ${chapter.name_simple} 1`, type: "quran" }));
-
-    [...OLD_TESTAMENT, ...NEW_TESTAMENT]
-      .filter(([name]) => name.toLowerCase().includes(query.toLowerCase()))
-      .slice(0, 5)
-      .forEach(([name]) => {
-        suggestions.push({ key: bibleKey(name, 1, 1), label: `${name} 1:1`, type: getBookSet(name) });
-        suggestions.push({ key: bibleKey(name, 1, 2), label: `${name} 1:2`, type: getBookSet(name) });
-      });
-
-    state.hadithBooks
-      .filter((item) => normalizeHadithSearchText(`${item.name} ${item.key} ${item.tradition}`).includes(normalizeHadithSearchText(query)))
-      .slice(0, 5)
-      .forEach((item) => {
-        const number = item.source === "thaqalayn" ? item.idRangeMin : 1;
-        suggestions.push({ key: hadithKey(item.key, 1, number), label: `${item.name} · Hadith ${number}`, type: "hadith" });
-      });
+  if (normalizeSearchText(query).length < 2 && !parseLooseReference(query)) {
+    els.referenceResults.innerHTML = `<div class="status">Type at least 2 characters to search the complete library.</div>`;
+    return;
   }
-
-  els.referenceResults.innerHTML = suggestions.length
-    ? suggestions.map((item) => `<button class="reference-row" type="button" data-key="${escapeHTML(item.key)}">${escapeHTML(item.label)}</button>`).join("")
-    : `<div class="status">Search a surah, Bible book, or hadith collection; or enter Quran 2:255, John 3:16, Bukhari 1:1, or Al-Kafi 25.</div>`;
-
-  els.referenceResults.querySelectorAll("button").forEach((button) => {
-    button.addEventListener("click", () => addNoteReference(button.dataset.key));
-  });
+  els.referenceResults.innerHTML = `<div class="reference-searching"><span aria-hidden="true"></span>Finding real passages…</div>`;
+  renderReferenceResults.timer = setTimeout(async () => {
+    const { suggestions, truncated } = await collectReferenceSuggestions(query, token);
+    if (renderReferenceResults.token !== token) return;
+    els.referenceResults.innerHTML = suggestions.length
+      ? `${suggestions.map((item) => `<button class="reference-row" type="button" data-key="${escapeHTML(item.key)}"><span>${escapeHTML(item.kind || "Passage")}</span><strong>${escapeHTML(item.label)}</strong>${item.preview ? `<small>${escapeHTML(item.preview)}</small>` : ""}</button>`).join("")}${truncated ? '<p class="reference-results-meta">More matches exist — add a chapter or verse number to narrow the list.</p>' : ""}`
+      : `<div class="status">No real passage matched. Try Quran 2:255, Al-Baqarah, John 3, Bukhari 52, or part of a verse.</div>`;
+    els.referenceResults.querySelectorAll("button").forEach((button) => {
+      button.addEventListener("click", () => addNoteReference(button.dataset.key));
+    });
+  }, 140);
 }
 
 function addReferenceFromSearch() {
@@ -1693,8 +2006,15 @@ function addReferenceFromSearch() {
   if (parsed) addNoteReference(parsed.key);
 }
 
-function addNoteReference(key) {
+async function addNoteReference(key) {
   if (!key || state.currentNoteReferences.includes(key)) return;
+  try {
+    key = await resolveReferenceKey(key);
+  } catch (error) {
+    setStatus(error.message);
+    return;
+  }
+  if (state.currentNoteReferences.includes(key)) return;
   state.currentNoteReferences = [...state.currentNoteReferences, key];
   els.referenceSearch.value = "";
   renderReferenceResults();
@@ -1702,11 +2022,161 @@ function addNoteReference(key) {
   saveCurrentNote();
 }
 
+async function collectReferenceSuggestions(query, token) {
+  // Keep broad searches useful across every tradition. Each source gets its
+  // own allowance so a common Quran word cannot crowd Bible or hadith results
+  // out of the list before those collections have been searched.
+  const limit = 1080;
+  const sourceLimit = 360;
+  const suggestions = [];
+  const seen = new Set();
+  const sourceCounts = new Map();
+  let truncated = false;
+  const add = (item) => {
+    if (!item?.key || seen.has(item.key)) return;
+    const kind = item.kind || "Passage";
+    if (suggestions.length >= limit || (sourceCounts.get(kind) || 0) >= sourceLimit) { truncated = true; return; }
+    seen.add(item.key);
+    sourceCounts.set(kind, (sourceCounts.get(kind) || 0) + 1);
+    suggestions.push(item);
+  };
+  const sourceFull = (kind) => (sourceCounts.get(kind) || 0) >= sourceLimit;
+  const stopped = () => renderReferenceResults.token !== token;
+  const normalized = normalizeSearchText(query).replace(/\b(quran|surah|chapter|book|hadith)\b/g, " ").replace(/\s+/g, " ").trim();
+  const parsed = parseLooseReference(query);
+  if (parsed) add({ ...parsed, kind: parsed.type === "quran" ? "Quran" : parsed.type === "hadith" ? "Hadith" : "Bible" });
+
+  const quranTail = normalized.match(/^(.+?)\s+(\d{1,3})$/);
+  const quranName = quranTail?.[1]?.trim() || normalized;
+  const quranVerse = quranTail?.[2] ? Number(quranTail[2]) : 0;
+  const chapterMatches = state.chapters.filter((chapter) => {
+    const label = normalizeSearchText(`${chapter.id} ${chapter.name_simple} ${chapter.name_arabic} ${chapter.translated_name?.name || ""}`);
+    return quranName && quranName.split(" ").every((word) => label.includes(word));
+  });
+  for (const chapter of chapterMatches) {
+    const verses = quranVerse ? [quranVerse] : Array.from({ length: chapter.verses_count || 0 }, (_, index) => index + 1);
+    verses.filter((verse) => verse <= chapter.verses_count).forEach((verse) => add({ key: `${chapter.id}:${verse}`, label: `${chapter.name_simple} ${chapter.id}:${verse}`, kind: "Quran" }));
+    if (stopped()) return { suggestions: [], truncated: false };
+    if (sourceFull("Quran")) break;
+  }
+
+  const bibleBooks = [...OLD_TESTAMENT, ...NEW_TESTAMENT];
+  for (const [book, chapterCount] of bibleBooks) {
+    const bookLabel = normalizeSearchText(book);
+    if (!normalized.includes(bookLabel) && !bookLabel.includes(normalized)) continue;
+    const remainder = normalized.replace(bookLabel, "").trim();
+    const chapterNumber = Number(remainder.match(/^\d{1,3}/)?.[0] || 0);
+    const chapters = chapterNumber ? [chapterNumber] : Array.from({ length: chapterCount }, (_, index) => index + 1);
+    for (const chapter of chapters.filter((item) => item >= 1 && item <= chapterCount)) {
+      const bookId = BOOK_IDS[book];
+      const data = await getOfflineJSON(`bible/${getBookSet(book)}-${bookId}-${chapter}.json`).catch(() => null);
+      const verses = extractBibleVerses(data?.english);
+      (verses.length ? verses : [{ number: 1, text: "" }]).forEach((verse) => add({ key: bibleKey(book, chapter, verse.number), label: `${book} ${chapter}:${verse.number}`, kind: "Bible", preview: verse.text.slice(0, 110) }));
+      if (stopped() || sourceFull("Bible")) break;
+    }
+    if (stopped() || sourceFull("Bible")) break;
+  }
+
+  const hadithQuery = normalizeHadithSearchText(query.replace(/\d+[\s:]?\d*$/, ""));
+  const requestedNumber = Number(query.match(/(\d{1,6})\s*$/)?.[1] || 0);
+  const hadithBooks = state.hadithBooks.filter((book) => {
+    const label = normalizeHadithSearchText(`${book.name} ${book.key} ${book.tradition}`);
+    return hadithQuery && (label.includes(hadithQuery) || hadithQuery.includes(normalizeHadithSearchText(book.name)));
+  });
+  for (const book of hadithBooks) {
+    if (requestedNumber) {
+      const rawKey = hadithKey(book.key, 1, requestedNumber);
+      const resolved = await resolveReferenceKey(rawKey).catch(() => "");
+      if (resolved) add({ key: resolved, label: `${book.name} · Hadith ${requestedNumber}`, kind: "Hadith" });
+      continue;
+    }
+    if (book.source === "thaqalayn") {
+      const records = await getOfflineJSON(`hadith-search/${book.key}.json`).catch(() => []);
+      for (const item of records) {
+        add({ key: hadithKey(book.key, item.section, item.id), label: `${book.name} · Hadith ${item.id}`, kind: "Hadith", preview: String(item.text || "").slice(0, 110) });
+        if (sourceFull("Hadith")) break;
+      }
+    } else {
+      const sectionMap = state.hadithInfo?.[book.key]?.metadata?.sections || {};
+      for (const section of Object.keys(sectionMap).map(Number).filter(Boolean).sort((a, b) => a - b)) {
+        const data = await getOfflineJSON(`hadith/${book.key}/section-${section}.json`).catch(() => null);
+        for (const item of data?.english?.hadiths || []) {
+          add({ key: hadithKey(book.key, section, item.hadithnumber), label: `${book.name} · Hadith ${item.hadithnumber}`, kind: "Hadith", preview: String(item.text || "").slice(0, 110) });
+          if (sourceFull("Hadith")) break;
+        }
+        if (sourceFull("Hadith") || stopped()) break;
+      }
+    }
+    if (stopped() || sourceFull("Hadith")) break;
+  }
+
+  // If the text is not a recognisable reference or book name, search the
+  // actual bundled text across Quran, every Bible book, and every hadith
+  // collection. Results remain real, resolvable offline references.
+  if (!suggestions.length && normalized.length >= 3) {
+    const expression = parseSearchExpression(query);
+    for (const chapter of state.chapters) {
+      const data = await getOfflineJSON(`quran/chapter-${chapter.id}.json`).catch(() => null);
+      for (const verse of data?.verses || []) {
+        const text = [verse.text_uthmani, ...(verse.translations || []).map((item) => stripHTML(item.text))].join(" ");
+        if (expression.matches(normalizeSearchText(text))) add({ key: verse.verse_key, label: `${chapter.name_simple} ${verse.verse_key}`, kind: "Quran", preview: stripHTML(verse.translations?.[0]?.text || "").slice(0, 110) });
+      }
+      if (sourceFull("Quran") || stopped()) break;
+    }
+
+    for (const [book, chapterCount] of [...OLD_TESTAMENT, ...NEW_TESTAMENT]) {
+      const testament = getBookSet(book);
+      const bookId = BOOK_IDS[book];
+      for (let chapter = 1; chapter <= chapterCount; chapter += 1) {
+        const data = await getOfflineJSON(`bible/${testament}-${bookId}-${chapter}.json`).catch(() => null);
+        for (const verse of extractBibleVerses(data?.english)) {
+          if (expression.matches(normalizeSearchText(`${book} ${chapter} ${verse.number} ${verse.text}`))) {
+            add({ key: bibleKey(book, chapter, verse.number), label: `${book} ${chapter}:${verse.number}`, kind: "Bible", preview: verse.text.slice(0, 110) });
+          }
+        }
+        if (sourceFull("Bible") || stopped()) break;
+      }
+      if (sourceFull("Bible") || stopped()) break;
+    }
+
+    for (const book of state.hadithBooks) {
+      if (book.source === "thaqalayn") {
+        const records = await getOfflineJSON(`hadith-search/${book.key}.json`).catch(() => []);
+        for (const item of records) {
+          const text = `${book.name} ${item.chapter || ""} ${item.text || ""} ${item.arabic || ""}`;
+          if (expression.matches(normalizeSearchText(text))) {
+            add({ key: hadithKey(book.key, item.section, item.id), label: `${book.name} · Hadith ${item.id}`, kind: "Hadith", preview: String(item.text || "").slice(0, 110) });
+          }
+          if (sourceFull("Hadith") || stopped()) break;
+        }
+      } else {
+        const sectionMap = state.hadithInfo?.[book.key]?.metadata?.sections || {};
+        const sections = Object.keys(sectionMap).map(Number).filter(Boolean).sort((a, b) => a - b);
+        for (const section of sections) {
+          const data = await getOfflineJSON(`hadith/${book.key}/section-${section}.json`).catch(() => null);
+          const arabicByNumber = new Map((data?.arabic?.hadiths || []).map((item) => [Number(item.hadithnumber), item.text]));
+          for (const item of data?.english?.hadiths || []) {
+            const text = `${book.name} ${sectionMap[section] || ""} ${item.text || ""} ${arabicByNumber.get(Number(item.hadithnumber)) || ""}`;
+            if (expression.matches(normalizeSearchText(text))) {
+              add({ key: hadithKey(book.key, section, item.hadithnumber), label: `${book.name} · Hadith ${item.hadithnumber}`, kind: "Hadith", preview: String(item.text || "").slice(0, 110) });
+            }
+            if (sourceFull("Hadith") || stopped()) break;
+          }
+          if (sourceFull("Hadith") || stopped()) break;
+        }
+      }
+      if (sourceFull("Hadith") || stopped()) break;
+    }
+  }
+  return { suggestions, truncated };
+}
+
 function renderNoteReferences() {
   els.openReferences.disabled = state.currentNoteReferences.length === 0;
-  els.openReferences.textContent = state.currentNoteReferences.length
+  const referenceLabel = state.currentNoteReferences.length
     ? `View ${state.currentNoteReferences.length} ${state.currentNoteReferences.length === 1 ? "reference" : "references"}`
     : "View references";
+  els.openReferences.innerHTML = `<i class="ti ti-books" aria-hidden="true"></i><span>${referenceLabel}</span>`;
   els.noteReferences.innerHTML = state.currentNoteReferences.length
     ? state.currentNoteReferences.map((key) => `
       <div class="reference-pill">
@@ -1729,24 +2199,33 @@ function renderNoteReferences() {
   });
 }
 
-async function showReferenceOverview() {
-  const references = [...state.currentNoteReferences];
+async function showReferenceOverview(referenceOverride = null) {
+  const references = Array.isArray(referenceOverride) ? [...new Set(referenceOverride)] : [...state.currentNoteReferences];
   if (!references.length) return;
   state.focusedVerseKey = null;
   if (els.noteSheet.open) els.noteSheet.close();
-  els.referenceOverviewSubtitle.textContent = `${references.length} ${references.length === 1 ? "reference" : "references"} from this note`;
+  els.referenceOverviewSubtitle.textContent = Array.isArray(referenceOverride)
+    ? `${references.length} shared ${references.length === 1 ? "passage" : "passages"}`
+    : `${references.length} ${references.length === 1 ? "reference" : "references"} from this note`;
   els.referenceOverviewContent.innerHTML = `<div class="status">Loading referenced verses...</div>`;
   openDialog(els.referenceOverviewSheet);
 
   const items = [];
+  const repairedReferences = [];
   for (const key of references) {
     try {
-      await ensureReferenceLoaded(key);
-      const verse = state.verses.find((item) => item.verse_key === key);
-      items.push({ key, verse });
-    } catch {
-      items.push({ key, verse: null });
+      const resolvedKey = await ensureReferenceLoaded(key);
+      const verse = state.verses.find((item) => item.verse_key === resolvedKey);
+      items.push({ key: resolvedKey, verse });
+      repairedReferences.push(resolvedKey);
+    } catch (error) {
+      items.push({ key, verse: null, error: error.message });
+      repairedReferences.push(key);
     }
+  }
+  if (!Array.isArray(referenceOverride) && repairedReferences.some((key, index) => key !== state.currentNoteReferences[index])) {
+    state.currentNoteReferences = [...new Set(repairedReferences)];
+    saveCurrentNote();
   }
 
   els.referenceOverviewContent.innerHTML = items.map(renderReferenceOverviewCard).join("");
@@ -1767,13 +2246,13 @@ async function showReferenceOverview() {
   });
 }
 
-function renderReferenceOverviewCard({ key, verse }) {
+function renderReferenceOverviewCard({ key, verse, error = "" }) {
   if (!verse) return `
     <article class="reference-overview-card">
       <strong>${escapeHTML(formatReferenceKey(key))}</strong>
-      <p>This reference could not be loaded.</p>
+      <p>${escapeHTML(error || "This reference could not be loaded.")}</p>
       <div class="reference-overview-actions">
-        <button class="text-button primary" type="button" data-continue-reference="${escapeHTML(key)}">Continue reading</button>
+        <button class="text-button primary" type="button" data-continue-reference="${escapeHTML(key)}"><i class="ti ti-book-2" aria-hidden="true"></i><span>Continue reading</span></button>
         <button class="text-button share-text-button" type="button" data-share-reference="${escapeHTML(key)}">${shareIcon()}<span>Share</span></button>
       </div>
     </article>`;
@@ -1792,8 +2271,8 @@ function renderReferenceOverviewCard({ key, verse }) {
       <div><span class="reference-language-label">English</span><p class="reference-overview-translation">${escapeHTML(translation)}</p></div>
       ${metadata ? `<div class="verse-meta reference-overview-meta">${metadata}</div>` : ""}
       <div class="reference-overview-actions">
-        <button class="text-button primary" type="button" data-continue-reference="${escapeHTML(key)}">Continue reading</button>
-        ${isQuran ? `<button class="text-button" type="button" data-tafsir-reference="${escapeHTML(key)}">Tafsir</button>` : ""}
+        <button class="text-button primary" type="button" data-continue-reference="${escapeHTML(key)}"><i class="ti ti-book-2" aria-hidden="true"></i><span>Continue reading</span></button>
+        ${isQuran ? `<button class="text-button" type="button" data-tafsir-reference="${escapeHTML(key)}"><i class="ti ti-notes" aria-hidden="true"></i><span>Tafsir</span></button>` : ""}
         <button class="text-button share-text-button" type="button" data-share-reference="${escapeHTML(key)}">${shareIcon()}<span>Share</span></button>
       </div>
     </article>`;
@@ -1873,19 +2352,34 @@ function jumpToAyah() {
 async function jumpToReference(key, behavior = "smooth", focused = true) {
   const sourceView = state.currentView;
   const sourceScrollTop = window.scrollY;
+  const keepVerseSearchFocused = document.activeElement === els.ayahSearch;
+  try {
+    key = await ensureReferenceLoaded(key);
+  } catch (error) {
+    setStatus(error.message);
+    return;
+  }
   state.focusedVerseKey = focused ? key : null;
-  await ensureReferenceLoaded(key);
   renderVerses();
-  recordLastRead(key);
   switchView("readView", false, sourceView === "readView" ? null : sourceScrollTop);
   await waitForStableLayout();
   if (focused) {
-    document.body.classList.remove("controls-manually-expanded");
-    setControlsCollapsed(true);
+    if (!keepVerseSearchFocused) {
+      document.body.classList.remove("controls-manually-expanded");
+      setControlsCollapsed(true);
+    }
     await waitForStableLayout();
     // An instant view-local jump prevents a long page scroll animation from
     // continuing after the user returns to Search or Notes.
     scrollToFocusedVerse(isLandscapeWorkspace() ? behavior : "auto");
+    if (keepVerseSearchFocused) {
+      document.body.classList.add("controls-manually-expanded");
+      controlsExpandedAt = window.scrollY;
+      previousToolbarScrollY = window.scrollY;
+      els.ayahSearch.focus({ preventScroll: true });
+      const end = els.ayahSearch.value.length;
+      els.ayahSearch.setSelectionRange?.(end, end);
+    }
   } else {
     scrollToKey(key, behavior);
   }
@@ -1919,6 +2413,7 @@ function waitForStableLayout() {
 }
 
 async function ensureReferenceLoaded(key) {
+  key = await resolveReferenceKey(key);
   const parsed = parseReferenceKey(key);
   if (parsed.type === "quran") {
     if (state.scripture !== "quran" || parsed.chapter !== state.selectedChapter) {
@@ -1926,7 +2421,7 @@ async function ensureReferenceLoaded(key) {
       renderScriptureControls();
       await loadChapter(parsed.chapter);
     }
-    return;
+    return key;
   }
 
   if (parsed.type === "hadith") {
@@ -1935,7 +2430,7 @@ async function ensureReferenceLoaded(key) {
     state.selectedHadithSection = parsed.section;
     renderScriptureControls();
     await loadHadithSection();
-    return;
+    return key;
   }
 
   state.scripture = parsed.type;
@@ -1943,6 +2438,42 @@ async function ensureReferenceLoaded(key) {
   state.selectedBibleChapter = parsed.chapter;
   renderScriptureControls();
   await loadBibleChapter();
+  return key;
+}
+
+async function resolveReferenceKey(key) {
+  const parsed = parseReferenceKey(key);
+  if (parsed.type === "note") return key;
+  if (parsed.type === "quran") {
+    const chapter = getChapter(parsed.chapter);
+    if (!chapter || parsed.verse < 1 || parsed.verse > Number(chapter.verses_count || 0)) throw new Error(`${formatReferenceKey(key)} does not exist.`);
+    return `${parsed.chapter}:${parsed.verse}`;
+  }
+  if (parsed.type === "old" || parsed.type === "new") {
+    const chapterCount = [...OLD_TESTAMENT, ...NEW_TESTAMENT].find(([name]) => name === parsed.book)?.[1] || 0;
+    if (parsed.chapter < 1 || parsed.chapter > chapterCount) throw new Error(`${parsed.label} does not exist.`);
+    const data = await getOfflineJSON(`bible/${parsed.type}-${BOOK_IDS[parsed.book]}-${parsed.chapter}.json`).catch(() => null);
+    const exists = extractBibleVerses(data?.english).some((verse) => Number(verse.number) === parsed.verse);
+    if (!exists) throw new Error(`${parsed.label} does not exist.`);
+    return bibleKey(parsed.book, parsed.chapter, parsed.verse);
+  }
+  if (parsed.type !== "hadith") return key;
+  const book = state.hadithBooks.find((item) => item.key === parsed.book);
+  if (!book) throw new Error("That hadith collection is not available in this library.");
+  if (book.source === "thaqalayn") {
+    const records = await getOfflineJSON(`hadith-search/${book.key}.json`).catch(() => []);
+    const record = records.find((item) => Number(item.id) === parsed.verse);
+    if (!record) throw new Error(`${book.name} hadith ${parsed.verse} does not exist in the bundled collection.`);
+    return hadithKey(book.key, Number(record.section), parsed.verse);
+  }
+  const sectionMap = state.hadithInfo?.[book.key]?.metadata?.sections || {};
+  const sectionIds = Object.keys(sectionMap).map(Number).filter((item) => item > 0).sort((a, b) => a - b);
+  const orderedSections = [parsed.section, ...sectionIds.filter((section) => section !== parsed.section)];
+  for (const section of orderedSections) {
+    const data = await getOfflineJSON(`hadith/${book.key}/section-${section}.json`).catch(() => null);
+    if ((data?.english?.hadiths || []).some((item) => Number(item.hadithnumber) === parsed.verse)) return hadithKey(book.key, section, parsed.verse);
+  }
+  throw new Error(`${book.name} hadith ${parsed.verse} does not exist in the bundled collection.`);
 }
 
 function scrollToKey(key, behavior = "smooth") {
@@ -1988,19 +2519,84 @@ function refreshVerse(key) {
 }
 
 function saveLastRead(key) {
+  const previousKey = localStorage.getItem("quran-reader-last-read-v1");
   recordLastRead(key);
   updateDashboard(key);
-  setStatus(`Saved ${key} as last read.`);
-  setTimeout(() => setStatus(""), 1600);
+  if (previousKey && previousKey !== key) refreshVerse(previousKey);
+  refreshVerse(key);
+  const marker = els.verses.querySelector(`[data-key="${CSS.escape(key)}"] [data-action="bookmark"]`);
+  playLastReadAnimation(marker);
+}
+
+function isLastRead(key) {
+  return localStorage.getItem("quran-reader-last-read-v1") === key;
+}
+
+function playLastReadAnimation(button) {
+  if (!button || matchMedia("(prefers-reduced-motion: reduce)").matches) return;
+  button.classList.remove("last-read-confirmed");
+  void button.offsetWidth;
+  button.classList.add("last-read-confirmed");
+  setTimeout(() => button.classList.remove("last-read-confirmed"), 900);
 }
 
 function recordLastRead(key) {
+  const updatedAt = new Date().toISOString();
   localStorage.setItem("quran-reader-last-read-v1", key);
-  if (Capacitor.isNativePlatform()) {
-    const verse = state.verses.find((item) => item.verse_key === key);
-    const text = stripHTML(verse?.translations?.[0]?.text || verse?.text || verse?.english?.text || verse?.text_uthmani || "");
-    WidgetData.setLastRead({ reference: key, label: formatReferenceKey(key), text: text.slice(0, 320) }).catch(() => {});
+  localStorage.setItem("quran-reader-last-read-updated-v1", updatedAt);
+  const ownerUid = notesSystem?.user?.uid || "__local__";
+  localStorage.setItem("quran-reader-last-read-owner-v1", ownerUid);
+  if (ownerUid === "__local__") {
+    localStorage.setItem("quran-reader-local-last-read-v1", key);
+    localStorage.setItem("quran-reader-local-last-read-updated-v1", updatedAt);
   }
+  const verse = state.verses.find((item) => item.verse_key === key);
+  const text = stripHTML(verse?.translations?.[0]?.text || verse?.text || verse?.english?.text || verse?.text_uthmani || "");
+  const payload = { reference: key, label: formatReferenceKey(key), text: text.slice(0, 320), updatedAt };
+  if (Capacitor.isNativePlatform()) WidgetData.setLastRead(payload).catch(() => {});
+  if (notesSystem?.signedIn) notesSystem.setLastRead(payload).catch((error) => setStatus(`Last read saved locally; account sync will retry. ${error.message}`));
+}
+
+function startAccountLastReadSync() {
+  if (!notesSystem?.signedIn) return;
+  notesSystem.watchLastRead(applyAccountLastRead, (error) => setStatus(`Could not sync last read: ${error.message}`));
+}
+
+function applyAccountLastRead(remote) {
+  if (!notesSystem?.signedIn) return;
+  const accountUid = notesSystem.user?.uid || "";
+  const localReference = localStorage.getItem("quran-reader-last-read-v1") || "";
+  const localUpdatedAt = localStorage.getItem("quran-reader-last-read-updated-v1") || "";
+  const localOwner = localStorage.getItem("quran-reader-last-read-owner-v1") || "";
+  const localBelongsToAccount = !localOwner || localOwner === "__local__" || localOwner === accountUid;
+  if (!remote?.reference) {
+    if (localReference && localBelongsToAccount) {
+      localStorage.setItem("quran-reader-last-read-owner-v1", accountUid);
+      notesSystem.setLastRead({ reference: localReference, label: formatReferenceKey(localReference), text: "", updatedAt: localUpdatedAt || new Date().toISOString() }).catch(() => {});
+    } else if (!localBelongsToAccount) {
+      localStorage.removeItem("quran-reader-last-read-v1");
+      updateDashboard("");
+    }
+    return;
+  }
+  if (localReference && localBelongsToAccount && Date.parse(localUpdatedAt || 0) > Date.parse(remote.updatedAt || 0)) {
+    notesSystem.setLastRead({ reference: localReference, label: formatReferenceKey(localReference), text: "", updatedAt: localUpdatedAt }).catch(() => {});
+    return;
+  }
+  const previousKey = localReference;
+  localStorage.setItem("quran-reader-last-read-v1", remote.reference);
+  localStorage.setItem("quran-reader-last-read-updated-v1", remote.updatedAt || new Date().toISOString());
+  localStorage.setItem("quran-reader-last-read-owner-v1", accountUid);
+  if (previousKey && previousKey !== remote.reference) refreshVerse(previousKey);
+  refreshVerse(remote.reference);
+  updateDashboard(remote.reference);
+  if (Capacitor.isNativePlatform()) WidgetData.setLastRead(remote).catch(() => {});
+}
+
+async function refreshAccountLastRead() {
+  if (!notesSystem?.signedIn || !navigator.onLine) return;
+  try { applyAccountLastRead(await notesSystem.getLastRead()); }
+  catch (error) { setStatus(`Last read will refresh when the connection returns. ${error.message}`); }
 }
 
 function syncSavedLastReadToWidget() {
@@ -2033,6 +2629,7 @@ async function exportNotes() {
   const payload = {
     exportedAt: new Date().toISOString(),
     notes: state.notes,
+    organizer: { folders: state.noteFolders, tagCatalog: state.tagCatalog },
   };
   const json = JSON.stringify(payload, null, 2);
   const filename = `abrahamic-books-notes-${new Date().toISOString().slice(0, 10)}.json`;
@@ -2075,14 +2672,15 @@ function openVerseCopy(key) {
 
 async function shareVerseDirect(key, button) {
   const url = makePublicLink(`?ref=${encodeURIComponent(key)}`);
-  const title = formatReferenceKey(key);
   try {
     if (Capacitor.isNativePlatform()) {
-      await Share.share({ title, text: title, url, dialogTitle: `Share ${title}` });
+      await Share.share({ text: url, dialogTitle: "Share link" });
+      showCopiedState(button, "Shared");
       return;
     }
     if (navigator.share) {
-      await navigator.share({ title, text: title, url });
+      await navigator.share({ text: url });
+      showCopiedState(button, "Shared");
       return;
     }
   } catch (error) {
@@ -2261,6 +2859,7 @@ async function connectFirebase(createAccount) {
   await runNotesAction(async () => {
     await notesSystem.connect(els.firebaseEmail.value.trim(), els.firebasePassword.value, createAccount);
     startSharedNotes();
+    startAccountLastReadSync();
     els.firebasePassword.value = "";
     updateSyncUI("synced", createAccount ? "Firebase account created and notes synced." : "Signed in and synced with Firebase.");
   });
@@ -2325,15 +2924,21 @@ function legacyCopy(url) {
   return copied;
 }
 
-function showCopiedState(button) {
+function showCopiedState(button, label = "Copied") {
   if (!button) return;
   const original = button.innerHTML;
-  button.innerHTML = `<span aria-hidden="true">✓</span><span class="copied-label">Copied</span>`;
-  button.classList.add("active");
+  const originalWidth = button.getBoundingClientRect().width;
+  button.style.setProperty("--morph-width", `${originalWidth}px`);
+  button.classList.add("active", "button-morph-success");
+  button.innerHTML = `<i class="ti ti-check" aria-hidden="true"></i><span class="copied-label">${escapeHTML(label)}</span>`;
   setTimeout(() => {
+    button.classList.add("button-morph-returning");
+    setTimeout(() => {
     button.innerHTML = original;
-    button.classList.remove("active");
-  }, 1400);
+      button.classList.remove("active", "button-morph-success", "button-morph-returning");
+      button.style.removeProperty("--morph-width");
+    }, 180);
+  }, 1250);
 }
 
 function encodeBase64Url(value) {
@@ -2362,6 +2967,18 @@ async function openSharedLink() {
   const reference = queryParams.get("ref") || hashParams.get("ref");
   if (reference) {
     await jumpToReference(reference, "auto");
+    return;
+  }
+  const resumeReference = queryParams.get("at");
+  if (resumeReference) {
+    await jumpToReference(resumeReference, "auto", false);
+    return;
+  }
+  const referenceCollection = queryParams.get("refs");
+  if (referenceCollection) {
+    const references = referenceCollection.split(",").map((item) => item.trim()).filter(Boolean).slice(0, 50);
+    if (!references.length) { setStatus("This shared passage collection is empty."); return; }
+    await showReferenceOverview(references);
     return;
   }
   const encodedNotes = hashParams.get("notes");
@@ -2411,7 +3028,14 @@ async function importNotes(event) {
   const file = event.target.files[0];
   if (!file) return;
   try {
-    await notesSystem.importBackup(await file.text());
+    const text = await file.text();
+    const backup = JSON.parse(text);
+    await notesSystem.importBackup(text);
+    if (backup.organizer && typeof backup.organizer === "object") {
+      state.noteFolders = Array.isArray(backup.organizer.folders) ? backup.organizer.folders : state.noteFolders;
+      state.tagCatalog = backup.organizer.tagCatalog && typeof backup.organizer.tagCatalog === "object" ? backup.organizer.tagCatalog : state.tagCatalog;
+      saveNotesOrganizer();
+    }
     renderVerses(); renderNotes(); setStatus("Imported notes locally.");
     setTimeout(() => setStatus(""), 1600);
   } catch { setStatus("Could not import that notes file."); }
@@ -2439,6 +3063,10 @@ function switchView(viewId, reselectedFromNav = false, currentScrollOverride = n
   }
 
   const leavingTop = currentScrollOverride ?? window.scrollY;
+  if (transition === "section") {
+    const viewOrder = ["readView", "searchView", "notesView"];
+    transition = viewOrder.indexOf(viewId) >= viewOrder.indexOf(state.currentView) ? "swipe-left" : "swipe-right";
+  }
   state.viewScrollPositions[state.currentView] = leavingTop;
   document.querySelector(`#${state.currentView}`)?.setAttribute("data-saved-scroll", String(leavingTop));
   const destinationView = document.querySelector(`#${viewId}`);
@@ -2466,6 +3094,7 @@ function switchView(viewId, reselectedFromNav = false, currentScrollOverride = n
   // scrollTo forces the newly displayed view to lay out before the browser can
   // paint it, so the user never sees an intermediate scroll position.
   window.scrollTo({ top: restoreTop, behavior: "auto" });
+  requestAnimationFrame(syncUrlState);
 }
 
 function isLandscapeWorkspace() {
@@ -2514,10 +3143,9 @@ function setupResponsiveWorkspace() {
   main.prepend(left);
   readView.after(leftDivider, rightDivider, right);
 
-  const dashboard = readView.querySelector(".reading-dashboard");
   const controls = readView.querySelector(".reader-controls");
   const quickActions = readView.querySelector(".quick-actions");
-  [dashboard, controls, quickActions].forEach((node) => {
+  [controls, quickActions].forEach((node) => {
     if (!node) return;
     const marker = document.createComment(`workspace-${node.className}`);
     node.before(marker);
@@ -2529,13 +3157,13 @@ function setupResponsiveWorkspace() {
     const active = media.matches;
     document.body.classList.toggle("landscape-workspace", active);
     if (active) {
-      [dashboard, controls, quickActions].forEach((node) => node && right.append(node));
+      [controls, quickActions].forEach((node) => node && right.append(node));
       document.querySelectorAll(".view").forEach((view) => view.classList.remove("active"));
       readView.classList.add("active");
       setWorkspaceTool(state.workspaceTool, false);
       document.body.classList.remove("controls-collapsed", "controls-manually-expanded");
     } else {
-      [dashboard, controls, quickActions].forEach((node) => node?._workspaceMarker?.after(node));
+      [controls, quickActions].forEach((node) => node?._workspaceMarker?.after(node));
       document.querySelectorAll(".view").forEach((view) => view.classList.toggle("active", view.id === state.currentView));
       document.querySelectorAll(".nav-item").forEach((button) => button.classList.toggle("active", button.dataset.view === state.currentView));
       document.body.classList.remove("workspace-left-collapsed", "workspace-right-collapsed", "workspace-tool-collapsed", "workspace-tool-manually-expanded");
@@ -2623,6 +3251,7 @@ async function runGlobalSearch() {
   const token = Date.now();
   state.searchAbort = token;
   clearSearchSelection();
+  state.searchResults = [];
 
   if (query.length < 2) {
     els.searchSummary.textContent = "Enter at least 2 characters";
@@ -2862,7 +3491,8 @@ function createLiveSearchRenderer(query, token) {
       els.searchResults.innerHTML = `<div class="live-search-grid" aria-live="polite"></div>`;
       started = true;
     }
-    const batch = queue.splice(0, 100);
+    // Keep each paint small so controls remain responsive even for common words.
+    const batch = queue.splice(0, 24);
     const grid = els.searchResults.querySelector(".live-search-grid");
     batch.forEach((result) => {
       const book = result.book || result.type;
@@ -2875,6 +3505,10 @@ function createLiveSearchRenderer(query, token) {
       group.count += 1;
       grid?.querySelector(`#search-book-${group.index} .search-book-results`)?.insertAdjacentHTML("beforeend", `
         <article class="search-result live-result" data-search-id="${escapeHTML(result.searchId)}">
+          <label class="search-check" aria-label="Select ${escapeHTML(result.title)}">
+            <input type="checkbox" ${state.selectedSearchResults.has(result.searchId) ? "checked" : ""}>
+            <span aria-hidden="true"></span>
+          </label>
           <button type="button" data-key="${escapeHTML(result.key)}" data-type="${escapeHTML(result.type)}">
             <span>${escapeHTML(result.type)}</span>
             <strong>${highlightSearchText(result.title, query)}</strong>
@@ -2889,7 +3523,9 @@ function createLiveSearchRenderer(query, token) {
   return {
     add(result) {
       count += 1;
-      queue.push({ ...result, searchId: `${result.type}:${result.key}:${count - 1}` });
+      const liveResult = { ...result, searchId: `${result.type}:${result.key}:${count - 1}` };
+      state.searchResults.push(liveResult);
+      queue.push(liveResult);
       els.searchSummary.textContent = `${count} result${count === 1 ? "" : "s"} so far for "${query}"`;
       if (!frame) frame = requestAnimationFrame(flush);
     },
@@ -3304,14 +3940,41 @@ function updateReadSelectionUI() {
   els.readSelectionBar.hidden = !state.readSelectMode;
   els.readSelectionCount.textContent = `${count} selected`;
   els.noteReadSelection.disabled = count === 0;
+  els.shareReadSelection.disabled = count === 0;
   const visible = state.focusedVerseKey
     ? state.verses.filter((verse) => verse.verse_key === state.focusedVerseKey)
     : state.verses;
   const allSelected = visible.length > 0 && visible.every((verse) => state.selectedReadVerses.has(verse.verse_key));
-  els.selectAllRead.textContent = allSelected ? "Deselect all" : "Select all";
+  els.selectAllRead.innerHTML = `<i class="ti ti-${allSelected ? "square-minus" : "checks"}" aria-hidden="true"></i><span>${allSelected ? "Deselect all" : "Select all"}</span>`;
   els.verses.querySelectorAll(".ayah-card").forEach((card) => {
     card.classList.toggle("selected", state.selectedReadVerses.has(card.dataset.key));
   });
+}
+
+async function shareReadSelection() {
+  const references = state.verses
+    .filter((verse) => state.selectedReadVerses.has(verse.verse_key))
+    .map((verse) => verse.verse_key);
+  if (!references.length) return;
+  const text = makePublicLink(`?refs=${encodeURIComponent(references.join(","))}`);
+  try {
+    if (Capacitor.isNativePlatform()) {
+      await Share.share({ text, dialogTitle: "Share selected verses" });
+      showCopiedState(els.shareReadSelection, "Shared");
+      return;
+    }
+    if (navigator.share) {
+      await navigator.share({ text });
+      showCopiedState(els.shareReadSelection, "Shared");
+      return;
+    }
+  } catch (error) {
+    if (error?.name === "AbortError") return;
+  }
+  if (await copyShareLink(text)) {
+    showCopiedState(els.shareReadSelection);
+    setStatus(`One link for ${references.length} selected verses copied.`);
+  } else window.prompt("Copy selected verse links:", text);
 }
 
 function createNoteFromReadSelection() {
@@ -3355,11 +4018,11 @@ function updateSearchSelectionUI() {
   els.searchSelectionBar.hidden = !state.searchSelectMode;
   els.toggleSearchSelect.classList.toggle("active", state.searchSelectMode);
   els.toggleSearchSelect.setAttribute("aria-pressed", String(state.searchSelectMode));
-  els.toggleSearchSelect.textContent = state.searchSelectMode ? "Done selecting" : "Select results";
+  els.toggleSearchSelect.innerHTML = `<i class="ti ti-${state.searchSelectMode ? "check" : "square-dashed"}" aria-hidden="true"></i><span>${state.searchSelectMode ? "Done selecting" : "Select results"}</span>`;
   els.searchSelectionCount.textContent = `${count} selected`;
   els.noteSearchSelection.disabled = count === 0;
   const allSelected = state.searchResults.length > 0 && state.searchResults.every((result) => state.selectedSearchResults.has(result.searchId));
-  els.selectAllSearch.textContent = allSelected ? "Deselect all" : "Select all";
+  els.selectAllSearch.innerHTML = `<i class="ti ti-${allSelected ? "square-minus" : "checks"}" aria-hidden="true"></i><span>${allSelected ? "Deselect all" : "Select all"}</span>`;
   els.searchResults.querySelectorAll(".search-result").forEach((card) => {
     const checked = state.selectedSearchResults.has(card.dataset.searchId);
     card.classList.toggle("selected", checked);
@@ -3384,6 +4047,18 @@ function createNoteFromSearchSelection() {
 }
 
 async function loadLocalState() {
+  try {
+    const organizer = JSON.parse(localStorage.getItem(STORE.notesOrganizer) || "null") || {};
+    state.noteViewMode = organizer.viewMode === "folders" ? "folders" : "flat";
+    state.selectedFolderId = typeof organizer.selectedFolderId === "string" ? organizer.selectedFolderId : "all";
+    state.noteFolders = Array.isArray(organizer.folders)
+      ? organizer.folders.filter((folder) => folder && typeof folder.id === "string" && typeof folder.name === "string")
+      : [];
+    state.tagCatalog = organizer.tagCatalog && typeof organizer.tagCatalog === "object" ? organizer.tagCatalog : {};
+  } catch {
+    state.noteFolders = [];
+    state.tagCatalog = {};
+  }
   let legacyNotes = {};
   try {
     legacyNotes = JSON.parse(localStorage.getItem(STORE.notes)) || {};
@@ -3394,6 +4069,7 @@ async function loadLocalState() {
   notesSystem = new NotesSystem({ isNative: Capacitor.isNativePlatform(), onChange: (notes) => { state.notes = notes; renderNotes(); renderVerses(); updateDashboard(); syncWidgetNotes(); } });
   state.notes = await notesSystem.init(legacyNotes);
   startSharedNotes();
+  startAccountLastReadSync();
   notesSystem.addEventListener("status", (event) => updateSyncUI(event.detail.state, event.detail.detail));
 
   let notesMigrated = false;
@@ -3510,19 +4186,10 @@ function setStatus(message) {
   els.status.textContent = message;
 }
 
-function updateDashboard(activeKey = localStorage.getItem("quran-reader-last-read-v1")) {
-  const isQuran = state.scripture === "quran";
-  const isHadith = state.scripture === "hadith";
-  const chapter = isQuran ? getChapter(state.selectedChapter) : null;
-  const hadithBook = state.hadithBooks.find((item) => item.key === state.selectedHadithBook);
-  els.dashboardSurah.textContent = isQuran ? chapter?.name_simple || "Quran" : isHadith ? hadithBook?.name || "Hadith" : state.selectedBibleBook;
-
-  const active = parseReferenceKey(activeKey || "");
-  const verseCount = chapter?.verses_count || state.verses.length || 0;
-  const activeChapter = isQuran ? state.selectedChapter : isHadith ? state.selectedHadithSection : state.selectedBibleChapter;
-  const progress = active.type === state.scripture && active.chapter === activeChapter ? active.verse : state.verses.length ? 1 : 0;
-  els.dashboardProgress.textContent = `${Math.min(progress, verseCount)} / ${verseCount}`;
-  els.dashboardNotes.textContent = String(Object.values(state.notes).filter((note) => note.title?.trim() || note.text?.trim() || note.tags?.length || note.references?.length || note.standalone).length);
+function updateDashboard() {
+  const savedKey = localStorage.getItem("quran-reader-last-read-v1");
+  els.lastReadButton.disabled = !savedKey;
+  els.lastReadButton.title = savedKey ? `Resume ${formatReferenceKey(savedKey)}` : "Mark a verse as last read first";
 }
 
 function changeArabicScale(delta) {
@@ -4097,13 +4764,21 @@ function registerServiceWorker() {
   });
 }
 
-function openDialog(dialog) {
+function openDialog(dialog, sourceButton = null, motion = "sheet") {
   if (dialog.open) return;
+  if (sourceButton && !matchMedia("(prefers-reduced-motion: reduce)").matches) {
+    sourceButton.animate(
+      [{ transform: "scale(1)" }, { transform: "scale(.92)" }, { transform: "scale(1.04)" }, { transform: "scale(1)" }],
+      { duration: 420, easing: "cubic-bezier(.16,1,.3,1)" },
+    );
+  }
+  dialog.classList.toggle("study-opening", motion === "study");
   if (typeof dialog.showModal === "function") {
     dialog.showModal();
   } else {
     dialog.setAttribute("open", "");
   }
+  dialog.addEventListener("close", () => dialog.classList.remove("study-opening"), { once: true });
   syncModalState();
 }
 

@@ -36,7 +36,7 @@ public class WidgetDataPlugin extends Plugin {
 
     private void refreshWidgets() {
         AppWidgetManager manager = AppWidgetManager.getInstance(getContext());
-        Class<?>[] providers = {DailyWidgetProvider.class, ContinueWidgetProvider.class, ShortcutsWidgetProvider.class, NotesWidgetProvider.class, QuranWidgetProvider.class, BibleWidgetProvider.class, HadithWidgetProvider.class, SearchWidgetProvider.class};
+        Class<?>[] providers = {DailyWidgetProvider.class, ContinueWidgetProvider.class, NotesWidgetProvider.class, SearchWidgetProvider.class};
         for (Class<?> provider : providers) {
             int[] ids = manager.getAppWidgetIds(new ComponentName(getContext(), provider));
             for (int id : ids) {

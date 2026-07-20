@@ -4,7 +4,10 @@ import android.app.Activity;
 import android.appwidget.AppWidgetManager;
 import android.content.Intent;
 import android.content.SharedPreferences;
+import android.content.res.ColorStateList;
+import android.graphics.Color;
 import android.os.Bundle;
+import android.graphics.Typeface;
 import android.view.ViewGroup;
 import android.widget.ArrayAdapter;
 import android.widget.Button;
@@ -22,34 +25,48 @@ public class WidgetConfigActivity extends Activity {
         widgetId = getIntent().getIntExtra(AppWidgetManager.EXTRA_APPWIDGET_ID, AppWidgetManager.INVALID_APPWIDGET_ID);
         if (widgetId == AppWidgetManager.INVALID_APPWIDGET_ID) { finish(); return; }
 
-        int padding = Math.round(24 * getResources().getDisplayMetrics().density);
+        int padding = Math.round(28 * getResources().getDisplayMetrics().density);
         LinearLayout root = new LinearLayout(this);
         root.setOrientation(LinearLayout.VERTICAL);
         root.setPadding(padding, padding, padding, padding);
+        root.setBackgroundColor(Color.rgb(247, 237, 218));
 
         TextView title = new TextView(this);
-        title.setText("Customize Abrahamic Books widget");
-        title.setTextSize(22);
+        title.setText("Abrahamic Books widget");
+        title.setTextColor(Color.rgb(23, 63, 53));
+        title.setTypeface(Typeface.create("sans-serif-medium", Typeface.BOLD));
+        title.setTextSize(26);
         title.setPadding(0, 0, 0, padding / 2);
         root.addView(title, new LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT));
 
         TextView contentLabel = new TextView(this);
         contentLabel.setText("Widget content");
+        contentLabel.setTextColor(Color.rgb(54, 89, 76));
+        contentLabel.setTextSize(15);
         root.addView(contentLabel);
         Spinner content = new Spinner(this);
+        content.setMinimumHeight(Math.round(56 * getResources().getDisplayMetrics().density));
         content.setAdapter(new ArrayAdapter<>(this, android.R.layout.simple_spinner_dropdown_item, AbrahamicWidgetProvider.MODES));
         root.addView(content, new LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT));
 
         TextView themeLabel = new TextView(this);
         themeLabel.setText("Color theme");
+        themeLabel.setTextColor(Color.rgb(54, 89, 76));
+        themeLabel.setTextSize(15);
         themeLabel.setPadding(0, padding / 2, 0, 0);
         root.addView(themeLabel);
         Spinner theme = new Spinner(this);
+        theme.setMinimumHeight(Math.round(56 * getResources().getDisplayMetrics().density));
         theme.setAdapter(new ArrayAdapter<>(this, android.R.layout.simple_spinner_dropdown_item, AbrahamicWidgetProvider.THEMES));
         root.addView(theme, new LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT));
 
         Button add = new Button(this);
         add.setText("Add widget");
+        add.setTextSize(16);
+        add.setTextColor(Color.WHITE);
+        add.setTypeface(Typeface.create("sans-serif-medium", Typeface.BOLD));
+        add.setMinHeight(Math.round(58 * getResources().getDisplayMetrics().density));
+        add.setBackgroundTintList(ColorStateList.valueOf(Color.rgb(23, 63, 53)));
         LinearLayout.LayoutParams buttonParams = new LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT);
         buttonParams.topMargin = padding;
         root.addView(add, buttonParams);

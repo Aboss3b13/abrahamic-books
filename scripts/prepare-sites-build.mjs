@@ -15,6 +15,17 @@ await writeFile(
   "dist/server/index.js",
   `export default {
   async fetch(request, env) {
+    const url = new URL(request.url);
+    const downloadName = "abrahamic-books-offline.apk";
+    if (url.pathname.endsWith(\`/downloads/\${downloadName}\`)) {
+      return Response.redirect(\`https://raw.githubusercontent.com/Aboss3b13/abrahamic-books/main/public/downloads/\${downloadName}\`, 302);
+    }
+    const offlineMarker = "/offline/";
+    const offlineIndex = url.pathname.indexOf(offlineMarker);
+    if (offlineIndex >= 0) {
+      const offlinePath = url.pathname.slice(offlineIndex + offlineMarker.length).split("/").map(encodeURIComponent).join("/");
+      return Response.redirect(\`https://raw.githubusercontent.com/Aboss3b13/abrahamic-books/main/public/offline/\${offlinePath}\`, 302);
+    }
     if (env?.ASSETS?.fetch) {
       return env.ASSETS.fetch(request);
     }
