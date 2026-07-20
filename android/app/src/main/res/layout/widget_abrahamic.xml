@@ -41,7 +41,7 @@
         android:layout_marginTop="13dp"
         android:maxLines="3"
         android:ellipsize="end"
-        android:text="Daily reading"
+        android:text="Random verse"
         android:textColor="#FFF8EA"
         android:fontFamily="sans-serif-medium"
         android:textSize="26sp"

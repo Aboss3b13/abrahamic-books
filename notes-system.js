@@ -353,6 +353,7 @@ export class NotesSystem extends EventTarget {
         .map((folder) => ({
           id: folder.id.slice(0, 120),
           name: folder.name.trim().slice(0, 60),
+          parentId: typeof folder.parentId === "string" ? folder.parentId.slice(0, 120) : "",
           createdAt: folder.createdAt || new Date().toISOString(),
         }))
         .filter((folder) => folder.id && folder.name)
@@ -522,29 +523,35 @@ export class NotesSystem extends EventTarget {
     // other accounts would itself be a cross-account privacy leak.
     const ownerUid = this.currentOwnerUid();
     const records = (await this.all()).filter((note) => (note.localOwnerUid || LOCAL_OWNER) === ownerUid);
-    if (!password) return JSON.stringify({ format: "abrahamic-books-backup-v2", exportedAt: new Date().toISOString(), notes: records }, null, 2);
+    const organizer = await this.getMeta(`organizer:${ownerUid}`) || null;
+    if (!password) return JSON.stringify({ format: "abrahamic-books-backup-v3", exportedAt: new Date().toISOString(), notes: records, organizer }, null, 2);
     const oldKey = this.key;
     await this.unlock(password);
     const items = [];
     for (const note of records) items.push(await this.encodeRecord(note));
+    const organizerItem = organizer ? await this.encodeRecord({ type: "organizer", organizer }) : "";
     this.key = oldKey;
-    return JSON.stringify({ format: "abrahamic-books-encrypted-backup-v1", salt: this.config.salt, iterations: this.config.iterations, items });
+    return JSON.stringify({ format: "abrahamic-books-encrypted-backup-v2", salt: this.config.salt, iterations: this.config.iterations, items, organizerItem });
   }
 
   async importBackup(text, password = "") {
     const backup = JSON.parse(text);
     let records = [];
-    if (backup.format === "abrahamic-books-encrypted-backup-v1") {
+    let organizer = backup.organizer && typeof backup.organizer === "object" ? backup.organizer : null;
+    if (["abrahamic-books-encrypted-backup-v1", "abrahamic-books-encrypted-backup-v2"].includes(backup.format)) {
       if (!password) throw new Error("Enter the backup password or recovery key first.");
       const oldSalt = this.config.salt, oldIterations = this.config.iterations, oldKey = this.key;
       this.config.salt = backup.salt; this.config.iterations = backup.iterations || 250000;
       await this.unlock(password);
       for (const item of backup.items || []) records.push(await this.decodeRecord(item));
+      if (backup.organizerItem) organizer = (await this.decodeRecord(backup.organizerItem))?.organizer || null;
       this.config.salt = oldSalt; this.config.iterations = oldIterations; this.key = oldKey;
     } else records = Array.isArray(backup.notes) ? backup.notes : Object.entries(backup.notes || backup).map(([key, note]) => ({ ...note, key: note.key || key }));
     for (const item of records) await this.put(this.normalize(item.key || `note:${uuid()}`, { ...item, id: uuid(), ownerUid: undefined, localOwnerUid: this.currentOwnerUid(), syncedRevision: 0, syncState: "saved locally" }), false);
+    if (organizer) await this.saveOrganizer(organizer);
     this.onChange(await this.visibleMap());
     this.scheduleSync();
+    return organizer;
   }
 
   scheduleSync(delay = 900) { clearTimeout(this.timer); this.timer = setTimeout(() => this.sync().catch(() => {}), delay); }
