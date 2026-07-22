@@ -3874,19 +3874,42 @@ a.pill-button { position: relative; isolation: isolate; }
   border-radius: 14px;
   background: color-mix(in srgb, var(--paper) 92%, var(--panel));
 }
+.note-tag-item {
+  display: inline-flex;
+  min-width: 0;
+  align-items: center;
+  padding: 2px;
+  border: 1px solid var(--line);
+  border-radius: 999px;
+  background: var(--panel);
+}
 .note-tag-choice {
   display: inline-flex;
   min-height: 38px;
   align-items: center;
   gap: 6px;
   padding: 0 11px;
-  border: 1px solid color-mix(in srgb, var(--green-2) 22%, var(--line));
+  border: 0;
   border-radius: 999px;
   color: var(--green);
   background: var(--panel);
   font-size: .75rem;
   font-weight: 850;
 }
+.note-tag-actions { display: inline-flex; align-items: center; gap: 1px; padding-right: 3px; }
+.note-tag-actions button {
+  display: grid;
+  width: 30px;
+  min-height: 30px;
+  place-items: center;
+  padding: 0;
+  border: 0;
+  border-radius: 50%;
+  color: var(--muted);
+  background: transparent;
+}
+.note-tag-actions button:hover { color: var(--green); background: color-mix(in srgb, var(--green-2) 10%, transparent); }
+.note-tag-actions button[data-delete-tag]:hover { color: var(--rose); background: color-mix(in srgb, var(--rose) 10%, transparent); }
 .note-tag-choice.active {
   border-color: var(--green);
   color: #fff;
@@ -4375,11 +4398,12 @@ a.pill-button { position: relative; isolation: isolate; }
   display: grid;
   gap: 10px;
   margin: -4px 0 14px;
-  padding: 12px;
-  border: 1px solid var(--line);
-  border-radius: 18px;
-  background: color-mix(in srgb, var(--paper) 72%, var(--panel));
-  box-shadow: 0 5px 18px color-mix(in srgb, var(--ink) 6%, transparent);
+  padding: 0 0 14px;
+  overflow: hidden;
+  border: 1px solid color-mix(in srgb, var(--ink) 14%, var(--line));
+  border-radius: 12px;
+  background: var(--panel);
+  box-shadow: 0 10px 30px color-mix(in srgb, var(--ink) 9%, transparent);
 }
 
 .note-folder-browser[hidden] { display: none; }
@@ -4390,9 +4414,12 @@ a.pill-button { position: relative; isolation: isolate; }
   align-items: center;
   justify-content: space-between;
   gap: 12px;
-  padding: 1px 2px 9px;
+  padding: 8px 10px;
   border-bottom: 1px solid var(--line);
+  background: color-mix(in srgb, var(--paper) 82%, var(--panel));
 }
+
+.note-folder-navigation { display: inline-flex; flex: 0 0 auto; align-items: center; gap: 12px; color: var(--muted); font-size: .9rem; }
 
 .note-folder-browser-heading > small {
   flex: 0 0 auto;
@@ -4405,7 +4432,14 @@ a.pill-button { position: relative; isolation: isolate; }
   display: flex;
   min-width: 0;
   align-items: center;
-  gap: 5px;
+  flex: 1 1 auto;
+  gap: 3px;
+  min-height: 38px;
+  padding: 2px 6px;
+  overflow: hidden;
+  border: 1px solid var(--line);
+  border-radius: 6px;
+  background: var(--panel);
   color: var(--muted);
   font-size: .74rem;
 }
@@ -4425,53 +4459,66 @@ a.pill-button { position: relative; isolation: isolate; }
   font-size: inherit;
   font-weight: 800;
 }
-.note-folder-path button:last-child { color: var(--ink); background: color-mix(in srgb, var(--green-2) 8%, transparent); }
+.note-folder-path button:last-child { color: var(--ink); background: transparent; }
 .note-folder-path button:hover { color: var(--green); background: color-mix(in srgb, var(--green-2) 10%, transparent); }
 .note-folder-path span { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 
 .note-folder-grid {
   display: grid;
   grid-template-columns: repeat(auto-fill, minmax(168px, 1fr));
-  gap: 8px;
+  gap: 6px;
+  padding: 12px 14px 0;
 }
 
 .note-folder-tile {
-  display: grid;
-  grid-template-columns: 38px minmax(0, 1fr) auto;
+  position: relative;
+  display: flex;
   min-width: 0;
-  min-height: 62px;
+  min-height: 68px;
   align-items: center;
-  gap: 10px;
-  padding: 9px 10px;
-  border: 1px solid var(--line);
-  border-radius: 12px;
+  padding: 4px;
+  border: 1px solid transparent;
+  border-radius: 5px;
   color: var(--ink);
-  background: var(--panel);
+  background: transparent;
   text-align: start;
-  cursor: pointer;
 }
 
-.note-folder-tile > .ti {
+.note-folder-open {
   display: grid;
-  width: 38px;
-  height: 38px;
-  place-items: center;
-  border-radius: 10px;
-  color: color-mix(in srgb, var(--gold) 82%, var(--ink));
-  background: var(--gold-soft);
-  font-size: 1.32rem;
+  grid-template-columns: 48px minmax(0, 1fr);
+  width: 100%;
+  min-width: 0;
+  min-height: 58px;
+  align-items: center;
+  gap: 9px;
+  padding: 4px 62px 4px 6px;
+  border: 0;
+  color: var(--ink);
+  background: transparent;
+  text-align: start;
 }
-.note-folder-tile > span { min-width: 0; }
-.note-folder-tile strong,
-.note-folder-tile small { display: block; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.note-folder-open > .ti {
+  display: grid;
+  width: 48px;
+  height: 48px;
+  place-items: center;
+  color: #e7a81a;
+  font-size: 2.5rem;
+  filter: drop-shadow(0 2px 1px color-mix(in srgb, #8b5d00 22%, transparent));
+}
+.note-folder-open > span { min-width: 0; }
+.note-folder-open strong,
+.note-folder-open small { display: block; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .note-folder-tile strong { font-size: .76rem; }
 .note-folder-tile small { margin-top: 2px; color: var(--muted); font-size: .66rem; }
-.note-folder-tile.active { border-color: var(--green); background: color-mix(in srgb, var(--green-2) 10%, var(--panel)); box-shadow: 0 5px 16px color-mix(in srgb, var(--green) 13%, transparent); }
-.note-folder-tile.active > .ti { color: #fff; background: var(--green); }
-.note-folder-tile:hover { border-color: color-mix(in srgb, var(--green) 55%, var(--line)); background: color-mix(in srgb, var(--green-2) 7%, var(--panel)); transform: translateY(-1px); }
+.note-folder-tile:hover { border-color: color-mix(in srgb, #2489db 42%, var(--line)); background: color-mix(in srgb, #cce8ff 42%, var(--panel)); }
 .note-folder-tile:focus-visible { outline: 3px solid color-mix(in srgb, var(--green-2) 28%, transparent); outline-offset: 2px; }
-.note-folder-tile .folder-open-arrow { width: auto; height: auto; color: var(--muted); background: transparent; font-size: .85rem; }
-.note-folder-tile.active .folder-open-arrow { color: var(--green); background: transparent; }
+.note-folder-actions { position: absolute; top: 50%; right: 7px; display: inline-flex; gap: 2px; opacity: .58; transform: translateY(-50%); }
+.note-folder-actions button { display: grid; width: 28px; min-height: 28px; place-items: center; padding: 0; border: 0; border-radius: 4px; color: var(--muted); background: var(--panel); box-shadow: 0 0 0 1px var(--line); }
+.note-folder-tile:hover .note-folder-actions, .note-folder-actions:focus-within { opacity: 1; }
+.note-folder-actions button:hover { color: #0067c0; background: color-mix(in srgb, #cce8ff 58%, var(--panel)); }
+.note-folder-actions button[data-delete-folder]:hover { color: var(--rose); background: color-mix(in srgb, var(--rose) 10%, var(--panel)); }
 
 .note-folder-empty {
   display: flex;
@@ -4552,11 +4599,16 @@ a.pill-button { position: relative; isolation: isolate; }
   .notes-view-switch { flex: 1 1 auto; }
   .notes-create-folder { width: 44px; padding: 0; justify-content: center; }
   .notes-create-folder span { display: none; }
-  .note-folder-browser { margin-inline: -2px; padding: 10px; }
+  .note-folder-browser { margin-inline: -2px; padding-bottom: 10px; }
+  .note-folder-navigation { display: none; }
+  .note-folder-browser-heading { padding: 7px; }
+  .note-folder-browser-heading > small { display: none; }
   .note-folder-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
-  .note-folder-tile { grid-template-columns: 34px minmax(0, 1fr); min-height: 58px; padding: 8px; }
-  .note-folder-tile > .ti { width: 34px; height: 34px; }
-  .note-folder-tile .folder-open-arrow { display: none; }
+  .note-folder-open { grid-template-columns: 38px minmax(0, 1fr); min-height: 58px; padding: 4px 5px; }
+  .note-folder-open > .ti { width: 38px; height: 38px; font-size: 2rem; }
+  .note-folder-actions { top: 3px; right: 3px; opacity: 1; transform: none; }
+  .note-folder-actions button { width: 25px; min-height: 25px; font-size: .78rem; }
+  .note-folder-open > span { padding-top: 22px; }
   .note-save-location-row { display: grid; grid-template-columns: 1fr; }
   .note-save-location-row .text-button { width: 100%; }
 }

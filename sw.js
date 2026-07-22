@@ -1,4 +1,4 @@
-const CACHE_VERSION = "abrahamic-books-v54";
+const CACHE_VERSION = "abrahamic-books-v55";
 const APP_CACHE = `${CACHE_VERSION}-app`;
 const DATA_CACHE = `${CACHE_VERSION}-data`;
 const APP_SHELL = [
