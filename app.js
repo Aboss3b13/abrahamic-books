@@ -83,7 +83,7 @@ const state = {
   selectedTranslations: [85],
   selectedTafsir: 169,
   selectedCommentary: "matthew-henry",
-  theme: "sepia",
+  theme: window.matchMedia?.("(prefers-color-scheme: dark)").matches ? "dark" : "light",
   width: "comfortable",
   arabicFont: "uthmani",
   translationFont: "system",
@@ -96,14 +96,14 @@ const state = {
   cardStyle: "soft",
   headerStyle: "pattern",
   customTheme: {
-    paper: "#111816",
-    paper2: "#16221f",
-    panel: "#1c2925",
-    ink: "#eef5ef",
-    muted: "#a8b8b1",
-    line: "#31433d",
-    accent: "#7ac7ad",
-    highlight: "#d2a84c",
+    paper: "#17100c",
+    paper2: "#211611",
+    panel: "#2b1e17",
+    ink: "#f8eee6",
+    muted: "#cdb7a6",
+    line: "#574033",
+    accent: "#dfa777",
+    highlight: "#f0c36a",
   },
   appLanguage: "en",
   verses: [],
@@ -4495,6 +4495,7 @@ async function loadLocalState() {
     state.selectedCommentary = typeof prefs.selectedCommentary === "string" ? prefs.selectedCommentary : state.selectedCommentary;
     state.savedSearchSources = Array.isArray(prefs.selectedSearchSources) ? prefs.selectedSearchSources : null;
     state.theme = ["light", "dark", "sepia", "midnight", "emerald", "contrast", "rose", "ocean", "graphite", "paper", "lavender", "desert", "forest", "nord", "sunset", "coffee", "slate", "aurora", "indigo", "mint", "sand", "amoled", "custom"].includes(prefs.theme) ? prefs.theme : state.theme;
+    if (state.theme === "coffee") state.theme = "dark";
     state.width = ["comfortable", "narrow", "wide"].includes(prefs.width) ? prefs.width : state.width;
     state.arabicFont = ["uthmani", "naskh", "scheherazade", "serif"].includes(prefs.arabicFont) ? prefs.arabicFont : state.arabicFont;
     state.translationFont = ["system", "serif", "humanist", "mono"].includes(prefs.translationFont) ? prefs.translationFont : state.translationFont;
@@ -4585,7 +4586,7 @@ function changeArabicScale(delta) {
 }
 
 function toggleTheme() {
-  updateReaderPref("theme", state.theme === "dark" ? "light" : "dark");
+  updateReaderPref("theme", ["dark", "coffee"].includes(state.theme) ? "light" : "dark");
 }
 
 function updateReaderPref(key, value) {
@@ -4621,10 +4622,11 @@ function applyReaderPrefs() {
     root.style.setProperty("--green-2", state.customTheme.accent);
     root.style.setProperty("--gold", state.customTheme.highlight);
     root.style.setProperty("--gold-soft", `color-mix(in srgb, ${state.customTheme.highlight} 22%, ${state.customTheme.panel})`);
+    root.style.setProperty("--on-accent", readableTextColor(state.customTheme.accent));
   } else {
-    ["--paper", "--paper-2", "--panel", "--ink", "--muted", "--line", "--green", "--green-2", "--gold", "--gold-soft"].forEach((name) => root.style.removeProperty(name));
+    ["--paper", "--paper-2", "--panel", "--ink", "--muted", "--line", "--green", "--green-2", "--gold", "--gold-soft", "--on-accent"].forEach((name) => root.style.removeProperty(name));
   }
-  const activeAccent = getComputedStyle(root).getPropertyValue("--green").trim() || "#173f35";
+  const activeAccent = getComputedStyle(root).getPropertyValue("--green").trim() || "#71452b";
   document.querySelector('meta[name="theme-color"]')?.setAttribute("content", activeAccent);
 
   els.themeSelect.value = state.theme;
@@ -4648,7 +4650,7 @@ function applyReaderPrefs() {
   els.customAccent.value = state.customTheme.accent;
   els.customHighlight.value = state.customTheme.highlight;
   els.customThemeControls.hidden = state.theme !== "custom";
-  els.themeButton.querySelector("strong").textContent = state.theme === "dark" ? "Light mode" : "Dark mode";
+  els.themeButton.querySelector("strong").textContent = ["dark", "coffee"].includes(state.theme) ? "Coffee Light" : "Coffee Dark";
   els.settingsSummary.textContent = `${capitalize(state.theme)} · ${capitalize(state.arabicFont)} Arabic · ${capitalize(state.translationFont)} translation`;
   els.appLanguageSelect.value = state.appLanguage;
   applyAppLanguage();
@@ -4820,6 +4822,15 @@ function syncModalState() {
 
 function clampNumber(value, min, max) {
   return Math.min(Math.max(value, min), max);
+}
+
+function readableTextColor(value) {
+  const hex = String(value || "").trim().replace(/^#/, "");
+  if (!/^[\da-f]{6}$/i.test(hex)) return "#ffffff";
+  const channels = [0, 2, 4].map((offset) => parseInt(hex.slice(offset, offset + 2), 16) / 255)
+    .map((channel) => channel <= 0.03928 ? channel / 12.92 : ((channel + 0.055) / 1.055) ** 2.4);
+  const luminance = channels[0] * 0.2126 + channels[1] * 0.7152 + channels[2] * 0.0722;
+  return luminance > 0.42 ? "#21150f" : "#ffffff";
 }
 
 function getBibleBooks() {

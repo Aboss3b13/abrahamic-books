@@ -12,49 +12,52 @@
 
 :root {
   color-scheme: light;
-  --ink: #17231f;
-  --muted: #65736d;
-  --paper: #fbfaf6;
-  --paper-2: #f3f6f0;
-  --panel: #ffffff;
-  --line: #dfe5df;
-  --green: #173f35;
-  --green-2: #236251;
+  --ink: #2d1c14;
+  --muted: #705b4d;
+  --paper: #f7f0e8;
+  --paper-2: #eaded1;
+  --panel: #fffaf5;
+  --line: #d8c5b4;
+  --green: #71452b;
+  --green-2: #8b5a39;
   --accent: var(--green-2);
   --highlight: var(--gold);
-  --teal: #1f6f78;
-  --gold: #b0822f;
-  --gold-soft: #fff4d7;
-  --rose: #9f3f4d;
+  --teal: #526f68;
+  --gold: #98651d;
+  --gold-soft: #f2dfbd;
+  --rose: #9d3c47;
+  --on-accent: #ffffff;
   --arabic-scale: 1;
   --translation-scale: 1;
   --line-scale: 1;
   --reader-width: 780px;
   --arabic-font: "Amiri Quran", "Scheherazade New", "Noto Naskh Arabic", serif;
   --translation-font: Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
-  --shadow: 0 18px 44px rgba(28, 41, 35, 0.12);
-  --soft-shadow: 0 8px 24px rgba(28, 41, 35, 0.07);
+  --shadow: 0 18px 44px rgba(74, 45, 28, 0.14);
+  --soft-shadow: 0 8px 24px rgba(74, 45, 28, 0.09);
   --topbar-height: 96px;
   --workspace-left-width: 25vw;
   --workspace-right-width: 15vw;
 }
 
-:root[data-theme="dark"] {
+:root[data-theme="dark"],
+:root[data-theme="coffee"] {
   color-scheme: dark;
-  --ink: #eef5ef;
-  --muted: #a8b8b1;
-  --paper: #111816;
-  --paper-2: #16221f;
-  --panel: #1c2925;
-  --line: #31433d;
-  --green: #62b399;
-  --green-2: #7ac7ad;
-  --teal: #64bdc8;
-  --gold: #d2a84c;
-  --gold-soft: #382f1b;
-  --rose: #ef8b98;
-  --shadow: 0 18px 44px rgba(0, 0, 0, 0.35);
-  --soft-shadow: 0 8px 24px rgba(0, 0, 0, 0.24);
+  --ink: #f8eee6;
+  --muted: #cdb7a6;
+  --paper: #17100c;
+  --paper-2: #211611;
+  --panel: #2b1e17;
+  --line: #574033;
+  --green: #dfa777;
+  --green-2: #efc098;
+  --teal: #9cc3b8;
+  --gold: #f0c36a;
+  --gold-soft: #493718;
+  --rose: #ff9d9c;
+  --on-accent: #26150d;
+  --shadow: 0 20px 48px rgba(0, 0, 0, 0.52);
+  --soft-shadow: 0 9px 26px rgba(0, 0, 0, 0.32);
 }
 
 :root[data-theme="sepia"] {
@@ -87,6 +90,7 @@
   --gold: #f0bf5d;
   --gold-soft: #332a17;
   --rose: #ff8aa3;
+  --on-accent: #07101f;
 }
 
 :root[data-theme="emerald"] {
@@ -117,6 +121,7 @@
   --gold: #ffd400;
   --gold-soft: #2b2400;
   --rose: #ff5c8a;
+  --on-accent: #000000;
 }
 
 :root[data-theme="rose"] {
@@ -146,6 +151,7 @@
   --teal: #6dc3ff;
   --gold: #ffd166;
   --gold-soft: #3c321b;
+  --on-accent: #04181e;
 }
 
 :root[data-theme="graphite"] {
@@ -161,6 +167,7 @@
   --teal: #b5b5b5;
   --gold: #d6b85f;
   --gold-soft: #393224;
+  --on-accent: #121212;
 }
 
 :root[data-theme="paper"] {
@@ -197,6 +204,7 @@
   --panel: #1b3324; --line: #35513e; --green: #78c091; --green-2: #9bd3a9;
   --teal: #76b9ad; --gold: #e0b65e; --gold-soft: #3a321d; --rose: #e98b8b;
   --shadow: 0 18px 44px rgba(0,0,0,.38); --soft-shadow: 0 8px 24px rgba(0,0,0,.26);
+  --on-accent: #0c2114;
 }
 
 :root[data-theme="nord"] {
@@ -205,6 +213,7 @@
   --panel: #343b49; --line: #4c566a; --green: #88c0d0; --green-2: #8fbcbb;
   --teal: #81a1c1; --gold: #ebcb8b; --gold-soft: #4a4537; --rose: #bf7d89;
   --shadow: 0 18px 44px rgba(10,12,17,.4); --soft-shadow: 0 8px 24px rgba(10,12,17,.28);
+  --on-accent: #18202a;
 }
 
 :root[data-theme="sunset"] {
@@ -214,20 +223,13 @@
   --teal: #77708c; --gold: #b36d25; --gold-soft: #f9ddb6; --rose: #b23d64;
 }
 
-:root[data-theme="coffee"] {
-  color-scheme: dark;
-  --ink: #f4eadf; --muted: #c6ad99; --paper: #1d1511; --paper-2: #2a1f19;
-  --panel: #35271f; --line: #594437; --green: #c69872; --green-2: #deb18b;
-  --teal: #9bb5ad; --gold: #e1b55f; --gold-soft: #49391f; --rose: #dd8d87;
-  --shadow: 0 18px 44px rgba(0,0,0,.42); --soft-shadow: 0 8px 24px rgba(0,0,0,.28);
-}
-
 :root[data-theme="slate"] {
   color-scheme: dark;
   --ink: #edf2f7; --muted: #aab8c5; --paper: #111820; --paper-2: #19232e;
   --panel: #202d39; --line: #384a59; --green: #70b7a2; --green-2: #8ccbb8;
   --teal: #70a9c5; --gold: #d9b568; --gold-soft: #3d351f; --rose: #dd8799;
   --shadow: 0 18px 44px rgba(0,0,0,.38); --soft-shadow: 0 8px 24px rgba(0,0,0,.25);
+  --on-accent: #0d1b19;
 }
 
 :root[data-theme="aurora"] {
@@ -236,6 +238,7 @@
   --panel: #12363b; --line: #28565a; --green: #55d6a8; --green-2: #77e7bd;
   --teal: #62cfe2; --gold: #f0c96b; --gold-soft: #3b361f; --rose: #ec8ca9;
   --shadow: 0 18px 44px rgba(0,0,0,.4); --soft-shadow: 0 8px 24px rgba(0,0,0,.26);
+  --on-accent: #052019;
 }
 
 :root[data-theme="indigo"] {
@@ -244,6 +247,7 @@
   --panel: #23264a; --line: #414675; --green: #9fa8ff; --green-2: #bbc1ff;
   --teal: #7ed3df; --gold: #e8bf67; --gold-soft: #3f351f; --rose: #ed91b1;
   --shadow: 0 18px 44px rgba(0,0,0,.4); --soft-shadow: 0 8px 24px rgba(0,0,0,.26);
+  --on-accent: #14162d;
 }
 
 :root[data-theme="mint"] {
@@ -266,6 +270,7 @@
   --panel: #0b0e0d; --line: #29302d; --green: #67c7a4; --green-2: #82dbba;
   --teal: #64c8d2; --gold: #e4bc60; --gold-soft: #29230f; --rose: #e8879b;
   --shadow: 0 18px 44px rgba(0,0,0,.7); --soft-shadow: 0 8px 24px rgba(0,0,0,.55);
+  --on-accent: #07130e;
 }
 
 :root[data-width="narrow"] {
@@ -571,12 +576,12 @@ main {
   display: none;
 }
 
-.focused-verse-bar span,
+.focused-verse-bar > div > span,
 .focused-verse-bar strong {
   display: block;
 }
 
-.focused-verse-bar span {
+.focused-verse-bar > div > span {
   margin-bottom: 3px;
   color: var(--muted);
   font-size: 0.68rem;
@@ -678,7 +683,7 @@ textarea:focus {
 }
 
 .text-button.active {
-  color: #fff;
+  color: var(--on-accent);
   background: var(--green);
   border-color: var(--green);
 }
@@ -723,7 +728,7 @@ button:disabled {
 }
 
 .text-button.primary {
-  color: #fff;
+  color: var(--on-accent);
   background: var(--green);
   border-color: var(--green);
 }
@@ -856,7 +861,7 @@ body.controls-collapsed .view-toolbar::after {
   flex: 0 0 auto;
   padding: 7px 10px;
   border-radius: 999px;
-  color: #fff;
+  color: var(--on-accent);
   background: linear-gradient(135deg, var(--green), var(--teal));
   font-size: 0.7rem;
   font-weight: 900;
@@ -1061,7 +1066,7 @@ body.controls-collapsed .view-toolbar .notes-header p {
 
 .verses.selecting .ayah-card.selected .verse-selection-check {
   border-color: var(--green);
-  color: #fff;
+  color: var(--on-accent);
   background: var(--green);
 }
 
@@ -1112,7 +1117,7 @@ body.controls-collapsed .view-toolbar .notes-header p {
   padding: 0;
   border: 2px solid var(--line);
   border-radius: 8px;
-  color: #fff;
+  color: var(--on-accent);
   background: var(--panel);
 }
 
@@ -1201,7 +1206,7 @@ body.controls-collapsed .search-book-index {
 }
 
 .search-book-index button.active {
-  color: #fff;
+  color: var(--on-accent);
   border-color: var(--green);
   background: var(--green);
 }
@@ -1386,7 +1391,7 @@ body.controls-collapsed .search-book-index {
 }
 
 .mini-button.active {
-  color: #fff;
+  color: var(--on-accent);
   background: var(--green-2);
   border-color: var(--green-2);
 }
@@ -1617,7 +1622,7 @@ body.controls-collapsed .search-book-index {
 }
 
 .nav-item.active {
-  color: #fff;
+  color: var(--on-accent);
   background: linear-gradient(135deg, var(--green), color-mix(in srgb, var(--green) 70%, var(--teal)));
   border-color: var(--green);
   box-shadow: 0 6px 16px color-mix(in srgb, var(--green) 25%, transparent);
@@ -1815,7 +1820,7 @@ body.controls-collapsed .search-book-index {
   width: 42px;
   height: 42px;
   border-radius: 13px;
-  color: #fff;
+  color: var(--on-accent);
   background: linear-gradient(135deg, var(--green), var(--teal));
   box-shadow: 0 8px 20px color-mix(in srgb, var(--green) 24%, transparent);
   font-family: Georgia, serif;
@@ -1891,7 +1896,7 @@ body.controls-collapsed .search-book-index {
   width: 42px;
   height: 42px;
   border-radius: 12px;
-  color: #fff;
+  color: var(--on-accent);
   background: linear-gradient(135deg, var(--green), var(--teal));
   font-size: 1.35rem;
   font-weight: 900;
@@ -2001,7 +2006,7 @@ body.controls-collapsed .search-book-index {
 }
 
 .source-option input:checked + .source-checkmark {
-  color: #fff;
+  color: var(--on-accent);
   border-color: var(--green);
   background: var(--green);
 }
@@ -2155,7 +2160,7 @@ body.controls-collapsed .search-book-index {
   background: var(--panel);
   box-shadow: 0 5px 14px color-mix(in srgb, var(--ink) 12%, transparent);
 }
-.note-select input:checked + span { border-color: var(--green); color: #fff; background: var(--green); }
+.note-select input:checked + span { border-color: var(--green); color: var(--on-accent); background: var(--green); }
 .note-select input:checked + span::after { content: "✓"; font-size: .9rem; font-weight: 950; }
 .notes-list.selecting .note-card-main { padding-right: 38px; }
 @keyframes content-enter { from { opacity: 0; transform: translateY(14px) scale(.985); } to { opacity: 1; transform: translateY(0) scale(1); } }
@@ -2391,7 +2396,7 @@ html[dir="rtl"] .note-select { right: auto; left: 12px; }
 }
 
 .tag-chip.active {
-  color: #fff;
+  color: var(--on-accent);
   background: var(--green);
   border-color: var(--green);
 }
@@ -2669,7 +2674,7 @@ html[dir="rtl"] .note-select { right: auto; left: 12px; }
     background: transparent;
     font-weight: 850;
   }
-  body.landscape-workspace .workspace-tabs button.active { color: #fff; background: var(--green); }
+  body.landscape-workspace .workspace-tabs button.active { color: var(--on-accent); background: var(--green); }
   body.landscape-workspace .workspace-collapse {
     width: 34px; height: 34px; flex: 0 0 34px;
     border: 1px solid var(--line); border-radius: 50%;
@@ -2724,7 +2729,7 @@ html[dir="rtl"] .note-select { right: auto; left: 12px; }
     flex: 0 0 auto;
     padding: 7px 10px;
     border-radius: 999px;
-    color: #fff;
+    color: var(--on-accent);
     background: linear-gradient(135deg, var(--green), var(--teal));
     font-size: .7rem;
     font-weight: 900;
@@ -2785,7 +2790,7 @@ html[dir="rtl"] .note-select { right: auto; left: 12px; }
     width: 34px;
     padding: 10px 6px;
     border: 1px solid var(--line);
-    color: #fff;
+    color: var(--on-accent);
     background: var(--green);
     box-shadow: var(--soft-shadow);
     font-size: 0.7rem;
@@ -3269,7 +3274,7 @@ html[dir="rtl"] .note-select { right: auto; left: 12px; }
 }
 
 .notes-filter-row .tag-chip.active {
-  color: #fff;
+  color: var(--on-accent);
   border-color: var(--green);
   background: var(--green);
 }
@@ -3749,7 +3754,7 @@ a.pill-button { position: relative; isolation: isolate; }
 
 .last-read-marker { width: auto; min-width: 96px; padding: 0 11px; display: inline-flex; align-items: center; justify-content: center; gap: 6px; color: color-mix(in srgb, var(--gold) 78%, var(--ink)); border-color: color-mix(in srgb, var(--gold) 30%, var(--line)); background: color-mix(in srgb, var(--gold-soft) 48%, var(--panel)); overflow: visible; }
 .last-read-marker span { font-size: .68rem; font-weight: 900; white-space: nowrap; }
-.last-read-marker.active { color: #fff; border-color: var(--green); background: linear-gradient(135deg, var(--green), var(--teal)); box-shadow: 0 7px 18px color-mix(in srgb, var(--green) 28%, transparent); }
+.last-read-marker.active { color: var(--on-accent); border-color: var(--green); background: linear-gradient(135deg, var(--green), var(--teal)); box-shadow: 0 7px 18px color-mix(in srgb, var(--green) 28%, transparent); }
 .last-read-marker.last-read-confirmed { animation: bookmark-confirm 760ms cubic-bezier(.16,1,.3,1); }
 
 @keyframes bookmark-confirm { 0% { transform: scale(1); } 28% { transform: scale(.84) rotate(-3deg); } 62% { transform: scale(1.18) rotate(2deg); box-shadow: 0 0 0 8px color-mix(in srgb, var(--gold) 20%, transparent), 0 14px 32px color-mix(in srgb, var(--green) 30%, transparent); } 100% { transform: scale(1); } }
@@ -3773,7 +3778,7 @@ a.pill-button { position: relative; isolation: isolate; }
 
 /* Buttons animate through their own shape and content; no tap ripples. */
 .button-morph-success {
-  color: #fff !important;
+  color: var(--on-accent) !important;
   border-color: var(--green-2) !important;
   background: linear-gradient(135deg, var(--green), var(--teal)) !important;
   box-shadow: 0 10px 26px color-mix(in srgb, var(--green) 28%, transparent) !important;
@@ -3854,7 +3859,7 @@ a.pill-button { position: relative; isolation: isolate; }
   height: 38px;
   flex: 0 0 38px;
   border-radius: 12px;
-  color: #fff;
+  color: var(--on-accent);
   background: linear-gradient(135deg, var(--green), var(--teal));
   box-shadow: 0 8px 18px color-mix(in srgb, var(--green) 22%, transparent);
 }
@@ -3912,7 +3917,7 @@ a.pill-button { position: relative; isolation: isolate; }
 .note-tag-actions button[data-delete-tag]:hover { color: var(--rose); background: color-mix(in srgb, var(--rose) 10%, transparent); }
 .note-tag-choice.active {
   border-color: var(--green);
-  color: #fff;
+  color: var(--on-accent);
   background: linear-gradient(135deg, var(--green), color-mix(in srgb, var(--green) 74%, var(--teal)));
   box-shadow: 0 7px 16px color-mix(in srgb, var(--green) 20%, transparent);
 }
@@ -4387,7 +4392,7 @@ a.pill-button { position: relative; isolation: isolate; }
 }
 
 .notes-view-switch button.active {
-  color: #fff;
+  color: var(--on-accent);
   background: var(--green);
   box-shadow: 0 6px 16px color-mix(in srgb, var(--green) 20%, transparent);
 }
@@ -4754,6 +4759,140 @@ a.pill-button { position: relative; isolation: isolate; }
 .note-transfer-folder > .ti:last-child { color: var(--muted); }
 .note-transfer-folder:hover { transform: translateX(3px); border-color: var(--green-2); box-shadow: 0 9px 22px color-mix(in srgb, var(--green) 10%, transparent); }
 .note-transfer-folders.working { opacity: .55; pointer-events: none; }
+
+/* Coffee-led color polish and contrast safeguards. */
+::selection { color: var(--on-accent); background: var(--green); }
+
+input::placeholder,
+textarea::placeholder {
+  color: color-mix(in srgb, var(--muted) 88%, transparent);
+  opacity: 1;
+}
+
+select,
+input,
+textarea { caret-color: var(--green); }
+
+select option {
+  color: var(--ink);
+  background: var(--panel);
+}
+
+button:focus-visible,
+a:focus-visible,
+input:focus-visible,
+select:focus-visible,
+textarea:focus-visible {
+  outline: 3px solid color-mix(in srgb, var(--green-2) 38%, transparent);
+  outline-offset: 2px;
+}
+
+.topbar {
+  background:
+    linear-gradient(122deg, #352116 0%, #5c3823 54%, #3f514b 100%),
+    url("./assets/geometric-header.webp") center / cover;
+  box-shadow: 0 10px 32px rgba(35, 18, 10, .28);
+}
+
+:root[data-theme="dark"] .topbar,
+:root[data-theme="coffee"] .topbar {
+  background:
+    linear-gradient(122deg, #21130d 0%, #43291b 56%, #30423d 100%),
+    url("./assets/geometric-header.webp") center / cover;
+  border-bottom-color: color-mix(in srgb, var(--green) 22%, var(--line));
+}
+
+.focused-verse-bar {
+  border-color: color-mix(in srgb, var(--green-2) 46%, var(--line));
+  background: linear-gradient(135deg, color-mix(in srgb, var(--green-2) 14%, var(--panel)), color-mix(in srgb, var(--gold-soft) 20%, var(--panel)));
+  box-shadow: var(--soft-shadow);
+}
+
+.focused-verse-bar #continueReading,
+.focused-verse-bar #continueReading span {
+  color: var(--on-accent);
+}
+
+.privacy-icon,
+.section-heading > span,
+.share-number { color: var(--on-accent); }
+
+#notesView .notes-toolbar {
+  border-color: color-mix(in srgb, var(--green-2) 30%, var(--line));
+  background: linear-gradient(145deg, color-mix(in srgb, var(--gold-soft) 18%, var(--paper)), color-mix(in srgb, var(--green-2) 5%, var(--paper)) 58%, var(--paper));
+  box-shadow: 0 12px 34px color-mix(in srgb, var(--ink) 10%, transparent);
+}
+
+#notesView .notes-discovery-zone {
+  border-color: color-mix(in srgb, var(--green-2) 28%, var(--line));
+  background: color-mix(in srgb, var(--panel) 88%, var(--gold-soft));
+}
+
+#notesView .notes-search-wrap .wide-search {
+  border-color: color-mix(in srgb, var(--green-2) 20%, var(--line));
+  box-shadow: inset 0 1px 0 color-mix(in srgb, white 26%, transparent);
+}
+
+#notesView .note-card {
+  border-color: color-mix(in srgb, var(--green-2) 25%, var(--line));
+  border-radius: 16px;
+  background: linear-gradient(145deg, color-mix(in srgb, var(--gold-soft) 10%, var(--panel)), var(--panel) 44%, color-mix(in srgb, var(--green-2) 4%, var(--panel)));
+  box-shadow: 0 8px 24px color-mix(in srgb, var(--ink) 9%, transparent);
+}
+
+#notesView .note-card::before,
+#notesView .note-card::after {
+  inset: 0 auto 0 0;
+  background: linear-gradient(180deg, var(--gold), var(--green-2));
+}
+
+#notesView .note-card:hover {
+  border-color: color-mix(in srgb, var(--green-2) 58%, var(--line));
+  box-shadow: 0 15px 38px color-mix(in srgb, var(--ink) 14%, transparent);
+  transform: translateY(-2px);
+}
+
+#notesView .note-card-icon {
+  color: color-mix(in srgb, var(--gold) 76%, var(--ink));
+  background: linear-gradient(145deg, color-mix(in srgb, var(--gold-soft) 80%, var(--panel)), color-mix(in srgb, var(--green-2) 8%, var(--panel)));
+  box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--gold) 22%, var(--line));
+}
+
+#notesView .note-tags span {
+  border: 1px solid color-mix(in srgb, var(--gold) 28%, var(--line));
+  color: color-mix(in srgb, var(--gold) 72%, var(--ink));
+  background: color-mix(in srgb, var(--gold-soft) 58%, var(--panel));
+}
+
+#notesView .reference-link {
+  color: var(--ink);
+  background: color-mix(in srgb, var(--gold-soft) 64%, var(--panel));
+}
+
+.note-sheet .sheet-inner {
+  border: 1px solid color-mix(in srgb, var(--green-2) 28%, var(--line));
+  background: linear-gradient(155deg, color-mix(in srgb, var(--gold-soft) 12%, var(--paper)), var(--paper) 45%);
+  box-shadow: 0 28px 80px rgba(20, 10, 5, .42);
+}
+
+.note-editor-section {
+  border-color: color-mix(in srgb, var(--green-2) 25%, var(--line));
+  background: color-mix(in srgb, var(--panel) 90%, var(--gold-soft));
+}
+
+.note-tag-choice.active small {
+  color: color-mix(in srgb, var(--on-accent) 78%, transparent);
+}
+
+.note-folder-tile:hover {
+  border-color: color-mix(in srgb, var(--green-2) 52%, var(--line));
+  background: color-mix(in srgb, var(--green-2) 12%, var(--panel));
+}
+
+.note-folder-actions button:hover {
+  color: var(--green);
+  background: color-mix(in srgb, var(--green-2) 14%, var(--panel));
+}
 
 @keyframes selection-bar-enter {
   from { opacity: 0; transform: translateY(-8px) scale(.985); clip-path: inset(0 8% 0 8% round 15px); }
