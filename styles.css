@@ -4918,3 +4918,163 @@ textarea:focus-visible {
   .selection-bar > div::-webkit-scrollbar { display: none; }
   .selection-bar .text-button { flex: 0 0 auto; width: auto; }
 }
+
+/* Fast, quiet motion: short compositor transitions and no repeated card entrances. */
+.verses {
+  transition: opacity 150ms ease, transform 180ms cubic-bezier(.2,.8,.2,1);
+}
+
+.verses.is-loading {
+  opacity: .62;
+  transform: scale(.998);
+  pointer-events: none;
+}
+
+.note-card,
+.search-result,
+.shared-notes-locked { animation: none; }
+
+button,
+a,
+input,
+select,
+textarea,
+.note-card,
+.ayah-card,
+.settings-shortcut,
+.resource-row {
+  transition-duration: 160ms;
+}
+
+dialog[open] .sheet-inner { animation-duration: 240ms; }
+dialog::backdrop { animation-duration: 180ms; }
+.view.active.view-enter.swipe-left,
+.view.active.view-enter.swipe-right { animation-duration: 240ms; }
+.live-search-status { animation: none; }
+.search-empty > span { animation: none; }
+.topbar { animation-duration: 360ms; }
+
+@media (hover: none) {
+  .note-card:hover,
+  .ayah-card:hover,
+  .settings-shortcut:hover,
+  .resource-row:hover { transform: none; }
+}
+
+/* Download state is explicit, persistent, and manageable. */
+.resource-download {
+  display: inline-flex;
+  width: auto;
+  min-width: 104px;
+  min-height: 38px;
+  align-items: center;
+  justify-content: center;
+  gap: 7px;
+  padding: 0 11px;
+  border-radius: 10px;
+  white-space: nowrap;
+}
+
+.resource-download span { font-size: .7rem; font-weight: 900; }
+.resource-actions { display: inline-flex; align-items: center; gap: 6px; }
+.resource-status {
+  display: inline-flex;
+  min-height: 36px;
+  align-items: center;
+  gap: 6px;
+  padding: 0 10px;
+  border: 1px solid color-mix(in srgb, var(--green-2) 34%, var(--line));
+  border-radius: 10px;
+  color: var(--green);
+  background: color-mix(in srgb, var(--green-2) 10%, var(--panel));
+  font-size: .68rem;
+  font-weight: 900;
+  white-space: nowrap;
+}
+
+.resource-status.included {
+  color: color-mix(in srgb, var(--gold) 74%, var(--ink));
+  border-color: color-mix(in srgb, var(--gold) 32%, var(--line));
+  background: color-mix(in srgb, var(--gold-soft) 56%, var(--panel));
+}
+
+.resource-delete {
+  display: grid;
+  width: 36px;
+  min-height: 36px;
+  place-items: center;
+  padding: 0;
+  border: 1px solid var(--line);
+  border-radius: 10px;
+  color: var(--rose);
+  background: var(--panel);
+}
+
+.resource-delete:hover {
+  border-color: color-mix(in srgb, var(--rose) 48%, var(--line));
+  background: color-mix(in srgb, var(--rose) 9%, var(--panel));
+}
+
+/* Settings read as a composed control panel rather than a long form. */
+.settings-sheet { width: min(calc(100% - 18px), 880px); }
+.settings-sheet .sheet-inner {
+  padding: clamp(14px, 2vw, 22px);
+  background: linear-gradient(155deg, color-mix(in srgb, var(--gold-soft) 9%, var(--paper)), var(--paper) 34%);
+}
+
+.settings-sheet .sheet-header {
+  top: calc(-1 * clamp(14px, 2vw, 22px));
+  margin: calc(-1 * clamp(14px, 2vw, 22px)) calc(-1 * clamp(14px, 2vw, 22px)) 4px;
+  padding: clamp(14px, 2vw, 22px);
+  background: color-mix(in srgb, var(--paper) 92%, transparent);
+}
+
+.settings-title-icon {
+  width: 46px;
+  height: 46px;
+  border-radius: 15px;
+}
+
+.settings-actions { gap: 10px; }
+.settings-shortcut {
+  min-height: 72px;
+  border-radius: 16px;
+  background: linear-gradient(145deg, color-mix(in srgb, var(--green-2) 5%, var(--panel)), var(--panel));
+}
+
+.settings-grid > .field,
+.settings-grid > .range-field,
+.settings-grid > .check-field,
+.color-field {
+  border-color: color-mix(in srgb, var(--green-2) 16%, var(--line));
+  background: color-mix(in srgb, var(--panel) 94%, var(--gold-soft));
+}
+
+.settings-section-label {
+  margin-top: 12px;
+  padding: 12px 4px 8px;
+  border-bottom-color: color-mix(in srgb, var(--green-2) 24%, var(--line));
+}
+
+.settings-section-label span { font-size: .9rem; }
+.settings-download-card {
+  padding: 14px;
+  border-radius: 17px;
+  background: linear-gradient(135deg, color-mix(in srgb, var(--green-2) 14%, var(--panel)), color-mix(in srgb, var(--gold-soft) 22%, var(--panel)));
+}
+
+@media (min-width: 720px) {
+  .settings-actions { grid-template-columns: repeat(4, minmax(0, 1fr)); }
+  .settings-shortcut { grid-template-columns: 40px minmax(0, 1fr) 16px; }
+}
+
+@media (max-width: 520px) {
+  .resource-row { grid-template-columns: 22px minmax(0, 1fr); }
+  .resource-list.compact .resource-row { grid-template-columns: minmax(0, 1fr); }
+  .resource-row > .resource-download,
+  .resource-row > .resource-actions,
+  .resource-row > .resource-status { grid-column: 2; justify-self: start; }
+  .resource-list.compact .resource-row > .resource-download,
+  .resource-list.compact .resource-row > .resource-actions,
+  .resource-list.compact .resource-row > .resource-status { grid-column: 1; }
+}

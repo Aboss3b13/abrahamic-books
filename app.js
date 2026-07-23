@@ -21,6 +21,9 @@ const STORE = {
 };
 const PUBLIC_APP_URL = "https://abbas2.ali-raza.net/AbrahamicBooks/";
 let notesSystem;
+let readerLoadToken = 0;
+const offlineJsonCache = new Map();
+const downloadedStoreCache = new Map();
 const NotesFiles = registerPlugin("NotesFiles");
 const WidgetData = registerPlugin("WidgetData");
 
@@ -424,6 +427,7 @@ function bindEvents() {
   bindRenderedSearchResults();
   if ("ResizeObserver" in window) new ResizeObserver(syncStickyOffset).observe(els.topbar);
   window.addEventListener("resize", syncStickyOffset, { passive: true });
+  window.addEventListener("storage", (event) => { if (event.key) downloadedStoreCache.delete(event.key); });
   window.addEventListener("wheel", markScrollIntent, { passive: true });
   window.addEventListener("touchstart", markScrollIntent, { passive: true });
   window.addEventListener("pointerdown", markScrollIntent, { passive: true });
@@ -499,7 +503,7 @@ function bindEvents() {
     openNotesSyncSettings();
   });
   els.tafsirButton.addEventListener("click", () => openDialog(state.scripture === "quran" ? els.tafsirSheet : els.commentarySheet, els.tafsirButton));
-  els.commentarySearch.addEventListener("input", renderCommentaryList);
+  els.commentarySearch.addEventListener("input", debounceInput(renderCommentaryList));
   els.lastReadButton.addEventListener("click", restoreLastRead);
   els.copyOriginalOnly.addEventListener("click", () => applyVerseCopyPreset("original"));
   els.copyTranslationOnly.addEventListener("click", () => applyVerseCopyPreset("translation"));
@@ -529,8 +533,8 @@ function bindEvents() {
   [els.customPaper, els.customPaper2, els.customPanel, els.customInk, els.customMuted, els.customLine, els.customAccent, els.customHighlight].forEach((input) => {
     input.addEventListener("input", updateCustomTheme);
   });
-  els.translationSearch.addEventListener("input", renderTranslationList);
-  els.tafsirSearch.addEventListener("input", renderTafsirList);
+  els.translationSearch.addEventListener("input", debounceInput(renderTranslationList));
+  els.tafsirSearch.addEventListener("input", debounceInput(renderTafsirList));
   els.noteEditor.addEventListener("input", saveCurrentNote);
   els.noteName.addEventListener("input", saveCurrentNote);
   els.noteTags.addEventListener("input", saveCurrentNote);
@@ -558,7 +562,7 @@ function bindEvents() {
   els.notesFlatMode.addEventListener("click", () => setNotesViewMode("flat"));
   els.notesFolderMode.addEventListener("click", () => setNotesViewMode("folders"));
   els.createNoteFolder.addEventListener("click", () => createNoteFolder(false));
-  els.notesSearch.addEventListener("input", renderNotes);
+  els.notesSearch.addEventListener("input", debounceInput(() => renderNotes({ animate: false }), 70));
   els.notesSearchHelpButton.addEventListener("click", () => {
     const open = els.notesSearchHelp.hidden;
     els.notesSearchHelp.hidden = !open;
@@ -685,6 +689,10 @@ function bindEvents() {
   document.querySelectorAll("dialog").forEach((dialog) => {
     dialog.addEventListener("close", syncModalState);
     dialog.addEventListener("cancel", syncModalState);
+  });
+  els.noteSheet.addEventListener("close", () => {
+    if (state.currentNoteKey) refreshVerse(state.currentNoteKey);
+    renderNotes({ animate: false });
   });
 
   els.verses.addEventListener("click", (event) => {
@@ -989,9 +997,9 @@ function setControlsCollapsed(collapsed, compensateScroll = true) {
       { height: `${startHeight}px`, opacity: collapsed ? 1 : .86 },
       { height: `${endHeight}px`, opacity: 1 },
     ],
-    { duration: 420, easing: "cubic-bezier(.16,1,.3,1)" },
+    { duration: 220, easing: "cubic-bezier(.2,.8,.2,1)" },
   );
-  viewSwitchingUntil = performance.now() + 500;
+  viewSwitchingUntil = performance.now() + 260;
   controlsMotion.addEventListener("finish", () => {
     toolbar.classList.remove("toolbar-in-motion");
     controlsMotion = null;
@@ -1021,6 +1029,20 @@ function stabilizeToolbarAnchor(anchor) {
   requestAnimationFrame(keep);
 }
 
+function beginReaderLoad(message) {
+  const token = ++readerLoadToken;
+  setStatus(message);
+  els.verses.classList.add("is-loading");
+  els.verses.setAttribute("aria-busy", "true");
+  return token;
+}
+
+function finishReaderLoad(token) {
+  if (token !== readerLoadToken) return;
+  els.verses.classList.remove("is-loading");
+  els.verses.removeAttribute("aria-busy");
+}
+
 async function loadChapter(chapterNumber) {
   state.scripture = "quran";
   state.selectedChapter = chapterNumber;
@@ -1028,22 +1050,22 @@ async function loadChapter(chapterNumber) {
   savePrefs();
   updateChapterHeader();
   updateDashboard();
-  setStatus("Loading ayat...");
-  els.verses.innerHTML = "";
+  const loadToken = beginReaderLoad("Loading ayat...");
 
   try {
     const ids = state.selectedTranslations.join(",");
     const data = shouldUseOfflineQuran(ids)
       ? await getOfflineJSON(`quran/chapter-${chapterNumber}.json`).catch(() => getJSON(`${API}/verses/by_chapter/${chapterNumber}?language=en&words=true&translations=${ids}&per_page=300&word_fields=text_uthmani,translation,transliteration`))
       : await getJSON(`${API}/verses/by_chapter/${chapterNumber}?language=en&words=true&translations=${ids}&per_page=300&word_fields=text_uthmani,translation,transliteration`);
+    if (loadToken !== readerLoadToken) return;
     state.verses = data.verses || [];
 
     renderVerses();
     updateDashboard();
     setStatus("");
   } catch (error) {
-    setStatus(`Could not load this surah. ${error.message}`);
-  }
+    if (loadToken === readerLoadToken) setStatus(`Could not load this surah. ${error.message}`);
+  } finally { finishReaderLoad(loadToken); }
 }
 
 async function loadCurrentScripture() {
@@ -1062,8 +1084,7 @@ async function loadBibleChapter() {
   const bookId = BOOK_IDS[book];
   savePrefs();
   updateBibleHeader();
-  setStatus(`Loading ${book} ${chapter}...`);
-  els.verses.innerHTML = "";
+  const loadToken = beginReaderLoad(`Loading ${book} ${chapter}...`);
 
   try {
     const originalTranslation = state.scripture === "old" ? "hbo_wlc" : "grc_sbl";
@@ -1074,6 +1095,7 @@ async function loadBibleChapter() {
           getJSON(`https://bible.helloao.org/api/eng_web/${bookId}/${chapter}.json`),
           getJSON(`https://bible.helloao.org/api/${originalTranslation}/${bookId}/${chapter}.json`).catch(() => null),
         ]);
+    if (loadToken !== readerLoadToken) return;
     const originalByVerse = new Map(extractBibleVerses(originalData).map((verse) => [verse.number, verse.text]));
     state.verses = extractBibleVerses(englishData).map((verse) => ({
       scripture: state.scripture,
@@ -1091,8 +1113,8 @@ async function loadBibleChapter() {
     updateDashboard();
     setStatus("");
   } catch (error) {
-    setStatus(`Could not load ${book} ${chapter}. ${error.message}`);
-  }
+    if (loadToken === readerLoadToken) setStatus(`Could not load ${book} ${chapter}. ${error.message}`);
+  } finally { finishReaderLoad(loadToken); }
 }
 
 function renderScriptureControls() {
@@ -1185,12 +1207,11 @@ async function loadHadithSection() {
   savePrefs();
   els.chapterTitle.textContent = info?.name || "Hadith";
   els.chapterMeta.textContent = `Hadith · ${info?.tradition || "Available public collections"} · Section ${section}`;
-  setStatus(`Loading ${info?.name || book}, section ${section}...`);
-  els.verses.innerHTML = "";
+  const loadToken = beginReaderLoad(`Loading ${info?.name || book}, section ${section}...`);
 
   try {
     if (info?.source === "thaqalayn") {
-      await loadThaqalaynHadithSection(info, section);
+      await loadThaqalaynHadithSection(info, section, loadToken);
       return;
     }
     const bundled = await getOfflineJSON(`hadith/${book}/section-${section}.json`).catch(() => null);
@@ -1200,6 +1221,7 @@ async function loadHadithSection() {
           getJSON(`https://cdn.jsdelivr.net/gh/fawazahmed0/hadith-api@1/editions/eng-${book}/sections/${section}.min.json`),
           getJSON(`https://cdn.jsdelivr.net/gh/fawazahmed0/hadith-api@1/editions/ara-${book}/sections/${section}.min.json`).catch(() => null),
         ]);
+    if (loadToken !== readerLoadToken) return;
     const arabicByNumber = new Map((araData?.hadiths || []).map((item) => [Number(item.hadithnumber), item.text]));
     const sectionName = engData.metadata?.section?.[String(section)] || `Section ${section}`;
     state.verses = (engData.hadiths || []).map((item) => ({
@@ -1220,11 +1242,11 @@ async function loadHadithSection() {
     updateDashboard();
     setStatus("");
   } catch (error) {
-    setStatus(`Could not load this hadith section. ${error.message}`);
-  }
+    if (loadToken === readerLoadToken) setStatus(`Could not load this hadith section. ${error.message}`);
+  } finally { finishReaderLoad(loadToken); }
 }
 
-async function loadThaqalaynHadithSection(info, section) {
+async function loadThaqalaynHadithSection(info, section, loadToken = readerLoadToken) {
   const ranges = buildHadithRanges(info);
   const selected = ranges.find((item) => item.id === section) || ranges[0];
   if (!selected) throw new Error("No hadith range is available for this collection.");
@@ -1234,6 +1256,7 @@ async function loadThaqalaynHadithSection(info, section) {
   const records = bundled?.records || await Promise.all(
     ids.map((id) => getJSON(`https://www.thaqalayn-api.net/api/v2/${info.apiId}/${id}`).catch(() => null))
   );
+  if (loadToken !== readerLoadToken) return;
   state.verses = records.filter(Boolean).map((item) => ({
     scripture: "hadith",
     verse_key: hadithKey(info.key, section, item.id),
@@ -1319,6 +1342,7 @@ function renderVerse(verse) {
   const note = noteData ? noteData.text?.trim() : "";
   const isQuran = !verse.scripture || verse.scripture === "quran";
   const isHadith = verse.scripture === "hadith";
+  const lastRead = isLastRead(verse.verse_key);
   const tags = noteData?.tags || [];
   const verseTranslations = verse.translations || [];
   const translations = verseTranslations.length
@@ -1335,7 +1359,7 @@ function renderVerse(verse) {
           <button class="mini-button" type="button" data-action="copy" aria-label="Copy ${escapeHTML(displayKey(verse))}" title="Copy verse"><i class="ti ti-copy" aria-hidden="true"></i></button>
           <button class="mini-button share-mini-button" type="button" data-action="share" aria-label="Share ${escapeHTML(displayKey(verse))}" title="Share verse">${shareIcon()}</button>
           ${isQuran ? `<button class="mini-button" type="button" data-action="tafsir" aria-label="Tafsir for ${verse.verse_key}">≡</button>` : !isHadith ? `<button class="mini-button" type="button" data-action="commentary" aria-label="Commentary for ${escapeHTML(displayKey(verse))}">≡</button>` : ""}
-          <button class="mini-button last-read-marker ${isLastRead(verse.verse_key) ? "active" : ""}" type="button" data-action="bookmark" aria-label="Mark ${escapeHTML(displayKey(verse))} as last read" title="Mark as last read"><i class="ti ti-bookmark${isLastRead(verse.verse_key) ? "-filled" : ""}" aria-hidden="true"></i><span>Last read</span></button>
+          <button class="mini-button last-read-marker ${lastRead ? "active" : ""}" type="button" data-action="bookmark" aria-label="Mark ${escapeHTML(displayKey(verse))} as last read" title="Mark as last read"><i class="ti ti-bookmark${lastRead ? "-filled" : ""}" aria-hidden="true"></i><span>Last read</span></button>
         </div>
       </div>
       ${isQuran ? `${state.showArabic ? `<div class="arabic" lang="ar" dir="rtl">${renderArabicWords(verse)}</div>` : ""}<div class="translations">${translations}</div>` : `${state.showOriginalBible && verse.originalText ? `<div class="original-scripture" dir="${verse.scripture === "old" || isHadith ? "rtl" : "ltr"}">${isHadith ? escapeHTML(verse.originalText) : renderOriginalWords(verse)}</div>` : ""}<div class="scripture-text">${escapeHTML(verse.text || "")}</div>`}
@@ -1420,6 +1444,40 @@ function renderResourceLists() {
   renderCommentaryList();
 }
 
+function resourceDownloadState(type, id) {
+  const value = String(id);
+  const included = type === "translation"
+    ? (state.offlineManifest?.quran?.translationIds || [OFFLINE.defaultTranslation]).map(String).includes(value)
+    : type === "tafsir"
+      ? (state.offlineManifest?.tafsir?.ids || [OFFLINE.defaultTafsir]).map(String).includes(value)
+      : value === "matthew-henry";
+  const storeKey = type === "translation" ? STORE.downloadedTranslations : type === "tafsir" ? STORE.downloadedTafsirs : STORE.downloadedCommentaries;
+  return { included, downloaded: included || readDownloaded(storeKey).map(String).includes(value) };
+}
+
+function renderResourceAction(type, id) {
+  const status = resourceDownloadState(type, id);
+  if (status.included) return `<span class="resource-status included"><i class="ti ti-package" aria-hidden="true"></i><span>Included</span></span>`;
+  if (status.downloaded) return `<span class="resource-actions"><span class="resource-status"><i class="ti ti-circle-check-filled" aria-hidden="true"></i><span>Downloaded</span></span><button class="resource-delete" type="button" data-resource-delete="${type}" data-resource-id="${escapeHTML(id)}" aria-label="Delete downloaded resource" title="Delete download"><i class="ti ti-trash" aria-hidden="true"></i></button></span>`;
+  return `<button class="resource-download" type="button" data-resource-download="${type}" data-resource-id="${escapeHTML(id)}" aria-label="Download resource"><i class="ti ti-download" aria-hidden="true"></i><span>Download</span></button>`;
+}
+
+function bindResourceActions(container) {
+  container.querySelectorAll("[data-resource-download]").forEach((button) => button.addEventListener("click", (event) => {
+    event.preventDefault();
+    event.stopPropagation();
+    const { resourceDownload: type, resourceId: id } = button.dataset;
+    if (type === "translation") downloadTranslation(Number(id), button);
+    else if (type === "tafsir") downloadTafsir(Number(id), button);
+    else downloadCommentary(id, button);
+  }));
+  container.querySelectorAll("[data-resource-delete]").forEach((button) => button.addEventListener("click", (event) => {
+    event.preventDefault();
+    event.stopPropagation();
+    deleteDownloadedResource(button.dataset.resourceDelete, button.dataset.resourceId);
+  }));
+}
+
 function renderTranslationList() {
   const query = els.translationSearch.value.trim().toLowerCase();
   const selected = new Set(state.selectedTranslations);
@@ -1432,7 +1490,7 @@ function renderTranslationList() {
         <strong>${escapeHTML(item.name)}</strong>
         <span>${escapeHTML(item.language_name)} · ${escapeHTML(item.author_name || "Unknown author")}</span>
       </span>
-      <button class="resource-download" type="button" data-download-id="${item.id}" aria-label="Download ${escapeHTML(item.name)}"><i class="ti ti-download" aria-hidden="true"></i></button>
+      ${renderResourceAction("translation", item.id)}
     </label>
   `).join("");
 
@@ -1449,9 +1507,7 @@ function renderTranslationList() {
       loadChapter(state.selectedChapter);
     });
   });
-  els.translationList.querySelectorAll("[data-download-id]").forEach((button) => button.addEventListener("click", (event) => {
-    event.preventDefault(); event.stopPropagation(); downloadTranslation(Number(button.dataset.downloadId), button);
-  }));
+  bindResourceActions(els.translationList);
 }
 
 async function downloadTranslation(id, button) {
@@ -1460,7 +1516,7 @@ async function downloadTranslation(id, button) {
   button.disabled = true;
   try {
     for (let chapter = 1; chapter <= 114; chapter += 1) {
-      button.textContent = `${chapter}%`;
+      button.textContent = `${Math.round(chapter / 114 * 100)}%`;
       const url = `${API}/verses/by_chapter/${chapter}?language=en&words=true&translations=${id}&per_page=300&word_fields=text_uthmani,translation,transliteration`;
       const response = await fetch(url);
       if (!response.ok) throw new Error(`Download stopped at surah ${chapter}.`);
@@ -1468,8 +1524,8 @@ async function downloadTranslation(id, button) {
     }
     rememberDownloaded(STORE.downloadedTranslations, id);
     refreshSearchSources();
-    button.innerHTML = '<i class="ti ti-check" aria-hidden="true"></i>'; setStatus("Translation downloaded — it is now available in Search.");
-  } catch (error) { button.innerHTML = '<i class="ti ti-download" aria-hidden="true"></i>'; setStatus(error.message); }
+    renderTranslationList(); setStatus("Translation downloaded — it is now available in Search.");
+  } catch (error) { renderTranslationList(); setStatus(error.message); }
   finally { button.disabled = false; }
 }
 
@@ -1478,7 +1534,7 @@ async function downloadTafsir(id, button) {
   const cache = await caches.open("abrahamic-quran-resources-v1"); button.disabled = true;
   try {
     for (let chapter = 1; chapter <= 114; chapter += 1) {
-      button.textContent = `${chapter}%`; const rows = [];
+      button.textContent = `${Math.round(chapter / 114 * 100)}%`; const rows = [];
       for (let page = 1; ; page += 1) {
         const data = await getJSON(`${API}/tafsirs/${id}/by_chapter/${chapter}?per_page=50&page=${page}`);
         rows.push(...(data.tafsirs || [])); if (!data.pagination?.next_page) break;
@@ -1487,8 +1543,8 @@ async function downloadTafsir(id, button) {
     }
     rememberDownloaded(STORE.downloadedTafsirs, id);
     refreshSearchSources();
-    button.innerHTML = '<i class="ti ti-check" aria-hidden="true"></i>'; setStatus("Tafsir downloaded — it is now available in Search.");
-  } catch (error) { button.innerHTML = '<i class="ti ti-download" aria-hidden="true"></i>'; setStatus(`Tafsir download failed: ${error.message}`); }
+    renderTafsirList(); setStatus("Tafsir downloaded — it is now available in Search.");
+  } catch (error) { renderTafsirList(); setStatus(`Tafsir download failed: ${error.message}`); }
   finally { button.disabled = false; }
 }
 
@@ -1504,8 +1560,8 @@ async function downloadCommentary(id, button) {
     }
     rememberDownloaded(STORE.downloadedCommentaries, id);
     refreshSearchSources();
-    button.innerHTML = '<i class="ti ti-check" aria-hidden="true"></i>'; setStatus("Commentary downloaded — it is now available in Search.");
-  } catch (error) { button.innerHTML = '<i class="ti ti-download" aria-hidden="true"></i>'; setStatus(`Commentary download failed: ${error.message}`); }
+    renderCommentaryList(); setStatus("Commentary downloaded — it is now available in Search.");
+  } catch (error) { renderCommentaryList(); setStatus(`Commentary download failed: ${error.message}`); }
   finally { button.disabled = false; }
 }
 
@@ -1513,7 +1569,7 @@ function renderTafsirList() {
   const query = els.tafsirSearch.value.trim().toLowerCase();
   const filtered = state.tafsirs.filter((item) => resourceMatches(item, query));
 
-  els.tafsirList.innerHTML = filtered.map((item) => `<div class="resource-row ${item.id === state.selectedTafsir ? "active" : ""}"><button class="resource-choice" type="button" data-id="${item.id}"><strong>${escapeHTML(item.name)}</strong><span>${escapeHTML(item.language_name)} · ${escapeHTML(item.author_name || "Unknown author")}</span></button><button class="resource-download" type="button" data-tafsir-download="${item.id}" aria-label="Download ${escapeHTML(item.name)}"><i class="ti ti-download" aria-hidden="true"></i></button></div>`).join("");
+  els.tafsirList.innerHTML = filtered.map((item) => `<div class="resource-row ${item.id === state.selectedTafsir ? "active" : ""}"><button class="resource-choice" type="button" data-id="${item.id}"><strong>${escapeHTML(item.name)}</strong><span>${escapeHTML(item.language_name)} · ${escapeHTML(item.author_name || "Unknown author")}</span></button>${renderResourceAction("tafsir", item.id)}</div>`).join("");
 
   els.tafsirList.querySelectorAll("button[data-id]").forEach((button) => {
     button.addEventListener("click", () => {
@@ -1523,15 +1579,15 @@ function renderTafsirList() {
       renderTafsirList();
     });
   });
-  els.tafsirList.querySelectorAll("[data-tafsir-download]").forEach((button) => button.addEventListener("click", () => downloadTafsir(Number(button.dataset.tafsirDownload), button)));
+  bindResourceActions(els.tafsirList);
 }
 
 function renderCommentaryList() {
   const query = els.commentarySearch.value.trim().toLowerCase();
   const items = state.commentaries.filter((item) => `${item.name} ${item.languageName || ""}`.toLowerCase().includes(query));
-  els.commentaryList.innerHTML = items.map((item) => `<div class="resource-row ${item.id === state.selectedCommentary ? "active" : ""}"><button class="resource-choice" type="button" data-commentary-id="${escapeHTML(item.id)}"><strong>${escapeHTML(item.name)}</strong><span>${escapeHTML(item.languageName || "English")} · ${item.numberOfBooks || 0} books${item.id === "matthew-henry" ? " · Included" : ""}</span></button><button class="resource-download" type="button" data-commentary-download="${escapeHTML(item.id)}" aria-label="Download ${escapeHTML(item.name)}"><i class="ti ti-download" aria-hidden="true"></i></button></div>`).join("");
+  els.commentaryList.innerHTML = items.map((item) => `<div class="resource-row ${item.id === state.selectedCommentary ? "active" : ""}"><button class="resource-choice" type="button" data-commentary-id="${escapeHTML(item.id)}"><strong>${escapeHTML(item.name)}</strong><span>${escapeHTML(item.languageName || "English")} · ${item.numberOfBooks || 0} books</span></button>${renderResourceAction("commentary", item.id)}</div>`).join("");
   els.commentaryList.querySelectorAll("[data-commentary-id]").forEach((button) => button.addEventListener("click", () => { state.selectedCommentary = button.dataset.commentaryId; savePrefs(); renderCommentaryList(); updateCommentarySummary(); }));
-  els.commentaryList.querySelectorAll("[data-commentary-download]").forEach((button) => button.addEventListener("click", () => downloadCommentary(button.dataset.commentaryDownload, button)));
+  bindResourceActions(els.commentaryList);
 }
 
 function updateCommentarySummary() { const item = state.commentaries.find((entry) => entry.id === state.selectedCommentary); els.commentarySummary.textContent = item ? `${item.name} · ${item.languageName || "English"}` : "Choose a commentary"; }
@@ -1602,7 +1658,6 @@ function saveCurrentNote() {
     Object.assign(shared, { title, text, tags, folderId, references: state.currentNoteReferences, updatedAt: new Date().toISOString() });
     clearTimeout(saveCurrentNote.sharedTimer);
     saveCurrentNote.sharedTimer = setTimeout(() => notesSystem.updateSharedNote(id, { title, text, tags, folderId, references: state.currentNoteReferences }).catch((error) => setStatus(error.message)), 450);
-    renderNotes();
     return;
   }
 
@@ -1612,9 +1667,12 @@ function saveCurrentNote() {
     delete state.notes[key];
   }
 
-  saveNotes();
-  refreshVerse(key);
-  renderNotes();
+  clearTimeout(saveCurrentNote.localTimer);
+  saveCurrentNote.localTimer = setTimeout(() => {
+    const note = state.notes[key];
+    if (!note) return;
+    notesSystem?.save(key, note).then((saved) => { state.notes[key] = saved; }).catch((error) => updateSyncUI("conflict", error.message));
+  }, 280);
 }
 
 async function deleteCurrentNote() {
@@ -1788,7 +1846,7 @@ function renderNotes({ animate = true } = {}) {
   els.notesList.classList.toggle("selecting", state.noteSelectMode);
   els.notesList.classList.toggle("notes-sync-update", !animate);
   els.notesList.innerHTML = entries.length
-    ? entries.map(([key, note]) => {
+    ? entries.map(([key, note], noteIndex) => {
         const tags = note.tags || [];
         const refs = note.references || [];
         const referencesExpanded = state.expandedNoteReferences.has(key);
@@ -1797,7 +1855,7 @@ function renderNotes({ animate = true } = {}) {
         const folderName = state.noteFolders.find((folder) => folder.id === note.folderId)?.name || "";
         const visibility = state.notesSection === "shared" ? "Shared" : "Private";
         return `
-          <article class="note-card ${state.selectedNotes.has(key) ? "selected" : ""} ${referencesExpanded ? "references-expanded" : ""}" data-note-key="${escapeHTML(key)}" style="--note-order:${Math.min(8, entries.findIndex(([entryKey]) => entryKey === key))}">
+          <article class="note-card ${state.selectedNotes.has(key) ? "selected" : ""} ${referencesExpanded ? "references-expanded" : ""}" data-note-key="${escapeHTML(key)}" style="--note-order:${Math.min(8, noteIndex)}">
             ${state.noteSelectMode ? `<label class="note-select"><input type="checkbox" data-select-key="${escapeHTML(key)}" ${state.selectedNotes.has(key) ? "checked" : ""}><span aria-hidden="true"></span></label>` : ""}
             <button class="note-card-main" type="button" data-key="${escapeHTML(key)}">
               <span class="note-card-heading"><span class="note-card-title"><span class="note-card-icon"><i class="ti ti-notes" aria-hidden="true"></i></span><strong>${escapeHTML(note.title?.trim() || "Untitled note")}</strong></span><time>${escapeHTML(updatedLabel)}</time></span>
@@ -3420,7 +3478,7 @@ function switchView(viewId, reselectedFromNav = false, currentScrollOverride = n
 
   // Finish all destination work while it is still hidden. This keeps a swipe to
   // one visual update instead of revealing the view and then reflowing it.
-  if (viewId === "notesView") renderNotes();
+  if (viewId === "notesView" && !els.notesList.childElementCount) renderNotes({ animate: false });
   document.body.classList.remove("controls-collapsed", "controls-manually-expanded");
   state.currentView = viewId;
   previousToolbarScrollY = restoreTop;
@@ -3433,7 +3491,7 @@ function switchView(viewId, reselectedFromNav = false, currentScrollOverride = n
   destinationView?.classList.add("view-enter", transition);
   const finishTransition = () => destinationView?.classList.remove("view-enter", "section", "swipe-left", "swipe-right");
   destinationView?.addEventListener("animationend", finishTransition, { once: true });
-  setTimeout(finishTransition, 440);
+  setTimeout(finishTransition, 300);
   document.querySelectorAll(".nav-item").forEach((button) => button.classList.toggle("active", button.dataset.view === viewId));
 
   // scrollTo forces the newly displayed view to lay out before the browser can
@@ -4092,10 +4150,14 @@ function getSearchSourceGroups() {
 }
 
 function readDownloaded(key) {
+  if (downloadedStoreCache.has(key)) return downloadedStoreCache.get(key);
   try {
     const value = JSON.parse(localStorage.getItem(key) || "[]");
-    return Array.isArray(value) ? value : [];
+    const result = Array.isArray(value) ? value : [];
+    downloadedStoreCache.set(key, result);
+    return result;
   } catch {
+    downloadedStoreCache.set(key, []);
     return [];
   }
 }
@@ -4103,11 +4165,49 @@ function readDownloaded(key) {
 function rememberDownloaded(key, id) {
   const values = new Set(readDownloaded(key).map(String));
   values.add(String(id));
-  localStorage.setItem(key, JSON.stringify([...values]));
+  const result = [...values];
+  downloadedStoreCache.set(key, result);
+  localStorage.setItem(key, JSON.stringify(result));
+}
+
+function forgetDownloaded(key, id) {
+  const value = String(id);
+  const result = readDownloaded(key).map(String).filter((item) => item !== value);
+  downloadedStoreCache.set(key, result);
+  localStorage.setItem(key, JSON.stringify(result));
+}
+
+async function deleteDownloadedResource(type, id) {
+  const labels = { translation: "translation", tafsir: "tafsir", commentary: "commentary" };
+  if (!labels[type] || !window.confirm(`Delete this downloaded ${labels[type]}? The built-in library will not be affected.`)) return;
+  const cacheName = type === "commentary" ? "abrahamic-bible-commentaries-v1" : "abrahamic-quran-resources-v1";
+  const storeKey = type === "translation" ? STORE.downloadedTranslations : type === "tafsir" ? STORE.downloadedTafsirs : STORE.downloadedCommentaries;
+  try {
+    const cache = await caches.open(cacheName);
+    const keys = await cache.keys();
+    const value = String(id);
+    const matches = keys.filter((request) => {
+      const url = new URL(request.url);
+      if (type === "translation") return String(url.searchParams.get("translations") || "").split(",").includes(value);
+      if (type === "tafsir") return url.pathname.includes(`/offline-downloads/tafsir/${encodeURIComponent(value)}/`);
+      return url.pathname.includes(`/api/c/${encodeURIComponent(value)}/`);
+    });
+    await Promise.all(matches.map((request) => cache.delete(request)));
+    forgetDownloaded(storeKey, value);
+    const sourceId = type === "translation" ? `translation:${value}` : type === "tafsir" ? `tafsir:${value}` : `commentary:${value}`;
+    state.selectedSearchSources.delete(sourceId);
+    refreshSearchSources();
+    if (type === "translation") renderTranslationList();
+    else if (type === "tafsir") renderTafsirList();
+    else renderCommentaryList();
+    setStatus(`Downloaded ${labels[type]} deleted. ${matches.length} cached ${matches.length === 1 ? "file" : "files"} removed.`);
+  } catch (error) { setStatus(`Could not delete the download: ${error.message}`); }
 }
 
 function refreshSearchSources() {
   const available = getSearchSourceGroups().flatMap((group) => group.items.map((item) => item.id));
+  const availableSet = new Set(available);
+  state.selectedSearchSources = new Set([...state.selectedSearchSources].filter((id) => availableSet.has(id)));
   available.forEach((id) => state.selectedSearchSources.add(id));
   savePrefs();
   renderSearchSourceFilters();
@@ -4406,15 +4506,17 @@ function noteRenderSignature(notes) {
 }
 
 function applySyncedNotes(notes) {
+  const previousNotes = state.notes;
   const changed = noteRenderSignature(state.notes) !== noteRenderSignature(notes);
   state.notes = notes;
   if (!changed) return;
+  const changedKeys = new Set([...Object.keys(previousNotes || {}), ...Object.keys(notes || {})].filter((key) => JSON.stringify(previousNotes?.[key] || null) !== JSON.stringify(notes?.[key] || null)));
 
   const visibleCard = [...els.notesList.querySelectorAll(".note-card[data-note-key]")]
     .find((card) => card.getBoundingClientRect().bottom > (els.topbar?.getBoundingClientRect().bottom || 0));
   const anchor = visibleCard ? { key: visibleCard.dataset.noteKey, top: visibleCard.getBoundingClientRect().top } : null;
   renderNotes({ animate: false });
-  renderVerses();
+  changedKeys.forEach(refreshVerse);
   updateDashboard();
   syncWidgetNotes();
   if (anchor) requestAnimationFrame(() => {
@@ -4650,7 +4752,7 @@ function applyReaderPrefs() {
   els.customAccent.value = state.customTheme.accent;
   els.customHighlight.value = state.customTheme.highlight;
   els.customThemeControls.hidden = state.theme !== "custom";
-  els.themeButton.querySelector("strong").textContent = ["dark", "coffee"].includes(state.theme) ? "Coffee Light" : "Coffee Dark";
+  els.themeButton.querySelector("strong").textContent = ["dark", "coffee"].includes(state.theme) ? "Light mode" : "Dark mode";
   els.settingsSummary.textContent = `${capitalize(state.theme)} · ${capitalize(state.arabicFont)} Arabic · ${capitalize(state.translationFont)} translation`;
   els.appLanguageSelect.value = state.appLanguage;
   applyAppLanguage();
@@ -4822,6 +4924,14 @@ function syncModalState() {
 
 function clampNumber(value, min, max) {
   return Math.min(Math.max(value, min), max);
+}
+
+function debounceInput(callback, delay = 90) {
+  let timer = 0;
+  return (...args) => {
+    clearTimeout(timer);
+    timer = window.setTimeout(() => callback(...args), delay);
+  };
 }
 
 function readableTextColor(value) {
@@ -5132,9 +5242,20 @@ async function getJSON(url) {
 }
 
 async function getOfflineJSON(path) {
-  const response = await fetch(`${OFFLINE.base}/${path}`);
-  if (!response.ok) throw new Error(`Offline data missing: ${path}`);
-  return response.json();
+  if (offlineJsonCache.has(path)) {
+    const cached = offlineJsonCache.get(path);
+    offlineJsonCache.delete(path);
+    offlineJsonCache.set(path, cached);
+    return cached;
+  }
+  const pending = fetch(`${OFFLINE.base}/${path}`).then((response) => {
+    if (!response.ok) throw new Error(`Offline data missing: ${path}`);
+    return response.json();
+  });
+  offlineJsonCache.set(path, pending);
+  while (offlineJsonCache.size > 16) offlineJsonCache.delete(offlineJsonCache.keys().next().value);
+  try { return await pending; }
+  catch (error) { offlineJsonCache.delete(path); throw error; }
 }
 
 function shouldUseOfflineQuran(ids) {
@@ -5165,8 +5286,8 @@ function openDialog(dialog, sourceButton = null, motion = "sheet") {
   if (dialog.open) return;
   if (sourceButton && !matchMedia("(prefers-reduced-motion: reduce)").matches) {
     sourceButton.animate(
-      [{ transform: "scale(1)" }, { transform: "scale(.92)" }, { transform: "scale(1.04)" }, { transform: "scale(1)" }],
-      { duration: 420, easing: "cubic-bezier(.16,1,.3,1)" },
+      [{ transform: "scale(1)" }, { transform: "scale(.96)" }, { transform: "scale(1)" }],
+      { duration: 200, easing: "cubic-bezier(.2,.8,.2,1)" },
     );
   }
   dialog.classList.toggle("study-opening", motion === "study");
@@ -5189,6 +5310,7 @@ function escapeHTML(value) {
 }
 
 function sanitizeHTML(html) {
+  if (!/[<&]/.test(String(html))) return escapeHTML(html);
   const template = document.createElement("template");
   template.innerHTML = html;
   template.content.querySelectorAll("script, style, iframe, object, embed, link, meta").forEach((node) => node.remove());
