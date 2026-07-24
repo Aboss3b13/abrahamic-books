@@ -12,13 +12,20 @@ import android.net.Uri;
 import android.view.View;
 import android.widget.RemoteViews;
 
-import java.util.Calendar;
+import java.io.ByteArrayOutputStream;
+import java.io.InputStream;
+import java.nio.charset.StandardCharsets;
+import java.util.ArrayList;
+import java.util.Arrays;
+import java.util.List;
+import java.util.Random;
 import org.json.JSONArray;
+import org.json.JSONObject;
 
 public class AbrahamicWidgetProvider extends AppWidgetProvider {
     static final String PREFS = "abrahamic_widget_preferences";
     static final String ACTION_REFRESH = "com.aboss3b13.abrahamicbooks.REFRESH_WIDGET";
-    static final String[] MODES = {"Daily verse", "Last read", "Library search", "Study notes", "Quran verse", "Bible verse", "Hadith"};
+    static final String[] MODES = {"Random verse", "Last read", "Library search", "Study notes", "Quran verse", "Bible verse", "Hadith"};
     static final String[] THEMES = {"Green", "Sepia", "Dark"};
 
     private static final Passage[] QURAN = {
@@ -60,7 +67,7 @@ public class AbrahamicWidgetProvider extends AppWidgetProvider {
         SharedPreferences prefs = context.getSharedPreferences(PREFS, Context.MODE_PRIVATE);
         String mode = prefs.getString("mode_" + id, fallbackMode);
         String theme = prefs.getString("theme_" + id, "green");
-        WidgetContent content = contentFor(prefs, id, mode);
+        WidgetContent content = contentFor(context, prefs, id, mode);
         if ("notes".equals(mode)) {
             updateNotesWidget(context, manager, id, theme, content);
             return;
@@ -154,20 +161,92 @@ public class AbrahamicWidgetProvider extends AppWidgetProvider {
         updateAppWidget(context, manager, id, defaultMode());
     }
 
-    private static WidgetContent contentFor(SharedPreferences prefs, int id, String mode) {
-        int dailySeed = Calendar.getInstance().get(Calendar.DAY_OF_YEAR) + prefs.getInt("seed_" + id, 0);
+    private static WidgetContent contentFor(Context context, SharedPreferences prefs, int id, String mode) {
+        long halfHour = System.currentTimeMillis() / 1_800_000L;
+        long randomSeed = halfHour * 1_000_003L + id * 65_537L + prefs.getInt("seed_" + id, 0);
         if ("continue".equals(mode)) {
             String reference = prefs.getString("last_reference", "");
             if (reference.isEmpty()) return new WidgetContent("LAST READ", "No saved passage", "Open a passage and tap Save as last read.", "Ready when you are", "RECENT", "OPEN READER", "https://abbas2.ali-raza.net/AbrahamicBooks/?view=readView", false);
             return new WidgetContent("LAST READ", prefs.getString("last_label", reference), prefs.getString("last_text", "Open your saved passage."), "Saved on this device", "RECENT", "CONTINUE READING", "https://abbas2.ali-raza.net/AbrahamicBooks/?ref=" + Uri.encode(reference), false);
         }
-        if ("quran".equals(mode)) return fromPassage("QURAN VERSE", QURAN[Math.floorMod(dailySeed, QURAN.length)], "QURAN", true);
-        if ("bible".equals(mode)) return fromPassage("BIBLE VERSE", BIBLE[Math.floorMod(dailySeed, BIBLE.length)], "BIBLE", true);
-        if ("hadith".equals(mode)) return fromPassage("HADITH OF THE DAY", HADITH[Math.floorMod(dailySeed, HADITH.length)], "HADITH", true);
+        if ("quran".equals(mode)) return fromPassage("QURAN VERSE", randomVerse(context, new Random(randomSeed), "quran"), "QURAN", true);
+        if ("bible".equals(mode)) return fromPassage("BIBLE VERSE", randomVerse(context, new Random(randomSeed), "bible"), "BIBLE", true);
+        if ("hadith".equals(mode)) return fromPassage("HADITH", HADITH[Math.floorMod((int) randomSeed, HADITH.length)], "HADITH", true);
         if ("search".equals(mode)) return new WidgetContent("SEARCH LIBRARY", "What are you looking for?", "Search Quran, Bible, hadith, tafsir, commentary, and your offline library.", "Works offline", "SEARCH", "START SEARCH", "https://abbas2.ali-raza.net/AbrahamicBooks/?view=searchView&focus=search", false);
         if ("notes".equals(mode)) return new WidgetContent("YOUR NOTES", "Notes", "", "", "NOTES", "OPEN ALL NOTES", "https://abbas2.ali-raza.net/AbrahamicBooks/?view=notesView", false);
-        Passage[] all = {QURAN[0], BIBLE[0], HADITH[0], QURAN[1], BIBLE[1], HADITH[1], QURAN[2], BIBLE[2], QURAN[3], BIBLE[3]};
-        return fromPassage("DAILY VERSE", all[Math.floorMod(dailySeed, all.length)], "DAILY", true);
+        return fromPassage("RANDOM VERSE", randomVerse(context, new Random(randomSeed), "all"), "RANDOM", true);
+    }
+
+    private static Passage randomVerse(Context context, Random random, String scope) {
+        try {
+            boolean quran = "quran".equals(scope) || ("all".equals(scope) && random.nextBoolean());
+            return quran ? randomQuranVerse(context, random) : randomBibleVerse(context, random);
+        } catch (Exception ignored) {
+            Passage[] fallback = {QURAN[0], QURAN[1], QURAN[2], QURAN[3], BIBLE[0], BIBLE[1], BIBLE[2], BIBLE[3]};
+            return fallback[random.nextInt(fallback.length)];
+        }
+    }
+
+    private static Passage randomQuranVerse(Context context, Random random) throws Exception {
+        String[] assets = context.getAssets().list("public/offline/quran");
+        List<String> chapters = new ArrayList<>();
+        if (assets != null) for (String name : assets) if (name.startsWith("chapter-") && name.endsWith(".json")) chapters.add(name);
+        if (chapters.isEmpty()) throw new IllegalStateException("No Quran chapters bundled");
+        JSONObject data = new JSONObject(readAsset(context, "public/offline/quran/" + chapters.get(random.nextInt(chapters.size()))));
+        JSONArray verses = data.getJSONArray("verses");
+        JSONObject verse = verses.getJSONObject(random.nextInt(verses.length()));
+        String key = verse.getString("verse_key");
+        String text = "Open this verse in Abrahamic Books.";
+        JSONArray translations = verse.optJSONArray("translations");
+        if (translations != null && translations.length() > 0) text = cleanText(translations.getJSONObject(0).optString("text", text));
+        return new Passage("Quran " + key, text, "Quran • bundled translation", "https://abbas2.ali-raza.net/AbrahamicBooks/?ref=" + Uri.encode(key));
+    }
+
+    private static Passage randomBibleVerse(Context context, Random random) throws Exception {
+        String[] assets = context.getAssets().list("public/offline/bible");
+        List<String> chapters = assets == null ? new ArrayList<>() : new ArrayList<>(Arrays.asList(assets));
+        chapters.removeIf(name -> !name.endsWith(".json") || (!name.startsWith("old-") && !name.startsWith("new-")));
+        if (chapters.isEmpty()) throw new IllegalStateException("No Bible chapters bundled");
+        String file = chapters.get(random.nextInt(chapters.size()));
+        JSONObject english = new JSONObject(readAsset(context, "public/offline/bible/" + file)).getJSONObject("english");
+        JSONObject chapter = english.getJSONObject("chapter");
+        JSONArray content = chapter.getJSONArray("content");
+        List<JSONObject> verses = new ArrayList<>();
+        for (int index = 0; index < content.length(); index += 1) {
+            JSONObject item = content.optJSONObject(index);
+            if (item != null && "verse".equals(item.optString("type"))) verses.add(item);
+        }
+        if (verses.isEmpty()) throw new IllegalStateException("No verses in bundled Bible chapter");
+        JSONObject verse = verses.get(random.nextInt(verses.size()));
+        String book = english.getJSONObject("book").optString("name", "Bible");
+        int chapterNumber = chapter.getInt("number");
+        int verseNumber = verse.getInt("number");
+        String key = (file.startsWith("old-") ? "old:" : "new:") + book + ":" + chapterNumber + ":" + verseNumber;
+        return new Passage(book + " " + chapterNumber + ":" + verseNumber, jsonText(verse.optJSONArray("content")), "Bible • World English Bible", "https://abbas2.ali-raza.net/AbrahamicBooks/?ref=" + Uri.encode(key));
+    }
+
+    private static String readAsset(Context context, String path) throws Exception {
+        try (InputStream input = context.getAssets().open(path); ByteArrayOutputStream output = new ByteArrayOutputStream()) {
+            byte[] buffer = new byte[8192];
+            int read;
+            while ((read = input.read(buffer)) != -1) output.write(buffer, 0, read);
+            return output.toString(StandardCharsets.UTF_8.name());
+        }
+    }
+
+    private static String jsonText(JSONArray content) {
+        if (content == null) return "Open this verse in Abrahamic Books.";
+        StringBuilder text = new StringBuilder();
+        for (int index = 0; index < content.length(); index += 1) {
+            Object value = content.opt(index);
+            if (value instanceof String) text.append(value).append(' ');
+        }
+        String result = cleanText(text.toString());
+        return result.isEmpty() ? "Open this verse in Abrahamic Books." : result;
+    }
+
+    private static String cleanText(String value) {
+        return value.replaceAll("<[^>]+>", " ").replaceAll("\\s+", " ").trim();
     }
 
     private static WidgetContent fromPassage(String eyebrow, Passage passage, String badge, boolean refreshable) {

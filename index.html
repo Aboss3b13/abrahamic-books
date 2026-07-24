@@ -3,7 +3,7 @@
   <head>
     <meta charset="utf-8">
     <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
-    <meta name="theme-color" content="#173f35">
+    <meta name="theme-color" content="#71452b">
     <title>Abrahamic Books Offline</title>
     <link rel="preconnect" href="https://api.quran.com">
     <link rel="manifest" href="./manifest.webmanifest">
@@ -233,8 +233,8 @@
           <div class="settings-download-card">
             <div class="download-mark" aria-hidden="true"><i class="ti ti-download"></i></div>
             <div>
-              <strong>Offline Android app</strong>
-              <span>Quran, tafsir, Bible, and hadith included</span>
+              <strong>Offline library included</strong>
+              <span>Quran, tafsir, Bible, hadith, and Matthew Henry are already downloaded</span>
             </div>
             <a class="text-button primary apk-download" href="./downloads/abrahamic-books-offline.apk" download>Download APK</a>
           </div>
@@ -257,7 +257,6 @@
               <option value="forest">Forest</option>
               <option value="nord">Nord</option>
               <option value="sunset">Sunset</option>
-              <option value="coffee">Coffee</option>
               <option value="slate">Slate</option>
               <option value="aurora">Aurora</option>
               <option value="indigo">Indigo</option>
@@ -465,7 +464,7 @@
           <button class="icon-button" value="close" aria-label="Close translations">×</button>
         </div>
         <input id="translationSearch" class="wide-search" type="search" placeholder="Search language, author, name">
-        <p class="resource-download-hint">Translations are streamed when online. Use the download button beside an edition to keep it available in the website and APK.</p>
+        <p class="resource-download-hint">The included translation is ready offline. Optional editions show Downloaded when saved and can be removed at any time.</p>
         <div id="translationList" class="resource-list"></div>
       </form>
     </dialog>
@@ -480,7 +479,7 @@
           <button class="icon-button" value="close" aria-label="Close tafsir">×</button>
         </div>
         <input id="tafsirSearch" class="wide-search" type="search" placeholder="Search tafsir, language, author">
-        <p class="resource-download-hint">More tafsir editions can be added and downloaded here without reinstalling the app.</p>
+        <p class="resource-download-hint">The included tafsir is ready offline. Optional editions show Downloaded when saved and can be removed at any time.</p>
         <div id="tafsirList" class="resource-list compact"></div>
       </form>
     </dialog>
@@ -489,7 +488,7 @@
       <form method="dialog" class="sheet-inner">
         <div class="sheet-header"><div><h2>Bible commentaries</h2><p id="commentarySummary">Matthew Henry · included</p></div><button class="icon-button" value="close" aria-label="Close Bible commentaries">×</button></div>
         <input id="commentarySearch" class="wide-search" type="search" placeholder="Search commentary or language">
-        <p class="resource-download-hint">Matthew Henry is included by default. Download as many additional public-domain commentaries as you want for offline reading.</p>
+        <p class="resource-download-hint">Matthew Henry is included offline. Optional commentaries show Downloaded when saved and can be removed at any time.</p>
         <div id="commentaryList" class="resource-list compact"></div>
       </form>
     </dialog>
