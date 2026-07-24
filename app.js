@@ -1856,7 +1856,8 @@ function renderNoteFolderBrowser() {
   const itemCount = currentNotes + children.length;
   els.noteFolderBrowser.innerHTML = `
     <div class="note-folder-browser-heading">
-      <nav class="note-folder-path" aria-label="Current folder"><button type="button" data-folder-crumb=""><i class="ti ti-home" aria-hidden="true"></i><span>Notes</span></button>${path.map((folder) => `<i class="ti ti-chevron-right" aria-hidden="true"></i><button type="button" data-folder-crumb="${escapeHTML(folder.id)}"><span>${escapeHTML(folder.name)}</span></button>`).join("")}</nav>
+      <div class="note-folder-navigation" aria-hidden="true"><i class="ti ti-arrow-left"></i><i class="ti ti-arrow-up"></i></div>
+      <nav class="note-folder-path" aria-label="Current folder"><button type="button" data-folder-crumb=""><i class="ti ti-device-desktop" aria-hidden="true"></i><span>Notes</span></button>${path.map((folder) => `<i class="ti ti-chevron-right" aria-hidden="true"></i><button type="button" data-folder-crumb="${escapeHTML(folder.id)}"><span>${escapeHTML(folder.name)}</span></button>`).join("")}</nav>
       <small>${itemCount} ${itemCount === 1 ? "item" : "items"}</small>
     </div>
     <div class="note-folder-grid">
@@ -1864,13 +1865,21 @@ function renderNoteFolderBrowser() {
         const noteCount = folderNotes.filter((note) => (note.folderId || "") === folder.id).length;
         const folderCount = state.noteFolders.filter((candidate) => (candidate.parentId || "") === folder.id).length;
         const contents = noteCount + folderCount;
-        return `<button class="note-folder-tile" type="button" data-folder-id="${escapeHTML(folder.id)}" title="Open ${escapeHTML(folder.name)}"><i class="ti ti-folder" aria-hidden="true"></i><span><strong>${escapeHTML(folder.name)}</strong><small>${contents} ${contents === 1 ? "item" : "items"}</small></span><i class="ti ti-chevron-right folder-open-arrow" aria-hidden="true"></i></button>`;
+        return `<div class="note-folder-tile">
+          <button class="note-folder-open" type="button" data-folder-id="${escapeHTML(folder.id)}" title="Open ${escapeHTML(folder.name)}"><i class="ti ti-folder-filled" aria-hidden="true"></i><span><strong>${escapeHTML(folder.name)}</strong><small>${contents} ${contents === 1 ? "item" : "items"}</small></span></button>
+          <div class="note-folder-actions" aria-label="Actions for ${escapeHTML(folder.name)}">
+            <button type="button" data-rename-folder="${escapeHTML(folder.id)}" aria-label="Rename ${escapeHTML(folder.name)}" title="Rename"><i class="ti ti-pencil" aria-hidden="true"></i></button>
+            <button type="button" data-delete-folder="${escapeHTML(folder.id)}" aria-label="Delete ${escapeHTML(folder.name)}" title="Delete"><i class="ti ti-trash" aria-hidden="true"></i></button>
+          </div>
+        </div>`;
       }).join("") || `<p class="note-folder-empty"><i class="ti ti-folder-open" aria-hidden="true"></i>No folders here</p>`}
     </div>`;
   els.noteFolderBrowser.querySelectorAll("[data-folder-crumb]").forEach((button) => button.addEventListener("click", () => openNoteFolder(button.dataset.folderCrumb)));
   els.noteFolderBrowser.querySelectorAll("[data-folder-id]").forEach((button) => button.addEventListener("click", () => {
     openNoteFolder(button.dataset.folderId);
   }));
+  els.noteFolderBrowser.querySelectorAll("[data-rename-folder]").forEach((button) => button.addEventListener("click", () => renameNoteFolder(button.dataset.renameFolder)));
+  els.noteFolderBrowser.querySelectorAll("[data-delete-folder]").forEach((button) => button.addEventListener("click", () => deleteNoteFolder(button.dataset.deleteFolder)));
 }
 
 function getFolderPath(folderId) {
@@ -2070,12 +2079,20 @@ function renderNoteTagPicker() {
   els.noteTagChoices.innerHTML = tags.length
     ? tags.map((tag) => {
         const description = state.tagCatalog[tag]?.description || "";
-        return `<button class="note-tag-choice ${selected.has(tag) ? "active" : ""}" type="button" data-note-tag="${escapeHTML(tag)}" aria-pressed="${selected.has(tag)}" ${description ? `title="${escapeHTML(description)}"` : ""}><i class="ti ti-${selected.has(tag) ? "check" : "tag"}" aria-hidden="true"></i><span><b>#${escapeHTML(tag)}</b>${description ? `<small>${escapeHTML(description)}</small>` : ""}</span></button>`;
+        return `<div class="note-tag-item">
+          <button class="note-tag-choice ${selected.has(tag) ? "active" : ""}" type="button" data-note-tag="${escapeHTML(tag)}" aria-pressed="${selected.has(tag)}" ${description ? `title="${escapeHTML(description)}"` : ""}><i class="ti ti-${selected.has(tag) ? "check" : "tag"}" aria-hidden="true"></i><span><b>#${escapeHTML(tag)}</b>${description ? `<small>${escapeHTML(description)}</small>` : ""}</span></button>
+          <span class="note-tag-actions">
+            <button type="button" data-rename-tag="${escapeHTML(tag)}" aria-label="Rename hashtag ${escapeHTML(tag)}" title="Rename hashtag"><i class="ti ti-pencil" aria-hidden="true"></i></button>
+            <button type="button" data-delete-tag="${escapeHTML(tag)}" aria-label="Delete hashtag ${escapeHTML(tag)}" title="Delete hashtag"><i class="ti ti-trash" aria-hidden="true"></i></button>
+          </span>
+        </div>`;
       }).join("")
     : `<p class="note-tag-empty">No tags yet. Create the first one below.</p>`;
   els.noteTagChoices.querySelectorAll("[data-note-tag]").forEach((button) => {
     button.addEventListener("click", () => toggleCurrentNoteTag(button.dataset.noteTag));
   });
+  els.noteTagChoices.querySelectorAll("[data-rename-tag]").forEach((button) => button.addEventListener("click", () => renameNoteTag(button.dataset.renameTag)));
+  els.noteTagChoices.querySelectorAll("[data-delete-tag]").forEach((button) => button.addEventListener("click", () => deleteNoteTag(button.dataset.deleteTag)));
 }
 
 function toggleCurrentNoteTag(tag) {
@@ -2091,10 +2108,14 @@ function toggleCurrentNoteTag(tag) {
   saveCurrentNote();
 }
 
-function createNoteTag() {
-  const tag = String(els.noteTagCreate.value || "")
+function normalizeNoteTag(value) {
+  return String(value || "")
     .trim().toLowerCase().replace(/^#+/, "").replace(/\s+/g, "-").replace(/[^\p{L}\p{N}_-]+/gu, "")
     .slice(0, 40);
+}
+
+function createNoteTag() {
+  const tag = normalizeNoteTag(els.noteTagCreate.value);
   if (!tag) {
     els.noteTagCreate.focus();
     return;
@@ -2114,6 +2135,56 @@ function createNoteTag() {
   renderNoteTagPicker();
   saveCurrentNote();
   els.noteTagCreate.focus();
+}
+
+async function updateTagAcrossNotes(oldTag, newTag = "") {
+  const replaceTags = (tags) => [...new Set((Array.isArray(tags) ? tags : []).flatMap((tag) => tag === oldTag ? (newTag ? [newTag] : []) : [tag]))];
+  const changedPrivate = Object.entries(state.notes).filter(([, note]) => Array.isArray(note.tags) && note.tags.includes(oldTag));
+  for (const [key, note] of changedPrivate) {
+    const updated = { ...note, tags: replaceTags(note.tags), updatedAt: new Date().toISOString() };
+    state.notes[key] = await notesSystem.save(key, updated);
+  }
+  const changedShared = state.sharedNotes.filter((note) => Array.isArray(note.tags) && note.tags.includes(oldTag));
+  for (const note of changedShared) {
+    const tags = replaceTags(note.tags);
+    note.tags = tags;
+    try { await notesSystem.updateSharedNote(note.id, { tags }); }
+    catch (error) { setStatus(`Some shared notes could not be updated: ${error.message}`); }
+  }
+}
+
+async function renameNoteTag(oldTag) {
+  const rawName = window.prompt(`Rename #${oldTag} to:`, oldTag);
+  if (rawName === null) return;
+  const newTag = normalizeNoteTag(rawName);
+  if (!newTag || newTag === oldTag) return;
+  const selected = parseTags(els.noteTags.value).map((tag) => tag === oldTag ? newTag : tag);
+  els.noteTags.value = [...new Set(selected)].join(", ");
+  const oldDetails = state.tagCatalog[oldTag] || {};
+  state.tagCatalog[newTag] = { ...oldDetails, ...(state.tagCatalog[newTag] || {}) };
+  delete state.tagCatalog[oldTag];
+  if (state.noteTagFilter === oldTag) state.noteTagFilter = newTag;
+  try {
+    await updateTagAcrossNotes(oldTag, newTag);
+    saveNotesOrganizer();
+    renderNoteTagPicker();
+    renderNotes();
+    setStatus(`Renamed #${oldTag} to #${newTag}.`);
+  } catch (error) { setStatus(`Could not rename the hashtag: ${error.message}`); }
+}
+
+async function deleteNoteTag(tag) {
+  if (!window.confirm(`Delete #${tag}? It will be removed from every note.`)) return;
+  els.noteTags.value = parseTags(els.noteTags.value).filter((item) => item !== tag).join(", ");
+  delete state.tagCatalog[tag];
+  if (state.noteTagFilter === tag) state.noteTagFilter = "";
+  try {
+    await updateTagAcrossNotes(tag);
+    saveNotesOrganizer();
+    renderNoteTagPicker();
+    renderNotes();
+    setStatus(`Deleted #${tag}.`);
+  } catch (error) { setStatus(`Could not delete the hashtag: ${error.message}`); }
 }
 
 function renderNoteFolderOptions(selectedId = els.noteFolderSelect?.value || "") {
@@ -2151,6 +2222,51 @@ function createNoteFolder(fromEditor = false) {
     saveCurrentNote();
   }
   renderNotes();
+}
+
+function renameNoteFolder(folderId) {
+  const folder = state.noteFolders.find((item) => item.id === folderId);
+  if (!folder) return;
+  const rawName = window.prompt("Rename folder:", folder.name);
+  if (rawName === null) return;
+  const name = rawName.trim().replace(/\s+/g, " ").slice(0, 60);
+  if (!name || name === folder.name) return;
+  const duplicate = state.noteFolders.some((item) => item.id !== folderId && (item.parentId || "") === (folder.parentId || "") && item.name.localeCompare(name, undefined, { sensitivity: "base" }) === 0);
+  if (duplicate) {
+    setStatus("A folder with that name already exists here.");
+    return;
+  }
+  folder.name = name;
+  saveNotesOrganizer();
+  renderNoteFolderOptions(folderId);
+  renderNotes();
+  setStatus(`Folder renamed to ${name}.`);
+}
+
+async function deleteNoteFolder(folderId) {
+  const folder = state.noteFolders.find((item) => item.id === folderId);
+  if (!folder || !window.confirm(`Delete “${folder.name}”? Its notes and subfolders will be moved to the parent folder.`)) return;
+  const parentId = folder.parentId || "";
+  state.noteFolders.forEach((item) => { if ((item.parentId || "") === folderId) item.parentId = parentId; });
+  state.noteFolders = state.noteFolders.filter((item) => item.id !== folderId);
+  const changedPrivate = Object.entries(state.notes).filter(([, note]) => (note.folderId || "") === folderId);
+  try {
+    for (const [key, note] of changedPrivate) {
+      const updated = { ...note, folderId: parentId, updatedAt: new Date().toISOString() };
+      state.notes[key] = await notesSystem.save(key, updated);
+    }
+    for (const note of state.sharedNotes.filter((item) => (item.folderId || "") === folderId)) {
+      note.folderId = parentId;
+      try { await notesSystem.updateSharedNote(note.id, { folderId: parentId }); }
+      catch (error) { setStatus(`Some shared notes could not be moved: ${error.message}`); }
+    }
+    if (state.selectedFolderId === folderId) state.selectedFolderId = parentId;
+    if (els.noteFolderSelect.value === folderId) els.noteFolderSelect.value = parentId;
+    saveNotesOrganizer();
+    renderNoteFolderOptions(parentId);
+    renderNotes();
+    setStatus(`Deleted ${folder.name}. Its contents are safe in the parent folder.`);
+  } catch (error) { setStatus(`Could not delete the folder: ${error.message}`); }
 }
 
 function saveNotesOrganizer() {
