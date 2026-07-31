@@ -24,8 +24,10 @@ let notesSystem;
 let readerLoadToken = 0;
 const offlineJsonCache = new Map();
 const downloadedStoreCache = new Map();
+const noteReferenceTextCache = new Map();
 const pendingNoteDrafts = new Map();
 const pendingNoteSaveTimers = new Map();
+let noteSearchHydrationToken = 0;
 const NotesFiles = registerPlugin("NotesFiles");
 const WidgetData = registerPlugin("WidgetData");
 
@@ -1941,9 +1943,9 @@ function revealStudyContent(html) {
   }
 }
 
-function renderNotes({ animate = true } = {}) {
+function renderNotes({ animate = true, hydrateReferences = true } = {}) {
   const query = els.notesSearch.value.trim();
-  const searchExpression = parseSearchExpression(query);
+  const searchExpression = parseNoteSearchExpression(query);
   renderNoteFolderBrowser();
   const sourceEntries = state.notesSection === "shared"
     ? state.sharedNotes.map((note) => [`shared:${note.id}`, note])
@@ -1955,8 +1957,9 @@ function renderNotes({ animate = true } = {}) {
       const tags = note.tags || [];
       const folderName = state.noteFolders.find((folder) => folder.id === note.folderId)?.name || "";
       const tagDescriptions = tags.map((tag) => state.tagCatalog[tag]?.description || "").join(" ");
-      const haystack = `${key} ${note.title || ""} ${formatReferenceKey(key)} ${note.text || ""} ${(note.references || []).map(formatReferenceKey).join(" ")} ${tags.join(" ")} ${tagDescriptions} ${folderName}`;
-      const matchesSearch = !query || searchExpression.matches(normalizeSearchText(haystack));
+      const referenceText = (note.references || []).map((reference) => noteReferenceTextCache.get(reference) || "").join(" ");
+      const haystack = `${key} ${note.title || ""} ${formatReferenceKey(key)} ${note.text || ""} ${(note.references || []).map(formatReferenceKey).join(" ")} ${referenceText} ${tags.join(" ")} ${tagDescriptions} ${folderName}`;
+      const matchesSearch = !query || searchExpression.matches(haystack);
       const matchesTag = !state.noteTagFilter || tags.includes(state.noteTagFilter);
       const matchesFolder = state.noteViewMode !== "folders" || (note.folderId || "") === (state.selectedFolderId === "all" ? "" : state.selectedFolderId);
       return matchesSearch && matchesTag && matchesFolder;
@@ -2023,6 +2026,52 @@ function renderNotes({ animate = true } = {}) {
   els.notesList.querySelector("[data-empty-new]")?.addEventListener("click", createStandaloneNote);
   updateNoteSelectionUI();
   if (!animate) requestAnimationFrame(() => requestAnimationFrame(() => els.notesList.classList.remove("notes-sync-update")));
+  if (query && hydrateReferences) hydrateNoteReferenceSearch(sourceEntries, query);
+}
+
+async function hydrateNoteReferenceSearch(entries, query) {
+  const token = ++noteSearchHydrationToken;
+  const references = [...new Set(entries.flatMap(([, note]) => note.references || []))];
+  const missing = references.filter((reference) => !noteReferenceTextCache.has(reference));
+  if (!missing.length) return;
+  await Promise.all(missing.map(async (reference) => {
+    const text = await getReferenceSearchText(reference).catch(() => "");
+    noteReferenceTextCache.set(reference, text);
+  }));
+  if (token !== noteSearchHydrationToken || els.notesSearch.value.trim() !== query) return;
+  renderNotes({ animate: false, hydrateReferences: false });
+}
+
+async function getReferenceSearchText(key) {
+  const parsed = parseReferenceKey(key);
+  if (parsed.type === "quran") {
+    const data = await getOfflineJSON(`quran/chapter-${parsed.chapter}.json`);
+    const verse = (data?.verses || []).find((item) => item.verse_key === key || Number(item.verse_number) === parsed.verse);
+    return [
+      verse?.text_uthmani,
+      ...(verse?.translations || []).map((translation) => translation.text),
+      ...(verse?.words || []).flatMap((word) => [word.text_uthmani, word.text, word.translation?.text, word.transliteration?.text]),
+    ].filter(Boolean).map(stripHTML).join(" ");
+  }
+  if (parsed.type === "old" || parsed.type === "new") {
+    const data = await getOfflineJSON(`bible/${parsed.type}-${BOOK_IDS[parsed.book]}-${parsed.chapter}.json`);
+    const english = extractBibleVerses(data?.english).find((verse) => Number(verse.number) === parsed.verse);
+    const original = extractBibleVerses(data?.original).find((verse) => Number(verse.number) === parsed.verse);
+    return [english?.text, original?.text].filter(Boolean).join(" ");
+  }
+  if (parsed.type === "hadith") {
+    const book = state.hadithBooks.find((item) => item.key === parsed.book);
+    if (book?.source === "thaqalayn") {
+      const records = await getOfflineJSON(`hadith-search/${book.key}.json`);
+      const item = records.find((record) => Number(record.id) === parsed.verse);
+      return [item?.chapter, item?.title, item?.text, item?.arabic, item?.english].filter(Boolean).map(stripHTML).join(" ");
+    }
+    const data = await getOfflineJSON(`hadith/${parsed.book}/section-${parsed.section}.json`);
+    const english = (data?.english?.hadiths || []).find((item) => Number(item.hadithnumber) === parsed.verse);
+    const arabic = (data?.arabic?.hadiths || []).find((item) => Number(item.hadithnumber) === parsed.verse);
+    return [english?.text, arabic?.text].filter(Boolean).map(stripHTML).join(" ");
+  }
+  return "";
 }
 
 function renderNoteFolderBrowser() {
@@ -2040,20 +2089,25 @@ function renderNoteFolderBrowser() {
     .sort((a, b) => a.name.localeCompare(b.name, undefined, { sensitivity: "base" }));
   const currentNotes = folderNotes.filter((note) => (note.folderId || "") === currentId).length;
   const path = getFolderPath(currentId);
-  const itemCount = currentNotes + children.length;
+  const currentFolder = path.at(-1);
   els.noteFolderBrowser.innerHTML = `
     <div class="note-folder-browser-heading">
-      <div class="note-folder-navigation" aria-hidden="true"><i class="ti ti-arrow-left"></i><i class="ti ti-arrow-up"></i></div>
-      <nav class="note-folder-path" aria-label="Current folder"><button type="button" data-folder-crumb=""><i class="ti ti-device-desktop" aria-hidden="true"></i><span>Notes</span></button>${path.map((folder) => `<i class="ti ti-chevron-right" aria-hidden="true"></i><button type="button" data-folder-crumb="${escapeHTML(folder.id)}"><span>${escapeHTML(folder.name)}</span></button>`).join("")}</nav>
-      <small>${itemCount} ${itemCount === 1 ? "item" : "items"}</small>
+      <div class="note-folder-heading-main">
+        ${currentId ? `<button class="note-folder-up" type="button" data-folder-up="${escapeHTML(currentFolder?.parentId || "")}" aria-label="Go to parent folder"><i class="ti ti-arrow-left" aria-hidden="true"></i></button>` : `<span class="note-folder-library-icon"><i class="ti ti-folders" aria-hidden="true"></i></span>`}
+        <div><span class="note-folder-eyebrow">${currentId ? "Current folder" : "Your library"}</span><strong>${escapeHTML(currentFolder?.name || "Notes")}</strong></div>
+      </div>
+      <div class="note-folder-heading-actions">
+        <span>${currentNotes} ${currentNotes === 1 ? "note" : "notes"} · ${children.length} ${children.length === 1 ? "folder" : "folders"}</span>
+        <button type="button" data-folder-new><i class="ti ti-folder-plus" aria-hidden="true"></i><span>New folder</span></button>
+      </div>
     </div>
+    <nav class="note-folder-path" aria-label="Current folder"><button type="button" data-folder-crumb=""><i class="ti ti-home" aria-hidden="true"></i><span>Notes</span></button>${path.map((folder) => `<i class="ti ti-chevron-right" aria-hidden="true"></i><button type="button" data-folder-crumb="${escapeHTML(folder.id)}"><span>${escapeHTML(folder.name)}</span></button>`).join("")}</nav>
     <div class="note-folder-grid">
-      ${children.map((folder) => {
+      ${children.map((folder, folderIndex) => {
         const noteCount = folderNotes.filter((note) => (note.folderId || "") === folder.id).length;
         const folderCount = state.noteFolders.filter((candidate) => (candidate.parentId || "") === folder.id).length;
-        const contents = noteCount + folderCount;
-        return `<div class="note-folder-tile">
-          <button class="note-folder-open" type="button" data-folder-id="${escapeHTML(folder.id)}" title="Open ${escapeHTML(folder.name)}"><i class="ti ti-folder-filled" aria-hidden="true"></i><span><strong>${escapeHTML(folder.name)}</strong><small>${contents} ${contents === 1 ? "item" : "items"}</small></span></button>
+        return `<div class="note-folder-tile" style="--folder-order:${Math.min(folderIndex, 8)}">
+          <button class="note-folder-open" type="button" data-folder-id="${escapeHTML(folder.id)}" title="Open ${escapeHTML(folder.name)}"><span class="note-folder-art"><i class="ti ti-folder-filled" aria-hidden="true"></i></span><span class="note-folder-copy"><strong>${escapeHTML(folder.name)}</strong><small><span>${noteCount} ${noteCount === 1 ? "note" : "notes"}</span>${folderCount ? `<span>${folderCount} ${folderCount === 1 ? "folder" : "folders"}</span>` : ""}</small></span><i class="ti ti-chevron-right note-folder-chevron" aria-hidden="true"></i></button>
           <div class="note-folder-actions" aria-label="Actions for ${escapeHTML(folder.name)}">
             <button type="button" data-rename-folder="${escapeHTML(folder.id)}" aria-label="Rename ${escapeHTML(folder.name)}" title="Rename"><i class="ti ti-pencil" aria-hidden="true"></i></button>
             <button type="button" data-delete-folder="${escapeHTML(folder.id)}" aria-label="Delete ${escapeHTML(folder.name)}" title="Delete"><i class="ti ti-trash" aria-hidden="true"></i></button>
@@ -2061,6 +2115,8 @@ function renderNoteFolderBrowser() {
         </div>`;
       }).join("") || `<p class="note-folder-empty"><i class="ti ti-folder-open" aria-hidden="true"></i>No folders here</p>`}
     </div>`;
+  els.noteFolderBrowser.querySelector("[data-folder-up]")?.addEventListener("click", (event) => openNoteFolder(event.currentTarget.dataset.folderUp));
+  els.noteFolderBrowser.querySelector("[data-folder-new]")?.addEventListener("click", () => createNoteFolder(false));
   els.noteFolderBrowser.querySelectorAll("[data-folder-crumb]").forEach((button) => button.addEventListener("click", () => openNoteFolder(button.dataset.folderCrumb)));
   els.noteFolderBrowser.querySelectorAll("[data-folder-id]").forEach((button) => button.addEventListener("click", () => {
     openNoteFolder(button.dataset.folderId);
@@ -2688,10 +2744,11 @@ function renderNoteReferences() {
     : "View references";
   els.openReferences.innerHTML = `<i class="ti ti-books" aria-hidden="true"></i><span>${referenceLabel}</span>`;
   els.noteReferences.innerHTML = state.currentNoteReferences.length
-    ? state.currentNoteReferences.map((key) => `
-      <div class="reference-pill">
-        <button type="button" data-jump="${escapeHTML(key)}">${escapeHTML(formatReferenceKey(key))}</button>
-        <button type="button" data-remove="${escapeHTML(key)}" aria-label="Remove ${escapeHTML(key)}">×</button>
+    ? state.currentNoteReferences.map((key, index) => `
+      <div class="reference-pill" data-reference-key="${escapeHTML(key)}">
+        <button class="reference-drag-handle" type="button" aria-label="Drag to reorder ${escapeHTML(formatReferenceKey(key))}" title="Drag to reorder"><i class="ti ti-grip-vertical" aria-hidden="true"></i></button>
+        <button class="reference-jump" type="button" data-jump="${escapeHTML(key)}"><span class="reference-order">${index + 1}</span>${escapeHTML(formatReferenceKey(key))}</button>
+        <button class="reference-remove" type="button" data-remove="${escapeHTML(key)}" aria-label="Remove ${escapeHTML(key)}"><i class="ti ti-x" aria-hidden="true"></i></button>
       </div>
     `).join("")
     : "";
@@ -2706,6 +2763,61 @@ function renderNoteReferences() {
 
   els.noteReferences.querySelectorAll("[data-jump]").forEach((button) => {
     button.addEventListener("click", () => navigateToReference(button.dataset.jump));
+  });
+  enableReferenceReordering();
+}
+
+function commitReferenceOrder() {
+  const ordered = [...els.noteReferences.querySelectorAll("[data-reference-key]")].map((item) => item.dataset.referenceKey);
+  if (ordered.join("\n") === state.currentNoteReferences.join("\n")) return;
+  state.currentNoteReferences = ordered;
+  renderNoteReferences();
+  saveCurrentNote();
+  setStatus("Cross-reference order saved.");
+}
+
+function enableReferenceReordering() {
+  els.noteReferences.querySelectorAll(".reference-drag-handle").forEach((handle) => {
+    handle.addEventListener("keydown", (event) => {
+      const direction = ["ArrowUp", "ArrowLeft"].includes(event.key) ? -1 : ["ArrowDown", "ArrowRight"].includes(event.key) ? 1 : 0;
+      if (!direction) return;
+      const pill = handle.closest(".reference-pill");
+      const items = [...els.noteReferences.querySelectorAll(".reference-pill")];
+      const index = items.indexOf(pill);
+      const target = items[index + direction];
+      if (!target) return;
+      event.preventDefault();
+      els.noteReferences.insertBefore(pill, direction < 0 ? target : target.nextSibling);
+      commitReferenceOrder();
+      els.noteReferences.querySelector(`[data-reference-key="${CSS.escape(pill.dataset.referenceKey)}"] .reference-drag-handle`)?.focus();
+    });
+    handle.addEventListener("pointerdown", (event) => {
+      event.preventDefault();
+      const pill = handle.closest(".reference-pill");
+      pill.classList.add("is-dragging");
+      const move = (moveEvent) => {
+        const candidates = [...els.noteReferences.querySelectorAll(".reference-pill")].filter((item) => item !== pill);
+        const target = candidates.find((item) => {
+          const box = item.getBoundingClientRect();
+          return moveEvent.clientX >= box.left - 12 && moveEvent.clientX <= box.right + 12
+            && moveEvent.clientY >= box.top - 12 && moveEvent.clientY <= box.bottom + 12;
+        });
+        if (!target) return;
+        const items = [...els.noteReferences.querySelectorAll(".reference-pill")];
+        const before = items.indexOf(target) < items.indexOf(pill);
+        els.noteReferences.insertBefore(pill, before ? target : target.nextSibling);
+      };
+      const finish = () => {
+        window.removeEventListener("pointermove", move);
+        window.removeEventListener("pointerup", finish);
+        window.removeEventListener("pointercancel", finish);
+        pill.classList.remove("is-dragging");
+        commitReferenceOrder();
+      };
+      window.addEventListener("pointermove", move);
+      window.addEventListener("pointerup", finish);
+      window.addEventListener("pointercancel", finish);
+    });
   });
 }
 
@@ -4570,14 +4682,10 @@ function createNoteFromReadSelection() {
   const selected = state.verses.filter((verse) => state.selectedReadVerses.has(verse.verse_key));
   if (!selected.length) return;
   const references = selected.map((verse) => verse.verse_key);
-  const text = selected.map((verse) => {
-    const translation = verse.translations?.[0]?.text || verse.text || "";
-    return `${formatReferenceKey(verse.verse_key)}\n${stripHTML(translation)}`;
-  }).join("\n\n");
   openNoteDestination({
     title: selected.length === 1 ? formatReferenceKey(references[0]) : "Reading collection",
-    text,
-    tags: ["reading"],
+    text: "",
+    tags: [],
     references,
     sourceLabel: `${selected.length} selected ${selected.length === 1 ? "passage" : "passages"}`,
     complete: exitReadSelectMode,
@@ -5416,6 +5524,25 @@ function parseSearchExpression(query) {
       if (!usableGroups.length) return true;
       if (!hasAnd) return usableGroups.flat().some((term) => haystack.includes(term));
       return usableGroups.every((group) => group.some((term) => haystack.includes(term)));
+    },
+  };
+}
+
+function parseNoteSearchExpression(query) {
+  const terms = (String(query || "").match(/"[^"]+"|[^\s+]+/g) || [])
+    .map((raw) => {
+      const phrase = raw.startsWith('"') && raw.endsWith('"');
+      const value = normalizeSearchText(phrase ? raw.slice(1, -1) : raw);
+      return value ? { value, phrase: phrase || value.includes(" ") } : null;
+    })
+    .filter(Boolean);
+  return {
+    terms: terms.map((term) => term.value),
+    matches(value) {
+      if (!terms.length) return true;
+      const normalized = normalizeSearchText(value);
+      const tokens = new Set(normalized.match(/[\p{L}\p{N}]+(?::[\p{L}\p{N}]+)*/gu) || []);
+      return terms.every((term) => term.phrase ? normalized.includes(term.value) : tokens.has(term.value));
     },
   };
 }

@@ -31,6 +31,19 @@ await page.waitForSelector("#noteSheet[open]");
 if (await page.locator("#noteReferences .reference-pill").count() !== 2) {
   throw new Error("Adding a passage to an existing note did not merge references.");
 }
+const referenceLabelsBefore = await page.locator("#noteReferences .reference-jump").allTextContents();
+await page.locator("#noteReferences .reference-drag-handle").nth(1).scrollIntoViewIfNeeded();
+const dragFrom = await page.locator("#noteReferences .reference-drag-handle").nth(1).boundingBox();
+const dragTo = await page.locator("#noteReferences .reference-drag-handle").first().boundingBox();
+await page.mouse.move(dragFrom.x + dragFrom.width / 2, dragFrom.y + dragFrom.height / 2);
+await page.mouse.down();
+await page.mouse.move(dragTo.x + dragTo.width / 2, dragTo.y + dragTo.height / 2, { steps: 8 });
+await page.mouse.up();
+await page.waitForTimeout(250);
+const referenceLabelsAfter = await page.locator("#noteReferences .reference-jump").allTextContents();
+if (referenceLabelsAfter[0] === referenceLabelsBefore[0]) {
+  throw new Error("Dragging cross-references did not change their order.");
+}
 await page.locator('#noteSheet button[value="close"]').last().click();
 await page.waitForTimeout(350);
 
@@ -43,6 +56,43 @@ if (!(await page.locator("#noteEditor").inputValue()).includes("A durable draft 
 await page.locator('#noteSheet button[value="close"]').last().click();
 await page.waitForTimeout(350);
 await page.screenshot({ path: "/tmp/abrahamic-mobile-notes.png", fullPage: true });
+
+await page.locator('[data-view="readView"]').click();
+const firstCard = page.locator(".ayah-card").first();
+await firstCard.scrollIntoViewIfNeeded();
+await firstCard.dispatchEvent("pointerdown", { button: 0, clientX: 120, clientY: 240, pointerType: "touch" });
+await page.waitForTimeout(620);
+await firstCard.dispatchEvent("pointerup", { button: 0, clientX: 120, clientY: 240, pointerType: "touch" });
+await page.waitForSelector("#readSelectionBar:not([hidden])");
+await page.waitForTimeout(750);
+await page.locator(".ayah-card").nth(1).click();
+await page.locator("#noteReadSelection").click();
+await page.waitForSelector("#noteDestinationSheet[open]");
+await page.locator("#createFromSelection").click();
+await page.waitForSelector("#noteSheet[open]");
+await page.locator("#noteName").fill("Reference only reading note");
+if (await page.locator("#noteEditor").inputValue()) throw new Error("Read multi-select copied verse text into the note.");
+if (await page.locator("#noteTags").inputValue()) throw new Error("Read multi-select added an automatic reading tag.");
+if (await page.locator("#noteReferences .reference-pill").count() !== 2) throw new Error("Read multi-select did not preserve both cross-references.");
+await page.locator('#noteSheet button[value="close"]').last().click();
+await page.waitForTimeout(400);
+await page.locator('[data-view="notesView"]').click();
+await page.locator("#notesSearch").fill("praise worlds");
+await page.waitForSelector('.note-card:has-text("Reference only reading note")', { timeout: 10000 });
+await page.locator("#notesSearch").fill("praise impossibleword");
+await page.waitForTimeout(350);
+if (await page.locator('.note-card:has-text("Reference only reading note")').count()) {
+  throw new Error("Notes search returned a result even though one required word was absent.");
+}
+await page.locator("#notesSearch").fill("rais");
+await page.waitForTimeout(250);
+if (await page.locator('.note-card:has-text("Reference only reading note")').count()) {
+  throw new Error("Notes search matched an unrelated word substring.");
+}
+await page.locator("#notesSearch").fill("");
+await page.waitForTimeout(250);
+await page.locator("#notesFolderMode").click();
+await page.screenshot({ path: "/tmp/abrahamic-mobile-folders.png", fullPage: true });
 
 await page.setViewportSize({ width: 834, height: 1194 });
 await page.locator('.note-card:has-text("Mobile capture test") .note-card-main').click();
