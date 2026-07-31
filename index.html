@@ -502,6 +502,28 @@
       </form>
     </dialog>
 
+    <dialog id="noteDestinationSheet" class="sheet note-destination-sheet">
+      <form method="dialog" class="sheet-inner">
+        <div class="sheet-header">
+          <div>
+            <h2>Add to a note</h2>
+            <p id="noteDestinationSummary">Choose an existing note or create a new one</p>
+          </div>
+          <button class="icon-button" value="close" aria-label="Close note chooser"><i class="ti ti-x" aria-hidden="true"></i></button>
+        </div>
+        <button id="createFromSelection" class="note-destination-new" type="button">
+          <span class="note-destination-icon"><i class="ti ti-file-plus" aria-hidden="true"></i></span>
+          <span><strong>Create a new note</strong><small>Start a separate note with this selection</small></span>
+          <i class="ti ti-chevron-right" aria-hidden="true"></i>
+        </button>
+        <label class="note-destination-search">
+          <i class="ti ti-search" aria-hidden="true"></i>
+          <input id="noteDestinationSearch" type="search" autocomplete="off" placeholder="Find an existing note">
+        </label>
+        <div id="noteDestinationList" class="note-destination-list"></div>
+      </form>
+    </dialog>
+
     <dialog id="noteSheet" class="sheet note-sheet">
       <form method="dialog" class="sheet-inner">
         <div class="sheet-header">
@@ -590,6 +612,10 @@
           </div>
           <button class="icon-button" value="close" aria-label="Close tafsir content">×</button>
         </div>
+        <label class="study-source-switcher">
+          <span id="studySourceLabel">Tafsir source</span>
+          <select id="studySourceSelect" aria-label="Switch study source"></select>
+        </label>
         <article id="tafsirContent" class="tafsir-content"></article>
       </form>
     </dialog>

@@ -43,9 +43,14 @@ const cloudIdForKey = (key) => {
   return btoa(unescape(encodeURIComponent(safeKey))).replaceAll("+", "-").replaceAll("/", "_").replaceAll("=", "");
 };
 const newerThan = (left, right) => {
+  const revisionDifference = Number(left?.revision || 0) - Number(right?.revision || 0);
+  if (revisionDifference) return revisionDifference > 0;
+  // A delete and an edit can be created at the same revision on two devices.
+  // Keep the tombstone in that tie so stale cached content cannot reappear.
+  if (Boolean(left?.deletedAt) !== Boolean(right?.deletedAt)) return Boolean(left?.deletedAt);
   const timeDifference = Date.parse(left?.updatedAt || 0) - Date.parse(right?.updatedAt || 0);
   if (timeDifference) return timeDifference > 0;
-  return Number(left?.revision || 0) > Number(right?.revision || 0);
+  return String(left?.deviceId || "").localeCompare(String(right?.deviceId || "")) > 0;
 };
 
 export class NotesSystem extends EventTarget {
@@ -54,6 +59,7 @@ export class NotesSystem extends EventTarget {
     this.onChange = onChange;
     this.db = null;
     this.syncing = false;
+    this.syncRequested = false;
     this.timer = null;
     this.writeQueue = Promise.resolve();
     this.config = { mode: "local", deviceId: "", accountUid: "", salt: "", iterations: 250000 };
@@ -392,7 +398,11 @@ export class NotesSystem extends EventTarget {
   }
 
   async sync({ force = false } = {}) {
-    if (this.syncing || this.config.mode !== "firebase") return;
+    if (this.syncing) {
+      this.syncRequested = true;
+      return;
+    }
+    if (this.config.mode !== "firebase") return;
     if (!this.user) throw new Error("Sign in to Firebase first.");
     if (!navigator.onLine) { this.emit("offline"); return; }
     this.syncing = true;
@@ -462,6 +472,10 @@ export class NotesSystem extends EventTarget {
     } finally {
       this.syncing = false;
       this.onChange(await this.visibleMap());
+      if (this.syncRequested) {
+        this.syncRequested = false;
+        this.scheduleSync(0);
+      }
     }
   }
 
@@ -554,7 +568,15 @@ export class NotesSystem extends EventTarget {
     return organizer;
   }
 
-  scheduleSync(delay = 900) { clearTimeout(this.timer); this.timer = setTimeout(() => this.sync().catch(() => {}), delay); }
+  scheduleSync(delay = 900) {
+    clearTimeout(this.timer);
+    this.timer = setTimeout(() => this.sync().catch(() => {}), delay);
+  }
+  async flush() {
+    clearTimeout(this.timer);
+    await this.writeQueue;
+    if (this.config.mode === "firebase" && this.user && navigator.onLine) await this.sync({ force: true });
+  }
   emit(state, detail = "") { this.dispatchEvent(new CustomEvent("status", { detail: { state, detail } })); }
   async all() { return this.tx(NOTES, "readonly", (store) => store.getAll()); }
   currentOwnerUid() { return this.user?.uid || this.config.accountUid || LOCAL_OWNER; }

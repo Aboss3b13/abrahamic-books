@@ -24,6 +24,8 @@ let notesSystem;
 let readerLoadToken = 0;
 const offlineJsonCache = new Map();
 const downloadedStoreCache = new Map();
+const pendingNoteDrafts = new Map();
+const pendingNoteSaveTimers = new Map();
 const NotesFiles = registerPlugin("NotesFiles");
 const WidgetData = registerPlugin("WidgetData");
 
@@ -141,6 +143,9 @@ const state = {
   savedSearchSources: null,
   workspaceTool: "notesView",
   workspaceToolScroll: { notesView: 0, searchView: 0 },
+  pendingNoteCapture: null,
+  currentStudyKey: "",
+  currentStudyType: "",
 };
 
 const els = {
@@ -236,6 +241,11 @@ const els = {
   commentarySearch: document.querySelector("#commentarySearch"),
   commentaryList: document.querySelector("#commentaryList"),
   commentarySummary: document.querySelector("#commentarySummary"),
+  noteDestinationSheet: document.querySelector("#noteDestinationSheet"),
+  noteDestinationSummary: document.querySelector("#noteDestinationSummary"),
+  noteDestinationSearch: document.querySelector("#noteDestinationSearch"),
+  noteDestinationList: document.querySelector("#noteDestinationList"),
+  createFromSelection: document.querySelector("#createFromSelection"),
   noteSheet: document.querySelector("#noteSheet"),
   noteTitle: document.querySelector("#noteTitle"),
   noteSubtitle: document.querySelector("#noteSubtitle"),
@@ -250,6 +260,8 @@ const els = {
   tafsirContentTitle: document.querySelector("#tafsirContentTitle"),
   tafsirContentSubtitle: document.querySelector("#tafsirContentSubtitle"),
   tafsirContent: document.querySelector("#tafsirContent"),
+  studySourceLabel: document.querySelector("#studySourceLabel"),
+  studySourceSelect: document.querySelector("#studySourceSelect"),
   notesView: document.querySelector("#notesView"),
   readView: document.querySelector("#readView"),
   notesCount: document.querySelector("#notesCount"),
@@ -393,7 +405,11 @@ async function setupAppLinks() {
     restoreAppPosition();
   };
   document.addEventListener("visibilitychange", () => {
-    if (document.visibilityState === "hidden") captureAppPosition(true);
+    if (document.visibilityState === "hidden") {
+      flushAllPendingNotes();
+      notesSystem?.flush().catch(() => {});
+      captureAppPosition(true);
+    }
     else restoreOnResume();
   });
   window.addEventListener("pagehide", () => captureAppPosition(true));
@@ -413,6 +429,8 @@ async function setupAppLinks() {
   await CapacitorApp.addListener("appUrlOpen", ({ url }) => openAppUrl(url));
   await CapacitorApp.addListener("appStateChange", ({ isActive }) => {
     if (!isActive) {
+      flushAllPendingNotes();
+      notesSystem?.flush().catch(() => {});
       captureAppPosition(true);
       syncSavedLastReadToWidget();
       return;
@@ -535,6 +553,9 @@ function bindEvents() {
   });
   els.translationSearch.addEventListener("input", debounceInput(renderTranslationList));
   els.tafsirSearch.addEventListener("input", debounceInput(renderTafsirList));
+  els.studySourceSelect.addEventListener("change", switchStudySource);
+  els.noteDestinationSearch.addEventListener("input", renderNoteDestinations);
+  els.createFromSelection.addEventListener("click", () => addCaptureToNote(""));
   els.noteEditor.addEventListener("input", saveCurrentNote);
   els.noteName.addEventListener("input", saveCurrentNote);
   els.noteTags.addEventListener("input", saveCurrentNote);
@@ -667,7 +688,14 @@ function bindEvents() {
 
   window.addEventListener("scroll", handleToolbarScroll, { passive: true });
   document.querySelectorAll(".reader-controls, .view-toolbar").forEach((toolbar) => {
+    let pointerStartY = 0;
+    let draggedUntil = 0;
+    toolbar.addEventListener("pointerdown", (event) => { pointerStartY = event.clientY; }, { passive: true });
+    toolbar.addEventListener("pointermove", (event) => {
+      if (Math.abs(event.clientY - pointerStartY) > 8) draggedUntil = performance.now() + 300;
+    }, { passive: true });
     toolbar.addEventListener("click", (event) => {
+      if (performance.now() < draggedUntil) return;
       const workspaceCollapsed = isLandscapeWorkspace()
         && document.body.classList.contains("workspace-tool-collapsed")
         && toolbar.closest("#workspaceLeft");
@@ -691,8 +719,13 @@ function bindEvents() {
     dialog.addEventListener("cancel", syncModalState);
   });
   els.noteSheet.addEventListener("close", () => {
+    flushPendingNote(state.currentNoteKey);
     if (state.currentNoteKey) refreshVerse(state.currentNoteKey);
     renderNotes({ animate: false });
+  });
+  window.addEventListener("pagehide", () => {
+    flushAllPendingNotes();
+    notesSystem?.flush().catch(() => {});
   });
 
   els.verses.addEventListener("click", (event) => {
@@ -709,7 +742,7 @@ function bindEvents() {
     const key = button.closest(".ayah-card")?.dataset.key;
     if (!key) return;
 
-    if (button.dataset.action === "note") openNote(key);
+    if (button.dataset.action === "note") addSinglePassageToNote(key);
     if (button.dataset.action === "tafsir") openTafsir(key, button);
     if (button.dataset.action === "commentary") openBibleCommentary(key, button);
     if (button.dataset.action === "bookmark") saveLastRead(key);
@@ -810,6 +843,17 @@ let lastScrollIntentAt = 0;
 let resumeRestoreToken = 0;
 let controlsMotion = null;
 let controlsMotionToolbar = null;
+let toolbarTouchActive = false;
+
+window.addEventListener("touchstart", () => { toolbarTouchActive = true; }, { passive: true });
+window.addEventListener("touchend", () => {
+  toolbarTouchActive = false;
+  setTimeout(() => {
+    if (isLandscapeWorkspace() || window.scrollY <= 220 || document.body.classList.contains("controls-manually-expanded")) return;
+    setControlsCollapsed(true, true);
+  }, 90);
+}, { passive: true });
+window.addEventListener("touchcancel", () => { toolbarTouchActive = false; }, { passive: true });
 
 function markScrollIntent() {
   lastScrollIntentAt = performance.now();
@@ -908,7 +952,10 @@ function handleToolbarScroll() {
     const manuallyExpanded = document.body.classList.contains("controls-manually-expanded");
     const scrollingDown = y > previousToolbarScrollY + 2;
 
-    if (y < 56) {
+    if (toolbarTouchActive) {
+      // Never change sticky-filter geometry under an active finger. Mobile
+      // WebViews can otherwise cancel the native pan while the toolbar shrinks.
+    } else if (y < 56) {
       // A collapsed toolbar only reopens when the user presses it. Layout
       // changes and browser scroll restoration must never reopen controls.
       document.body.classList.remove("controls-manually-expanded");
@@ -1662,17 +1709,62 @@ function saveCurrentNote() {
   }
 
   if (title.trim() || text.trim() || tags.length || state.currentNoteReferences.length || key.startsWith("note:")) {
-    state.notes[key] = { ...(state.notes[key] || {}), title, text, tags, folderId, references: state.currentNoteReferences, updatedAt: new Date().toISOString(), standalone: key.startsWith("note:") };
+    const draft = {
+      ...(state.notes[key] || {}),
+      title,
+      text,
+      tags,
+      folderId,
+      references: [...state.currentNoteReferences],
+      updatedAt: new Date().toISOString(),
+      standalone: key.startsWith("note:"),
+    };
+    state.notes[key] = draft;
+    queueLocalNoteSave(key, draft);
   } else {
     delete state.notes[key];
+    pendingNoteDrafts.delete(key);
+    clearTimeout(pendingNoteSaveTimers.get(key));
+    pendingNoteSaveTimers.delete(key);
+    notesSystem?.remove(key).catch((error) => updateSyncUI("conflict", error.message));
   }
+}
 
-  clearTimeout(saveCurrentNote.localTimer);
-  saveCurrentNote.localTimer = setTimeout(() => {
-    const note = state.notes[key];
-    if (!note) return;
-    notesSystem?.save(key, note).then((saved) => { state.notes[key] = saved; }).catch((error) => updateSyncUI("conflict", error.message));
-  }, 280);
+function queueLocalNoteSave(key, note, delay = 240) {
+  const snapshot = {
+    ...note,
+    tags: [...(note.tags || [])],
+    references: [...(note.references || [])],
+  };
+  pendingNoteDrafts.set(key, snapshot);
+  clearTimeout(pendingNoteSaveTimers.get(key));
+  pendingNoteSaveTimers.set(key, setTimeout(() => persistPendingNote(key), delay));
+}
+
+async function persistPendingNote(key) {
+  clearTimeout(pendingNoteSaveTimers.get(key));
+  pendingNoteSaveTimers.delete(key);
+  const draft = pendingNoteDrafts.get(key);
+  if (!draft || !notesSystem) return;
+  try {
+    const saved = await notesSystem.save(key, draft);
+    const latest = pendingNoteDrafts.get(key);
+    if (latest?.updatedAt === draft.updatedAt) {
+      pendingNoteDrafts.delete(key);
+      state.notes[key] = saved;
+    }
+  } catch (error) {
+    updateSyncUI("conflict", error.message);
+  }
+}
+
+function flushPendingNote(key) {
+  if (!key || !pendingNoteDrafts.has(key)) return;
+  persistPendingNote(key);
+}
+
+function flushAllPendingNotes() {
+  [...pendingNoteDrafts.keys()].forEach(persistPendingNote);
 }
 
 async function deleteCurrentNote() {
@@ -1684,6 +1776,9 @@ async function deleteCurrentNote() {
     els.noteSheet.close();
     return;
   }
+  pendingNoteDrafts.delete(deletedKey);
+  clearTimeout(pendingNoteSaveTimers.get(deletedKey));
+  pendingNoteSaveTimers.delete(deletedKey);
   await notesSystem?.remove(deletedKey);
   delete state.notes[deletedKey];
   refreshVerse(deletedKey);
@@ -1765,10 +1860,13 @@ async function getWiktionaryGloss(word, lang) {
 }
 
 async function openTafsir(key, sourceButton = null) {
+  state.currentStudyKey = key;
+  state.currentStudyType = "tafsir";
   const tafsir = state.tafsirs.find((item) => item.id === state.selectedTafsir);
   els.tafsirContentTitle.textContent = `Tafsir ${key}`;
   els.tafsirContentSubtitle.textContent = tafsir ? tafsir.name : "Loading...";
   els.tafsirContent.innerHTML = "<p>Loading tafsir...</p>";
+  renderStudySourceSwitcher();
   openDialog(els.tafsirContentSheet, sourceButton, "study");
 
   try {
@@ -1788,11 +1886,15 @@ async function getDownloadedTafsir(key) {
 }
 
 async function openBibleCommentary(key, sourceButton = null) {
+  state.currentStudyKey = key;
+  state.currentStudyType = "commentary";
   const parsed = parseReferenceKey(key); const bookId = BOOK_IDS[parsed.book];
   const commentary = state.commentaries.find((item) => item.id === state.selectedCommentary);
   els.tafsirContentTitle.textContent = `${parsed.label} commentary`;
   els.tafsirContentSubtitle.textContent = commentary?.name || state.selectedCommentary;
-  els.tafsirContent.innerHTML = "<p>Loading commentary...</p>"; openDialog(els.tafsirContentSheet, sourceButton, "study");
+  els.tafsirContent.innerHTML = "<p>Loading commentary...</p>";
+  renderStudySourceSwitcher();
+  openDialog(els.tafsirContentSheet, sourceButton, "study");
   try {
     const url = `https://bible.helloao.org/api/c/${state.selectedCommentary}/${bookId}/${parsed.chapter}.json`;
     const data = state.selectedCommentary === "matthew-henry" ? await getOfflineJSON(`commentary/matthew-henry/${bookId}-${parsed.chapter}.json`).catch(() => getJSON(url)) : await getJSON(url);
@@ -1800,6 +1902,33 @@ async function openBibleCommentary(key, sourceButton = null) {
     const paragraphs = Array.isArray(entry?.content) ? entry.content : [];
     revealStudyContent(paragraphs.length ? paragraphs.map((text) => `<p>${escapeHTML(text)}</p>`).join("") : "<p>No commentary entry is available for this verse.</p>");
   } catch (error) { revealStudyContent(`<p>${escapeHTML(error.message)}</p>`); }
+}
+
+function renderStudySourceSwitcher() {
+  const isTafsir = state.currentStudyType === "tafsir";
+  const items = isTafsir ? state.tafsirs : state.commentaries;
+  const selected = String(isTafsir ? state.selectedTafsir : state.selectedCommentary);
+  els.studySourceLabel.textContent = isTafsir ? "Tafsir source" : "Commentary source";
+  els.studySourceSelect.innerHTML = items.map((item) => {
+    const id = String(item.id);
+    const language = item.language_name || item.languageName || "English";
+    return `<option value="${escapeHTML(id)}" ${id === selected ? "selected" : ""}>${escapeHTML(item.name)} · ${escapeHTML(language)}</option>`;
+  }).join("");
+}
+
+function switchStudySource() {
+  if (!state.currentStudyKey) return;
+  if (state.currentStudyType === "tafsir") {
+    state.selectedTafsir = Number(els.studySourceSelect.value) || OFFLINE.defaultTafsir;
+    savePrefs();
+    updateTafsirSummary();
+    openTafsir(state.currentStudyKey);
+    return;
+  }
+  state.selectedCommentary = els.studySourceSelect.value || state.selectedCommentary;
+  savePrefs();
+  updateCommentarySummary();
+  openBibleCommentary(state.currentStudyKey);
 }
 
 function revealStudyContent(html) {
@@ -3898,14 +4027,18 @@ function createLiveSearchRenderer(query, token) {
     const batch = queue.splice(0, 24);
     const grid = els.searchResults.querySelector(".live-search-grid");
     batch.forEach((result) => {
-      const book = result.book || result.type;
+      const book = getSearchResultGroup(result);
       if (!groups.has(book)) {
         const index = groups.size;
-        grid?.insertAdjacentHTML("beforeend", `<section class="search-book-group" id="search-book-${index}" data-book="${escapeHTML(book)}"><div class="search-book-results"></div></section>`);
+        const kind = book.startsWith("Tafsir ·") ? "Tafsir" : book.startsWith("Commentary ·") ? "Commentary" : "Book";
+        const label = book.replace(/^(Tafsir|Commentary) · /, "");
+        grid?.insertAdjacentHTML("beforeend", `<section class="search-book-group" id="search-book-${index}" data-book="${escapeHTML(book)}"><div class="search-book-heading"><div><span>${kind}</span><strong>${escapeHTML(label)}</strong></div><small data-live-count>0 results</small></div><div class="search-book-results"></div></section>`);
         groups.set(book, { index, count: 0 });
       }
       const group = groups.get(book);
       group.count += 1;
+      const countLabel = grid?.querySelector(`#search-book-${group.index} [data-live-count]`);
+      if (countLabel) countLabel.textContent = `${group.count} ${group.count === 1 ? "result" : "results"}`;
       grid?.querySelector(`#search-book-${group.index} .search-book-results`)?.insertAdjacentHTML("beforeend", `
         <article class="search-result live-result" data-search-id="${escapeHTML(result.searchId)}">
           <label class="search-check" aria-label="Select ${escapeHTML(result.title)}">
@@ -3945,7 +4078,7 @@ function renderSearchResults(results, query, searching = false) {
   state.searchResults = results.map((result, index) => ({ ...result, searchId: `${result.type}:${result.key}:${index}` }));
   const groups = new Map();
   state.searchResults.forEach((result) => {
-    const book = result.book || result.type;
+    const book = getSearchResultGroup(result);
     if (!groups.has(book)) groups.set(book, []);
     groups.get(book).push(result);
   });
@@ -3956,7 +4089,7 @@ function renderSearchResults(results, query, searching = false) {
     ? [...groups.entries()].map(([book, bookResults], groupIndex) => `
       <section class="search-book-group" id="search-book-${groupIndex}" data-book="${escapeHTML(book)}">
         <div class="search-book-heading">
-          <div><span>Book</span><strong>${escapeHTML(book)}</strong></div>
+          <div><span>${book.startsWith("Tafsir ·") ? "Tafsir" : book.startsWith("Commentary ·") ? "Commentary" : "Book"}</span><strong>${escapeHTML(book.replace(/^(Tafsir|Commentary) · /, ""))}</strong></div>
           <small>${bookResults.length} result${bookResults.length === 1 ? "" : "s"}</small>
         </div>
         <div class="search-book-results">
@@ -3985,6 +4118,15 @@ function renderSearchResults(results, query, searching = false) {
   bindRenderedSearchResults();
   updateSearchSelectionUI();
   updateSearchJumpActive();
+}
+
+function getSearchResultGroup(result) {
+  const book = result.book || result.label || result.type;
+  const type = String(result.type || "").toLowerCase();
+  const sourceId = String(result.sourceId || "");
+  if (type === "tafsir" || sourceId.startsWith("tafsir:")) return `Tafsir · ${book}`;
+  if (type === "commentary" || sourceId.startsWith("commentary:")) return `Commentary · ${book}`;
+  return book;
 }
 
 function renderSearchBookIndex(entries, placeholder = "Matching books will appear here", preservePosition = false) {
@@ -4136,10 +4278,12 @@ function getSearchSourceGroups() {
     .filter((book) => book.source === "thaqalayn" || BUNDLED_HADITH_COLLECTIONS.has(book.key))
     .map((book) => ({ id: `hadith:${book.key}`, label: book.name, meta: `${book.tradition} hadith` }));
   return [
-    { id: "quran", label: "Quran & commentary", items: [
+    { id: "quran", label: "Quran", items: [
       { id: "quran", label: "Quran", meta: "Arabic and translation" },
-      { id: "tafsir", label: tafsir?.name || "Tafsir", meta: "Downloaded commentary" },
       ...downloadedTranslations,
+    ] },
+    { id: "tafsir", label: "Tafsir", items: [
+      { id: "tafsir", label: tafsir?.name || "Tafsir", meta: "Downloaded commentary" },
       ...downloadedTafsirs,
     ] },
     ...(downloadedCommentaries.length ? [{ id: "commentary", label: "Downloaded commentaries", items: downloadedCommentaries }] : []),
@@ -4425,17 +4569,38 @@ async function shareReadSelection() {
 function createNoteFromReadSelection() {
   const selected = state.verses.filter((verse) => state.selectedReadVerses.has(verse.verse_key));
   if (!selected.length) return;
-  const key = `note:${crypto.randomUUID()}`;
   const references = selected.map((verse) => verse.verse_key);
   const text = selected.map((verse) => {
     const translation = verse.translations?.[0]?.text || verse.text || "";
     return `${formatReferenceKey(verse.verse_key)}\n${stripHTML(translation)}`;
   }).join("\n\n");
-  state.notes[key] = { title: "Reading collection", text, tags: ["reading"], references, updatedAt: new Date().toISOString(), standalone: true };
-  saveNotes();
-  renderNotes();
-  exitReadSelectMode();
-  openNote(key);
+  openNoteDestination({
+    title: selected.length === 1 ? formatReferenceKey(references[0]) : "Reading collection",
+    text,
+    tags: ["reading"],
+    references,
+    sourceLabel: `${selected.length} selected ${selected.length === 1 ? "passage" : "passages"}`,
+    complete: exitReadSelectMode,
+  });
+}
+
+function addSinglePassageToNote(key) {
+  const verse = state.verses.find((item) => item.verse_key === key);
+  if (!verse) {
+    openNote(key);
+    return;
+  }
+  const parsed = parseReferenceKey(key);
+  const text = parsed.type === "quran"
+    ? `${formatReferenceKey(key)}\n${stripHTML(verse.translations?.[0]?.text || verse.text || "")}`
+    : `${formatReferenceKey(key)}\n${stripHTML(verse.text || "")}`;
+  openNoteDestination({
+    title: formatReferenceKey(key),
+    text,
+    tags: ["reading"],
+    references: [key],
+    sourceLabel: formatReferenceKey(key),
+  });
 }
 
 function toggleSearchResult(searchId, force) {
@@ -4479,16 +4644,82 @@ function updateSearchSelectionUI() {
 function createNoteFromSearchSelection() {
   const selected = state.searchResults.filter((result) => state.selectedSearchResults.has(result.searchId));
   if (!selected.length) return;
-  const key = `note:${crypto.randomUUID()}`;
   const references = [...new Set(selected.map((result) => result.key))];
   const text = selected.map((result) => `${result.title}\n${makeSnippet(result.text || result.extra || "", els.globalSearch.value.trim())}`).join("\n\n");
-  state.notes[key] = { title: "Search collection", text, tags: ["search"], references, updatedAt: new Date().toISOString(), standalone: true };
-  saveNotes();
+  openNoteDestination({
+    title: selected.length === 1 ? selected[0].title : "Search collection",
+    text,
+    tags: ["search"],
+    references,
+    sourceLabel: `${selected.length} selected search ${selected.length === 1 ? "result" : "results"}`,
+    complete: () => {
+      state.searchSelectMode = false;
+      state.selectedSearchResults.clear();
+      updateSearchSelectionUI();
+    },
+  });
+}
+
+function openNoteDestination(capture) {
+  state.pendingNoteCapture = capture;
+  els.noteDestinationSummary.textContent = `${capture.sourceLabel} · choose where to save`;
+  els.noteDestinationSearch.value = "";
+  renderNoteDestinations();
+  openDialog(els.noteDestinationSheet);
+  setTimeout(() => els.noteDestinationSearch.focus({ preventScroll: true }), 80);
+}
+
+function renderNoteDestinations() {
+  const query = normalizeSearchText(els.noteDestinationSearch.value);
+  const entries = Object.entries(state.notes)
+    .filter(([, note]) => note && (note.title?.trim() || note.text?.trim() || note.references?.length || note.standalone))
+    .filter(([key, note]) => !query || normalizeSearchText(`${note.title || ""} ${note.text || ""} ${getFolderDisplayPath(note.folderId || "")} ${key}`).includes(query))
+    .sort((left, right) => compareNotes(left[1], right[1], "updated-desc"));
+  els.noteDestinationList.innerHTML = entries.length
+    ? entries.map(([key, note]) => {
+        const folder = getFolderDisplayPath(note.folderId || "");
+        const preview = String(note.text || "").trim().replace(/\s+/g, " ").slice(0, 110);
+        return `<button class="note-destination-row" type="button" data-note-destination="${escapeHTML(key)}">
+          <span class="note-destination-icon"><i class="ti ti-notes" aria-hidden="true"></i></span>
+          <span><strong>${escapeHTML(note.title?.trim() || "Untitled note")}</strong><small>${escapeHTML(folder || preview || "No text yet")}</small></span>
+          <i class="ti ti-plus" aria-hidden="true"></i>
+        </button>`;
+      }).join("")
+    : `<div class="note-destination-empty"><i class="ti ti-search-off" aria-hidden="true"></i><strong>No matching notes</strong><span>Create a new note or try another name.</span></div>`;
+  els.noteDestinationList.querySelectorAll("[data-note-destination]").forEach((button) => {
+    button.addEventListener("click", () => addCaptureToNote(button.dataset.noteDestination));
+  });
+}
+
+function addCaptureToNote(existingKey = "") {
+  const capture = state.pendingNoteCapture;
+  if (!capture) return;
+  const key = existingKey || `note:${crypto.randomUUID()}`;
+  const existing = existingKey ? state.notes[key] : null;
+  const references = [...new Set([...(existing?.references || []), ...(capture.references || [])])];
+  const existingText = String(existing?.text || "").trim();
+  const capturedText = String(capture.text || "").trim();
+  const text = existingText && capturedText && !existingText.includes(capturedText)
+    ? `${existingText}\n\n— Added from ${capture.sourceLabel} —\n\n${capturedText}`
+    : existingText || capturedText;
+  const note = {
+    ...(existing || {}),
+    title: existing?.title || capture.title,
+    text,
+    tags: [...new Set([...(existing?.tags || []), ...(capture.tags || [])])],
+    references,
+    folderId: existing?.folderId || (state.noteViewMode === "folders" && state.selectedFolderId !== "all" ? state.selectedFolderId : ""),
+    updatedAt: new Date().toISOString(),
+    standalone: true,
+  };
+  state.notes[key] = note;
+  queueLocalNoteSave(key, note, 0);
   renderNotes();
+  els.noteDestinationSheet.close();
+  state.pendingNoteCapture = null;
+  capture.complete?.();
   openNote(key);
-  state.searchSelectMode = false;
-  state.selectedSearchResults.clear();
-  updateSearchSelectionUI();
+  setStatus(existing ? `Added ${capture.sourceLabel} to “${existing.title?.trim() || "Untitled note"}”.` : "Created a new note from your selection.");
 }
 
 function noteRenderSignature(notes) {
@@ -4506,6 +4737,10 @@ function noteRenderSignature(notes) {
 }
 
 function applySyncedNotes(notes) {
+  for (const [key, draft] of pendingNoteDrafts) {
+    const stored = notes[key];
+    if (!stored || Date.parse(draft.updatedAt || 0) >= Date.parse(stored.updatedAt || 0)) notes[key] = draft;
+  }
   const previousNotes = state.notes;
   const changed = noteRenderSignature(state.notes) !== noteRenderSignature(notes);
   state.notes = notes;
@@ -4652,8 +4887,8 @@ function savePrefs() {
 
 function saveNotes() {
   const key = state.currentNoteKey;
-  if (key && state.notes[key]) notesSystem?.save(key, state.notes[key]).then((saved) => { state.notes[key] = saved; }).catch((error) => updateSyncUI("conflict", error.message));
-  else Object.entries(state.notes).filter(([, note]) => !note.id).forEach(([noteKey, note]) => notesSystem?.save(noteKey, note).then((saved) => { state.notes[noteKey] = saved; }));
+  if (key && state.notes[key]) queueLocalNoteSave(key, state.notes[key], 0);
+  else Object.entries(state.notes).filter(([, note]) => !note.id).forEach(([noteKey, note]) => queueLocalNoteSave(noteKey, note, 0));
 }
 
 function syncWidgetNotes() {
