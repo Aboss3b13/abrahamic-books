@@ -1976,6 +1976,7 @@ function renderNotes({ animate = true, hydrateReferences = true } = {}) {
   const locked = state.notesSection === "shared" && !notesSystem?.signedIn;
   els.sharedNotesLocked.hidden = !locked;
   const mindMapMode = state.noteViewMode === "mindmap";
+  syncMindMapFullscreen();
   els.notesList.hidden = locked || mindMapMode;
   els.notesMindMap.hidden = locked || !mindMapMode;
   renderTagFilters();
@@ -1986,8 +1987,12 @@ function renderNotes({ animate = true, hydrateReferences = true } = {}) {
       folders: state.noteFolders,
       formatReference: formatReferenceKey,
       parseReference: parseReferenceKey,
+      onClose: () => setNotesViewMode("flat"),
       onOpenNote: openNote,
-      onOpenReference: navigateToReference,
+      onOpenReference: (reference) => {
+        setNotesViewMode("flat");
+        navigateToReference(reference);
+      },
       onFilterTag: (tag) => {
         state.noteTagFilter = state.noteTagFilter === tag ? "" : tag;
         renderNotes();
@@ -2467,6 +2472,13 @@ function setNotesViewMode(mode) {
   else if (state.selectedFolderId === "all") state.selectedFolderId = "";
   saveNotesOrganizer();
   renderNotes();
+}
+
+function syncMindMapFullscreen() {
+  const visible = state.noteViewMode === "mindmap" && (state.currentView === "notesView" || isLandscapeWorkspace());
+  if (visible && els.notesMindMap.parentElement !== document.body) document.body.append(els.notesMindMap);
+  if (!visible && els.notesMindMap.parentElement === document.body) els.noteFolderBrowser.after(els.notesMindMap);
+  document.body.classList.toggle("mindmap-fullscreen", visible);
 }
 
 function createNoteFolder(fromEditor = false) {
@@ -3746,6 +3758,7 @@ function switchView(viewId, reselectedFromNav = false, currentScrollOverride = n
   if (viewId === "notesView" && !els.notesList.childElementCount) renderNotes({ animate: false });
   document.body.classList.remove("controls-collapsed", "controls-manually-expanded");
   state.currentView = viewId;
+  syncMindMapFullscreen();
   previousToolbarScrollY = restoreTop;
   viewSwitchingUntil = performance.now() + 120;
 

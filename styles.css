@@ -4903,6 +4903,27 @@ a.pill-button { position: relative; isolation: isolate; }
 
 .notes-mindmap[hidden] { display: none; }
 
+html:has(body.mindmap-fullscreen) { scrollbar-gutter: auto; }
+body.mindmap-fullscreen { overflow: hidden; overscroll-behavior: none; }
+body.mindmap-fullscreen .notes-mindmap {
+  position: fixed;
+  inset: 0;
+  z-index: 1000;
+  display: flex;
+  flex-direction: column;
+  width: 100vw;
+  min-height: 100dvh;
+  margin: 0;
+  border: 0;
+  border-radius: 0;
+  box-shadow: none;
+  animation: mindmap-fullscreen-enter 260ms cubic-bezier(.16,1,.3,1) both;
+}
+
+@keyframes mindmap-fullscreen-enter {
+  from { opacity: 0; }
+}
+
 .notes-mindmap::before {
   position: absolute;
   inset: 0;
@@ -4920,7 +4941,7 @@ a.pill-button { position: relative; isolation: isolate; }
   align-items: center;
   justify-content: space-between;
   gap: 16px;
-  padding: 18px 20px 14px;
+  padding: max(16px, env(safe-area-inset-top)) max(18px, env(safe-area-inset-right)) 14px max(18px, env(safe-area-inset-left));
   border-bottom: 1px solid color-mix(in srgb, var(--line) 76%, transparent);
   background: color-mix(in srgb, var(--panel) 86%, transparent);
   backdrop-filter: blur(16px);
@@ -4954,8 +4975,17 @@ a.pill-button { position: relative; isolation: isolate; }
   background: var(--paper);
 }
 .mindmap-actions button:hover { color: var(--green); border-color: var(--green-2); transform: translateY(-1px); }
+.mindmap-actions .mindmap-close,
+.mindmap-close {
+  color: var(--ink);
+  border-color: color-mix(in srgb, var(--rose) 24%, var(--line));
+  background: color-mix(in srgb, var(--rose) 8%, var(--paper));
+}
+.mindmap-actions .mindmap-close:hover { color: var(--rose); border-color: var(--rose); }
+.mindmap-empty-close { position: absolute; z-index: 5; top: max(14px, env(safe-area-inset-top)); right: max(14px, env(safe-area-inset-right)); width: 46px; min-height: 46px; border: 1px solid var(--line); border-radius: 14px; }
 
 .mindmap-stage { position: relative; height: clamp(520px, 68dvh, 800px); touch-action: none; }
+body.mindmap-fullscreen .mindmap-stage { flex: 1 1 auto; height: auto; min-height: 0; }
 .mindmap-stage svg { display: block; width: 100%; height: 100%; cursor: grab; user-select: none; }
 .mindmap-stage.is-panning svg { cursor: grabbing; }
 .mindmap-world { transform-origin: 0 0; }
@@ -4983,13 +5013,13 @@ a.pill-button { position: relative; isolation: isolate; }
 .mindmap-node:hover rect,
 .mindmap-node:focus rect,
 .mindmap-node.is-connected rect { stroke: var(--green-2); stroke-width: 2; }
-.mindmap-node .node-label { dominant-baseline: middle; fill: var(--ink); font-size: 12px; font-weight: 750; pointer-events: none; }
-.mindmap-node .node-icon { dominant-baseline: middle; fill: var(--muted); font-size: 12px; font-weight: 900; pointer-events: none; }
+.mindmap-node .node-label { dominant-baseline: middle; fill: var(--ink); font-size: 18px; font-weight: 760; pointer-events: none; }
+.mindmap-node .node-icon { dominant-baseline: middle; fill: var(--muted); font-size: 18px; font-weight: 900; pointer-events: none; }
 .mindmap-node.node-root rect { fill: var(--green); stroke: color-mix(in srgb, var(--green) 50%, var(--gold)); }
 .mindmap-node.node-root .node-label,
 .mindmap-node.node-root .node-icon { fill: var(--on-accent); }
 .mindmap-node.node-hub rect { fill: color-mix(in srgb, var(--green-2) 14%, var(--panel)); stroke: color-mix(in srgb, var(--green-2) 48%, var(--line)); }
-.mindmap-node.node-hub .node-label { fill: var(--green); font-size: 11px; font-weight: 900; letter-spacing: .04em; text-transform: uppercase; }
+.mindmap-node.node-hub .node-label { fill: var(--green); font-size: 16px; font-weight: 900; letter-spacing: .04em; text-transform: uppercase; }
 .mindmap-node.node-tag rect { fill: color-mix(in srgb, #8b5cf6 10%, var(--panel)); stroke: color-mix(in srgb, #8b5cf6 38%, var(--line)); }
 .mindmap-node.node-tag .node-icon { fill: #8b5cf6; }
 .mindmap-node.node-folder rect { fill: color-mix(in srgb, var(--gold) 13%, var(--panel)); stroke: color-mix(in srgb, var(--gold) 50%, var(--line)); }
@@ -4998,7 +5028,7 @@ a.pill-button { position: relative; isolation: isolate; }
 .mindmap-node.node-book .node-icon,
 .mindmap-node.node-reference .node-icon { fill: var(--green-2); }
 .mindmap-node.node-note rect { fill: var(--paper); }
-.mindmap-node.node-note .node-label { font-size: 12.5px; font-weight: 850; }
+.mindmap-node.node-note .node-label { font-size: 19px; font-weight: 850; }
 .notes-mindmap.has-map-selection .mindmap-node:not(.is-connected),
 .notes-mindmap.has-map-selection .mindmap-edge:not(.is-connected) { opacity: .12; }
 .mindmap-edge.is-connected { opacity: 1; stroke: var(--green-2); stroke-width: 2.4; }
@@ -5055,15 +5085,20 @@ a.pill-button { position: relative; isolation: isolate; }
 @media (max-width: 640px) {
   .notes-view-switch button { padding-inline: 9px; }
   .notes-view-switch button span { font-size: .68rem; }
-  .mindmap-header { align-items: flex-start; padding: 14px; }
-  .mindmap-header h3 { font-size: .92rem; }
-  .mindmap-header p { max-width: 190px; }
+  .mindmap-header { align-items: center; padding: max(12px, env(safe-area-inset-top)) 10px 10px 14px; }
+  .mindmap-kicker { font-size: .58rem; }
+  .mindmap-header h3 { max-width: 155px; font-size: .94rem; line-height: 1.15; }
+  .mindmap-header p { margin-top: 3px; max-width: 170px; font-size: .62rem; }
   .mindmap-actions { flex-wrap: nowrap; }
-  .mindmap-actions button { min-width: 36px; min-height: 36px; padding: 0 9px; }
+  .mindmap-actions { gap: 4px; }
+  .mindmap-actions button { min-width: 42px; min-height: 42px; padding: 0; border-radius: 12px; font-size: 1rem; }
   .mindmap-actions button span { display: none; }
   .mindmap-stage { height: 62dvh; min-height: 470px; }
-  .mindmap-hint { bottom: 10px; width: max-content; max-width: calc(100% - 24px); font-size: .61rem; }
-  .mindmap-inspector { right: 10px; bottom: 48px; width: calc(100% - 20px); }
+  body.mindmap-fullscreen .mindmap-stage { min-height: 0; }
+  .mindmap-hint { bottom: max(12px, env(safe-area-inset-bottom)); width: max-content; max-width: calc(100% - 24px); font-size: .68rem; }
+  .mindmap-inspector { right: 10px; bottom: max(54px, calc(env(safe-area-inset-bottom) + 48px)); width: calc(100% - 20px); padding: 18px; }
+  .mindmap-inspector > strong { font-size: 1.08rem; }
+  .mindmap-inspector p { font-size: .84rem; }
 }
 
 .note-folder-browser {

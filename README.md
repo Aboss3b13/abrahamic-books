@@ -72,7 +72,7 @@ The Android APK can be downloaded from [the app website](https://abbas2.ali-raza
 - Open a referenced passage directly from a note
 - Search and filter notes
 - Sort notes by date or title
-- Explore every note as an interactive mind map connecting folders, hashtags, books, and scripture references
+- Explore every note in a full-screen, pinch-to-zoom mind map connecting folders, hashtags, books, and scripture references
 - Long-press notes to start multi-select mode
 - Select, share, or delete several notes
 - Share complete notes as an importable link

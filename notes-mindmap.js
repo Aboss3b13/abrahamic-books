@@ -129,9 +129,9 @@ function svgElement(name, attributes = {}) {
 }
 
 function nodeWidth(node) {
-  if (node.type === "root") return 128;
-  if (node.type === "hub") return 105;
-  return clamp(54 + node.label.length * 6.2, 92, node.type === "note" ? 190 : 165);
+  if (node.type === "root") return 168;
+  if (node.type === "hub") return 138;
+  return clamp(76 + node.label.length * 8.8, 140, node.type === "note" ? 276 : 238);
 }
 
 function shortLabel(value, limit = 25) {
@@ -142,7 +142,8 @@ export function renderNotesMindMap(container, options) {
   const graph = buildGraph(options);
   const counts = graph.nodes.reduce((result, node) => ({ ...result, [node.type]: (result[node.type] || 0) + 1 }), {});
   if (!options.entries.length) {
-    container.innerHTML = `<div class="mindmap-empty"><i class="ti ti-affiliate" aria-hidden="true"></i><h3>No notes to map yet</h3><p>Create a note or clear the current filters to reveal your knowledge map.</p></div>`;
+    container.innerHTML = `<button class="mindmap-close mindmap-empty-close" type="button" aria-label="Close mind map"><i class="ti ti-x"></i></button><div class="mindmap-empty"><i class="ti ti-affiliate" aria-hidden="true"></i><h3>No notes to map yet</h3><p>Create a note or clear the current filters to reveal your knowledge map.</p></div>`;
+    container.querySelector(".mindmap-close").addEventListener("click", options.onClose);
     return;
   }
 
@@ -153,9 +154,10 @@ export function renderNotesMindMap(container, options) {
         <button type="button" data-map-zoom="out" aria-label="Zoom out"><i class="ti ti-minus"></i></button>
         <button type="button" data-map-reset aria-label="Fit map"><i class="ti ti-focus-centered"></i><span>Fit</span></button>
         <button type="button" data-map-zoom="in" aria-label="Zoom in"><i class="ti ti-plus"></i></button>
+        <button class="mindmap-close" type="button" aria-label="Close mind map"><i class="ti ti-x"></i></button>
       </div>
     </header>
-    <div class="mindmap-stage"><svg role="img" aria-label="Interactive graph connecting notes, folders, hashtags, books and scripture references"></svg><div class="mindmap-hint"><i class="ti ti-hand-move"></i> Drag to explore · scroll to zoom · tap a node for details</div></div>
+    <div class="mindmap-stage"><svg role="img" aria-label="Interactive graph connecting notes, folders, hashtags, books and scripture references"></svg><div class="mindmap-hint"><i class="ti ti-zoom-scan"></i> Drag to explore · pinch or scroll to zoom · tap for details</div></div>
     <aside class="mindmap-inspector" hidden></aside>`;
 
   const stage = container.querySelector(".mindmap-stage");
@@ -176,17 +178,21 @@ export function renderNotesMindMap(container, options) {
   });
 
   graph.nodes.forEach((node) => {
-    const width = nodeWidth(node); const height = node.type === "note" ? 48 : 38;
+    const width = nodeWidth(node); const height = node.type === "note" ? 68 : 56;
     const group = svgElement("g", { class: `mindmap-node node-${node.type}`, transform: `translate(${node.x} ${node.y})`, tabindex: "0", role: "button", "aria-label": `${node.type}: ${node.label}`, "data-node-id": node.id });
     group.append(svgElement("rect", { x: -width / 2, y: -height / 2, width, height, rx: height / 2 }));
-    const icon = svgElement("text", { class: "node-icon", x: -width / 2 + 17, y: 1, "aria-hidden": "true" });
+    const icon = svgElement("text", { class: "node-icon", x: -width / 2 + 23, y: 1, "aria-hidden": "true" });
     icon.textContent = ({ root: "✦", hub: "•", note: "✎", folder: "▰", tag: "#", book: "▤", reference: "↗" })[node.type] || "•";
-    const label = svgElement("text", { class: "node-label", x: node.type === "hub" ? 0 : -width / 2 + 32, y: 1, "text-anchor": node.type === "hub" ? "middle" : "start" });
+    const label = svgElement("text", { class: "node-label", x: node.type === "hub" ? 0 : -width / 2 + 43, y: 1, "text-anchor": node.type === "hub" ? "middle" : "start" });
     label.textContent = shortLabel(node.label, node.type === "note" ? 25 : 21);
     group.append(icon, label); nodeLayer.append(group);
   });
 
-  let scale = 1; let tx = 0; let ty = 0; let selected = "";
+  const openingScale = stage.clientWidth < 700 ? 1.42 : stage.clientWidth < 1100 ? 1.18 : 1;
+  let scale = openingScale;
+  let tx = width / 2 - width / 2 * scale;
+  let ty = height / 2 - height / 2 * scale;
+  let selected = "";
   const applyTransform = () => world.setAttribute("transform", `translate(${tx} ${ty}) scale(${scale})`);
   const fit = () => { scale = 1; tx = 0; ty = 0; applyTransform(); };
   const zoom = (factor, clientX = stage.clientWidth / 2, clientY = stage.clientHeight / 2) => {
@@ -196,6 +202,7 @@ export function renderNotesMindMap(container, options) {
     const y = (clientY - rect.top) / rect.height * height;
     tx = x - (x - tx) * next / scale; ty = y - (y - ty) * next / scale; scale = next; applyTransform();
   };
+  applyTransform();
   const selectNode = (node) => {
     selected = selected === node.id ? "" : node.id;
     const neighbors = new Set([selected]);
@@ -216,9 +223,10 @@ export function renderNotesMindMap(container, options) {
     });
   };
 
+  let suppressClickUntil = 0;
   nodeLayer.querySelectorAll(".mindmap-node").forEach((group) => {
     const node = byId.get(group.dataset.nodeId);
-    group.addEventListener("click", (event) => { event.stopPropagation(); selectNode(node); });
+    group.addEventListener("click", (event) => { event.stopPropagation(); if (performance.now() < suppressClickUntil) return; selectNode(node); });
     group.addEventListener("dblclick", () => {
       if (node.type === "note") options.onOpenNote(node.rawId);
       if (node.type === "reference") options.onOpenReference(node.rawId);
@@ -228,11 +236,53 @@ export function renderNotesMindMap(container, options) {
   });
   svg.addEventListener("click", () => { if (selected) selectNode(byId.get(selected)); });
   svg.addEventListener("wheel", (event) => { event.preventDefault(); zoom(event.deltaY < 0 ? 1.12 : .89, event.clientX, event.clientY); }, { passive: false });
-  let drag = null;
-  svg.addEventListener("pointerdown", (event) => { if (event.target.closest?.(".mindmap-node")) return; drag = { x: event.clientX, y: event.clientY, tx, ty }; svg.setPointerCapture(event.pointerId); stage.classList.add("is-panning"); });
-  svg.addEventListener("pointermove", (event) => { if (!drag) return; const rect = svg.getBoundingClientRect(); tx = drag.tx + (event.clientX - drag.x) / rect.width * width; ty = drag.ty + (event.clientY - drag.y) / rect.height * height; applyTransform(); });
-  const endPan = () => { drag = null; stage.classList.remove("is-panning"); };
-  svg.addEventListener("pointerup", endPan); svg.addEventListener("pointercancel", endPan);
+  const pointers = new Map();
+  let gesture = null;
+  const mapPoint = (point) => { const rect = svg.getBoundingClientRect(); return { x: (point.x - rect.left) / rect.width * width, y: (point.y - rect.top) / rect.height * height }; };
+  const pointerPair = () => [...pointers.values()].slice(0, 2);
+  const beginGesture = () => {
+    const points = pointerPair();
+    if (points.length === 2) {
+      const a = mapPoint(points[0]); const b = mapPoint(points[1]);
+      gesture = { type: "pinch", distance: Math.max(1, Math.hypot(b.x - a.x, b.y - a.y)), midpoint: { x: (a.x + b.x) / 2, y: (a.y + b.y) / 2 }, scale, tx, ty, moved: false };
+    } else if (points.length === 1) {
+      const point = mapPoint(points[0]);
+      gesture = { type: "pan", point, tx, ty, moved: false };
+    }
+  };
+  svg.addEventListener("pointerdown", (event) => {
+    pointers.set(event.pointerId, { x: event.clientX, y: event.clientY });
+    svg.setPointerCapture(event.pointerId);
+    beginGesture();
+    stage.classList.add("is-panning");
+  });
+  svg.addEventListener("pointermove", (event) => {
+    if (!pointers.has(event.pointerId)) return;
+    pointers.set(event.pointerId, { x: event.clientX, y: event.clientY });
+    const points = pointerPair();
+    if (points.length === 2 && gesture?.type !== "pinch") beginGesture();
+    if (gesture?.type === "pinch" && points.length === 2) {
+      const a = mapPoint(points[0]); const b = mapPoint(points[1]);
+      const distance = Math.max(1, Math.hypot(b.x - a.x, b.y - a.y));
+      const midpoint = { x: (a.x + b.x) / 2, y: (a.y + b.y) / 2 };
+      const next = clamp(gesture.scale * distance / gesture.distance, .55, 4.5);
+      tx = midpoint.x - (gesture.midpoint.x - gesture.tx) * next / gesture.scale;
+      ty = midpoint.y - (gesture.midpoint.y - gesture.ty) * next / gesture.scale;
+      scale = next; gesture.moved = true; suppressClickUntil = performance.now() + 280; applyTransform();
+    } else if (gesture?.type === "pan" && points.length === 1) {
+      const point = mapPoint(points[0]);
+      const dx = point.x - gesture.point.x; const dy = point.y - gesture.point.y;
+      if (Math.hypot(dx, dy) > 4) { gesture.moved = true; suppressClickUntil = performance.now() + 220; }
+      tx = gesture.tx + dx; ty = gesture.ty + dy; applyTransform();
+    }
+  });
+  const endPointer = (event) => {
+    pointers.delete(event.pointerId);
+    if (pointers.size) beginGesture();
+    else { gesture = null; stage.classList.remove("is-panning"); }
+  };
+  svg.addEventListener("pointerup", endPointer); svg.addEventListener("pointercancel", endPointer);
   container.querySelector("[data-map-reset]").addEventListener("click", fit);
   container.querySelectorAll("[data-map-zoom]").forEach((button) => button.addEventListener("click", () => zoom(button.dataset.mapZoom === "in" ? 1.2 : .82)));
+  container.querySelector(".mindmap-close").addEventListener("click", options.onClose);
 }
