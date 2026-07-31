@@ -1995,7 +1995,7 @@ function renderNotes({ animate = true, hydrateReferences = true } = {}) {
       },
       onFilterTag: (tag) => {
         state.noteTagFilter = state.noteTagFilter === tag ? "" : tag;
-        renderNotes();
+        setNotesViewMode("flat");
       },
     });
   }
@@ -2019,8 +2019,8 @@ function renderNotes({ animate = true, hydrateReferences = true } = {}) {
               <span class="note-card-heading"><span class="note-card-title"><span class="note-card-icon"><i class="ti ti-notes" aria-hidden="true"></i></span><strong>${escapeHTML(note.title?.trim() || "Untitled note")}</strong></span><time>${escapeHTML(updatedLabel)}</time></span>
               ${folderName ? `<span class="note-folder-label"><i class="ti ti-folder" aria-hidden="true"></i>${escapeHTML(folderName)}</span>` : ""}
               <p>${escapeHTML(note.text || "No text added yet.")}</p>
-              ${tags.length ? `<div class="note-tags">${tags.map((tag) => `<span>#${escapeHTML(tag)}</span>`).join("")}</div>` : ""}
             </button>
+            ${tags.length ? `<div class="note-tags">${tags.map((tag) => `<button type="button" data-filter-tag="${escapeHTML(tag)}" aria-label="Show notes and verses tagged ${escapeHTML(tag)}">#${escapeHTML(tag)}</button>`).join("")}</div>` : ""}
             <div class="note-card-footer">
               <div class="note-card-references">${visibleRefs.map((ref) => `<button class="reference-link" type="button" data-ref="${escapeHTML(ref)}"><i class="ti ti-book-2" aria-hidden="true"></i><span>${escapeHTML(formatReferenceKey(ref))}</span><i class="ti ti-chevron-right reference-link-arrow" aria-hidden="true"></i></button>`).join("")}${refs.length > 4 ? `<button class="reference-expand-button" type="button" data-expand-references="${escapeHTML(key)}" aria-expanded="${referencesExpanded}"><i class="ti ti-${referencesExpanded ? "chevron-up" : "chevron-down"}" aria-hidden="true"></i><span>${referencesExpanded ? "Show fewer" : `Show all ${refs.length}`}</span></button>` : ""}</div>
               <span class="note-visibility"><i class="ti ti-${state.notesSection === "shared" ? "users" : "lock"}" aria-hidden="true"></i>${visibility}</span>
@@ -2039,6 +2039,14 @@ function renderNotes({ animate = true, hydrateReferences = true } = {}) {
   });
   els.notesList.querySelectorAll("button[data-ref]").forEach((button) => {
     button.addEventListener("click", () => navigateToReference(button.dataset.ref));
+  });
+  els.notesList.querySelectorAll("button[data-filter-tag]").forEach((button) => {
+    button.addEventListener("click", () => {
+      state.noteTagFilter = button.dataset.filterTag;
+      renderNotes();
+      els.notesSearch.focus({ preventScroll: true });
+      els.notesSearch.scrollIntoView({ behavior: matchMedia("(prefers-reduced-motion: reduce)").matches ? "auto" : "smooth", block: "center" });
+    });
   });
   els.notesList.querySelectorAll("[data-expand-references]").forEach((button) => {
     button.addEventListener("click", () => {
