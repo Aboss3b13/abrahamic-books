@@ -4,6 +4,7 @@ import { Directory, Encoding, Filesystem } from "@capacitor/filesystem";
 import { Share } from "@capacitor/share";
 import "@tabler/icons-webfont/dist/tabler-icons.min.css";
 import { NotesSystem } from "./notes-system.js";
+import { renderNotesMindMap } from "./notes-mindmap.js";
 
 const API = "https://api.quran.com/api/v4";
 const OFFLINE = {
@@ -290,8 +291,10 @@ const els = {
   newStudyNote: document.querySelector("#newStudyNote"),
   notesFlatMode: document.querySelector("#notesFlatMode"),
   notesFolderMode: document.querySelector("#notesFolderMode"),
+  notesMindMapMode: document.querySelector("#notesMindMapMode"),
   createNoteFolder: document.querySelector("#createNoteFolder"),
   noteFolderBrowser: document.querySelector("#noteFolderBrowser"),
+  notesMindMap: document.querySelector("#notesMindMap"),
   exportNotes: document.querySelector("#exportNotes"),
   importNotes: document.querySelector("#importNotes"),
   globalSearch: document.querySelector("#globalSearch"),
@@ -584,6 +587,7 @@ function bindEvents() {
   els.newStudyNote.addEventListener("click", createStandaloneNote);
   els.notesFlatMode.addEventListener("click", () => setNotesViewMode("flat"));
   els.notesFolderMode.addEventListener("click", () => setNotesViewMode("folders"));
+  els.notesMindMapMode.addEventListener("click", () => setNotesViewMode("mindmap"));
   els.createNoteFolder.addEventListener("click", () => createNoteFolder(false));
   els.notesSearch.addEventListener("input", debounceInput(() => renderNotes({ animate: false }), 70));
   els.notesSearchHelpButton.addEventListener("click", () => {
@@ -1971,8 +1975,25 @@ function renderNotes({ animate = true, hydrateReferences = true } = {}) {
   els.sharedNotesBadge.textContent = String(state.sharedNotes.length);
   const locked = state.notesSection === "shared" && !notesSystem?.signedIn;
   els.sharedNotesLocked.hidden = !locked;
-  els.notesList.hidden = locked;
+  const mindMapMode = state.noteViewMode === "mindmap";
+  els.notesList.hidden = locked || mindMapMode;
+  els.notesMindMap.hidden = locked || !mindMapMode;
   renderTagFilters();
+
+  if (mindMapMode && !locked) {
+    renderNotesMindMap(els.notesMindMap, {
+      entries,
+      folders: state.noteFolders,
+      formatReference: formatReferenceKey,
+      parseReference: parseReferenceKey,
+      onOpenNote: openNote,
+      onOpenReference: navigateToReference,
+      onFilterTag: (tag) => {
+        state.noteTagFilter = state.noteTagFilter === tag ? "" : tag;
+        renderNotes();
+      },
+    });
+  }
 
   els.notesList.classList.toggle("notes-simple-list", state.noteViewMode === "flat");
   els.notesList.classList.toggle("selecting", state.noteSelectMode);
@@ -2076,10 +2097,13 @@ async function getReferenceSearchText(key) {
 
 function renderNoteFolderBrowser() {
   const folderMode = state.noteViewMode === "folders";
-  els.notesFlatMode.classList.toggle("active", !folderMode);
+  const mindMapMode = state.noteViewMode === "mindmap";
+  els.notesFlatMode.classList.toggle("active", !folderMode && !mindMapMode);
   els.notesFolderMode.classList.toggle("active", folderMode);
-  els.notesFlatMode.setAttribute("aria-pressed", String(!folderMode));
+  els.notesMindMapMode.classList.toggle("active", mindMapMode);
+  els.notesFlatMode.setAttribute("aria-pressed", String(!folderMode && !mindMapMode));
   els.notesFolderMode.setAttribute("aria-pressed", String(folderMode));
+  els.notesMindMapMode.setAttribute("aria-pressed", String(mindMapMode));
   els.noteFolderBrowser.hidden = !folderMode;
   if (!folderMode) return;
   const folderNotes = state.notesSection === "shared" ? state.sharedNotes : Object.values(state.notes);
@@ -2438,7 +2462,7 @@ function renderNoteFolderOptions(selectedId = els.noteFolderSelect?.value || "")
 }
 
 function setNotesViewMode(mode) {
-  state.noteViewMode = mode === "folders" ? "folders" : "flat";
+  state.noteViewMode = ["folders", "mindmap"].includes(mode) ? mode : "flat";
   if (state.noteViewMode === "flat") state.selectedFolderId = "all";
   else if (state.selectedFolderId === "all") state.selectedFolderId = "";
   saveNotesOrganizer();
@@ -2526,7 +2550,7 @@ function saveNotesOrganizer() {
 }
 
 function applyNotesOrganizer(organizer = {}) {
-  state.noteViewMode = organizer.viewMode === "folders" ? "folders" : "flat";
+  state.noteViewMode = ["folders", "mindmap"].includes(organizer.viewMode) ? organizer.viewMode : "flat";
   state.selectedFolderId = typeof organizer.selectedFolderId === "string" ? organizer.selectedFolderId : "all";
   state.noteFolders = Array.isArray(organizer.folders)
     ? organizer.folders.filter((folder) => folder && typeof folder.id === "string" && typeof folder.name === "string").map((folder) => ({ ...folder, parentId: typeof folder.parentId === "string" ? folder.parentId : "" }))
