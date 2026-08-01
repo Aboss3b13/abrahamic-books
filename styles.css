@@ -2942,6 +2942,139 @@ html[dir="rtl"] .note-select { right: auto; left: 12px; }
   .notes-actions .sync-button { flex-basis: 100%; justify-content: center; }
 }
 
+/* Precise, compact search controls for notes and the complete library. */
+.notes-advanced-filters,
+.global-search-options {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 8px;
+}
+
+.global-search-options {
+  grid-column: 1 / -1;
+  grid-template-columns: repeat(2, minmax(0, 220px));
+}
+
+.notes-advanced-filters label,
+.global-search-options label {
+  position: relative;
+  display: grid;
+  min-width: 0;
+  gap: 2px;
+  padding: 7px 10px;
+  border: 1px solid var(--line);
+  border-radius: 12px;
+  background: color-mix(in srgb, var(--panel) 94%, var(--green-2));
+}
+
+.notes-advanced-filters label > span,
+.global-search-options label > span {
+  color: var(--muted);
+  font-size: .61rem;
+  font-weight: 900;
+  letter-spacing: .07em;
+  text-transform: uppercase;
+}
+
+.notes-advanced-filters select,
+.global-search-options select {
+  width: 100%;
+  min-width: 0;
+  padding: 0 24px 0 0;
+  border: 0;
+  color: var(--ink);
+  background: transparent;
+  font: inherit;
+  font-size: .76rem;
+  font-weight: 800;
+  outline: 0;
+}
+
+.notes-advanced-filters label:focus-within,
+.global-search-options label:focus-within {
+  border-color: var(--green-2);
+  box-shadow: 0 0 0 3px color-mix(in srgb, var(--green-2) 12%, transparent);
+}
+
+/* The editor keeps a large, searchable hashtag library in view. */
+.note-tag-search {
+  position: relative;
+  display: flex;
+  align-items: center;
+}
+
+.note-tag-search > .ti {
+  position: absolute;
+  left: 13px;
+  z-index: 1;
+  color: var(--muted);
+}
+
+.note-tag-search input {
+  width: 100%;
+  min-height: 46px;
+  padding: 0 14px 0 39px;
+  border: 1px solid color-mix(in srgb, #8b5cf6 28%, var(--line));
+  border-radius: 13px;
+  color: var(--ink);
+  background: var(--paper);
+  font: inherit;
+}
+
+.note-tag-search input:focus {
+  border-color: #8b5cf6;
+  outline: 3px solid color-mix(in srgb, #8b5cf6 14%, transparent);
+}
+
+.note-tag-choices {
+  min-height: 190px;
+  max-height: 340px;
+  padding: 13px;
+  align-content: flex-start;
+  border-radius: 16px;
+  scrollbar-color: color-mix(in srgb, #8b5cf6 42%, transparent) transparent;
+}
+
+.note-sheet { width: min(calc(100% - 24px), 900px); }
+.note-sheet .sheet-inner { gap: 14px; }
+.note-body-field textarea { min-height: 270px; }
+
+/* Mind-map labels show their complete titles and stay crisp in every theme. */
+.mindmap-world { will-change: transform; }
+.mindmap-node .node-label { font-size: 15px; font-weight: 820; }
+.mindmap-node.node-note .node-label { font-size: 16px; }
+.mindmap-node rect { transition: stroke .16s ease, filter .16s ease, fill .16s ease; }
+.mindmap-node:hover rect,
+.mindmap-node:focus-visible rect { filter: drop-shadow(0 8px 16px color-mix(in srgb, var(--ink) 18%, transparent)); }
+
+:root:is([data-theme="dark"], [data-theme="midnight"], [data-theme="contrast"], [data-theme="ocean"], [data-theme="graphite"], [data-theme="forest"], [data-theme="nord"], [data-theme="slate"], [data-theme="aurora"], [data-theme="indigo"], [data-theme="amoled"]) .notes-mindmap {
+  background:
+    radial-gradient(circle at 14% 18%, rgba(139, 92, 246, .14), transparent 32%),
+    radial-gradient(circle at 84% 72%, rgba(38, 160, 143, .13), transparent 34%),
+    color-mix(in srgb, var(--paper) 82%, #050810);
+}
+
+:root:is([data-theme="dark"], [data-theme="midnight"], [data-theme="contrast"], [data-theme="ocean"], [data-theme="graphite"], [data-theme="forest"], [data-theme="nord"], [data-theme="slate"], [data-theme="aurora"], [data-theme="indigo"], [data-theme="amoled"]) .mindmap-node rect {
+  fill: color-mix(in srgb, var(--panel) 90%, #0b1020);
+  stroke-width: 1.8;
+}
+
+:root:is([data-theme="dark"], [data-theme="midnight"], [data-theme="contrast"], [data-theme="ocean"], [data-theme="graphite"], [data-theme="forest"], [data-theme="nord"], [data-theme="slate"], [data-theme="aurora"], [data-theme="indigo"], [data-theme="amoled"]) .mindmap-node .node-label,
+:root:is([data-theme="dark"], [data-theme="midnight"], [data-theme="contrast"], [data-theme="ocean"], [data-theme="graphite"], [data-theme="forest"], [data-theme="nord"], [data-theme="slate"], [data-theme="aurora"], [data-theme="indigo"], [data-theme="amoled"]) .mindmap-node .node-type-label {
+  fill: var(--ink);
+}
+
+:root:is([data-theme="dark"], [data-theme="midnight"], [data-theme="contrast"], [data-theme="ocean"], [data-theme="graphite"], [data-theme="forest"], [data-theme="nord"], [data-theme="slate"], [data-theme="aurora"], [data-theme="indigo"], [data-theme="amoled"]) .mindmap-node .node-type-label { opacity: .68; }
+:root:is([data-theme="dark"], [data-theme="midnight"], [data-theme="contrast"], [data-theme="ocean"], [data-theme="graphite"], [data-theme="forest"], [data-theme="nord"], [data-theme="slate"], [data-theme="aurora"], [data-theme="indigo"], [data-theme="amoled"]) .mindmap-node.node-root .node-icon { fill: var(--ink); }
+:root:is([data-theme="dark"], [data-theme="midnight"], [data-theme="contrast"], [data-theme="ocean"], [data-theme="graphite"], [data-theme="forest"], [data-theme="nord"], [data-theme="slate"], [data-theme="aurora"], [data-theme="indigo"], [data-theme="amoled"]) .mindmap-edge { opacity: .82; }
+
+@media (max-width: 640px) {
+  .notes-advanced-filters { grid-template-columns: 1fr 1fr; }
+  .notes-advanced-filters label:first-child { grid-column: 1 / -1; }
+  .global-search-options { grid-template-columns: 1fr 1fr; }
+  .note-tag-choices { min-height: 220px; max-height: 42dvh; }
+}
+
 .notes-file-action {
   gap: 5px;
   width: auto;
@@ -4690,6 +4823,10 @@ a.pill-button { position: relative; isolation: isolate; }
 }
 
 @media (min-width: 600px) and (max-width: 959px) {
+  .note-sheet .note-tag-create-panel { grid-template-columns: 1fr; }
+}
+
+@media (min-width: 600px) and (max-width: 959px) {
   .note-sheet {
     width: min(calc(100% - 34px), 920px);
     max-height: 94dvh;
@@ -5983,4 +6120,16 @@ dialog::backdrop { animation-duration: 180ms; }
     min-width: 34px;
     flex-basis: 34px;
   }
+}
+
+/* Final component sizing overrides (kept after legacy responsive rules). */
+.note-sheet { width: min(calc(100% - 24px), 900px); }
+.note-sheet .note-tag-choices { min-height: 190px; max-height: 340px; padding: 13px; }
+.note-sheet .note-body-field textarea { min-height: 270px; }
+.mindmap-node .node-label { font-size: 15px; font-weight: 820; }
+.mindmap-node.node-note .node-label { font-size: 16px; }
+
+@media (max-width: 599px) {
+  .note-sheet { width: 100%; }
+  .note-sheet .note-tag-choices { min-height: 220px; max-height: 42dvh; }
 }

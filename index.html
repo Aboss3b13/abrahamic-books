@@ -146,7 +146,7 @@
               </div>
               <div id="notesSearchHelp" class="search-syntax-hint search-help-panel help-guide" hidden>
                 <strong>Using Notes</strong>
-                <p>Tap <b>New note</b> for a standalone study note, or use a verse’s note button to attach a note directly to it. Select several hashtags to show only notes that contain all of them.</p>
+                <p>Tap <b>New note</b> for a standalone study note, or use a verse’s note button to attach a note directly to it. Select several hashtags to gather notes that contain any of those topics.</p>
                 <p>Cross-references can connect Quran verses, Bible passages, and hadith. Tap a reference on a note to read it, or use <b>View references</b> in the editor to compare them together.</p>
                 <p><b>Search:</b> use any part of a verse, title, note, reference, folder, or hashtag. Long word beginnings and incomplete verse numbers work too; use <code>"exact phrase"</code> to keep words together.</p>
               </div>
@@ -154,6 +154,11 @@
                 <button id="privateNotesTab" class="tag-chip active" type="button" aria-pressed="true">Private</button>
                 <button id="sharedNotesTab" class="tag-chip" type="button" aria-pressed="false">Shared <span id="sharedNotesBadge">0</span></button>
                 <div id="tagFilters" class="custom-tag-filters"></div>
+              </div>
+              <div class="notes-advanced-filters" aria-label="Detailed note filters">
+                <label><span>Search in</span><select id="notesSearchScope"><option value="all">Everything</option><option value="title">Titles</option><option value="body">Note text</option><option value="references">Verses & references</option><option value="tags">Hashtags</option><option value="folders">Folders</option></select></label>
+                <label><span>Content</span><select id="notesContentFilter"><option value="all">Any content</option><option value="references">Has verses</option><option value="no-references">No verses</option><option value="tagged">Has hashtags</option><option value="untagged">No hashtags</option></select></label>
+                <label><span>Updated</span><select id="notesDateFilter"><option value="any">Any time</option><option value="7">Past 7 days</option><option value="30">Past 30 days</option><option value="365">Past year</option></select></label>
               </div>
               <p id="notesSearchStatus" class="notes-search-status" role="status" aria-live="polite"></p>
             </div>
@@ -180,12 +185,16 @@
                 <input id="globalSearch" class="wide-search" type="search" inputmode="search" enterkeyhint="search" autocomplete="off" placeholder='Try mercy, "eternal life", or mercy + forgiveness'>
                 <button id="globalSearchHelpButton" class="search-help-button" type="button" aria-label="Search instructions" aria-controls="globalSearchHelp" aria-expanded="false"><i class="ti ti-help-circle" aria-hidden="true"></i></button>
               </div>
-              <div id="globalSearchHelp" class="search-syntax-hint search-help-panel help-guide" hidden><strong>Searching the library</strong><p>Choose books with <b>Search in</b>, then search any downloaded Quran translation, tafsir, Bible book, commentary, or hadith collection. Results appear as each book finishes, so you can open or select them immediately.</p><p><code>"eternal life"</code> finds an exact phrase. <code>mercy + forgiveness</code> requires both terms in the same passage. Use <b>Select results</b> to collect several passages into one note.</p></div>
+              <div id="globalSearchHelp" class="search-syntax-hint search-help-panel help-guide" hidden><strong>Searching the library</strong><p>Choose books or <b>My notes</b> with <b>Search in</b>. Note results include titles, reflections, hashtags, references, and the full text of attached verses—not just titles.</p><p>Use <b>Match</b> and <b>Results</b> to narrow the search precisely. Results appear as each source finishes, so you can open or select them immediately.</p></div>
               <button id="searchFilterButton" class="source-filter-button" type="button" aria-haspopup="dialog">
                 <span>Search in</span>
                 <strong id="searchFilterSummary">Quran, Shia hadith & more</strong>
               </button>
               <button id="runSearch" class="text-button primary" type="button"><i class="ti ti-search" aria-hidden="true"></i><span>Search</span></button>
+              <div class="global-search-options" aria-label="Search matching options">
+                <label><span>Match</span><select id="globalSearchMatch"><option value="all">All words</option><option value="any">Any word</option><option value="exact">Exact phrase</option></select></label>
+                <label><span>Results</span><select id="globalSearchType"><option value="all">All results</option><option value="scripture">Scripture & hadith</option><option value="study">Tafsir & commentary</option><option value="notes">My notes</option></select></label>
+              </div>
             </div>
             <div id="searchSelectionBar" class="selection-bar" hidden>
               <strong id="searchSelectionCount">0 selected</strong>
@@ -430,12 +439,12 @@
       <form method="dialog" class="sheet-inner">
         <div class="sheet-header">
           <div>
-            <h2>Choose search books</h2>
-            <p id="sourceFilterSubtitle">Include several books and exclude the rest</p>
+            <h2>Choose search sources</h2>
+            <p id="sourceFilterSubtitle">Include notes, books, or collections and exclude the rest</p>
           </div>
           <button class="icon-button" value="close" aria-label="Close search filters"><i class="ti ti-x" aria-hidden="true"></i></button>
         </div>
-        <input id="sourceFilterSearch" class="wide-search" type="search" placeholder="Find a book or collection">
+        <input id="sourceFilterSearch" class="wide-search" type="search" placeholder="Find notes, a book, or a collection">
         <div class="source-filter-actions">
           <button id="selectAllSources" class="text-button" type="button">Select all</button>
           <button id="clearAllSources" class="text-button" type="button">Clear all</button>
@@ -546,6 +555,7 @@
         <div class="note-field note-tag-field note-editor-section">
           <div class="note-editor-section-heading"><span class="note-editor-icon note-editor-tag-icon"><i class="ti ti-tags" aria-hidden="true"></i></span><div><strong>Hashtags</strong><small>Select several topics to connect this note across your mind map</small></div><span id="noteTagSelectionCount" class="note-tag-selection-count">0 selected</span></div>
           <input id="noteTags" type="hidden">
+          <label class="note-tag-search"><i class="ti ti-search" aria-hidden="true"></i><input id="noteTagSearch" type="search" autocomplete="off" placeholder="Search hashtags"></label>
           <div id="noteTagChoices" class="note-tag-choices" aria-label="Available tags"></div>
           <div class="note-tag-create-panel">
             <div class="note-tag-create-row">

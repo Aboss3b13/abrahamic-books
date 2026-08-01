@@ -124,6 +124,9 @@ const state = {
   expandedNoteReferences: new Set(),
   currentNoteReferences: [],
   noteTagFilters: new Set(),
+  notesSearchScope: "all",
+  notesContentFilter: "all",
+  notesDateFilter: "any",
   noteViewMode: "flat",
   selectedFolderId: "all",
   noteFolders: [],
@@ -220,6 +223,7 @@ const els = {
   wordSubtitle: document.querySelector("#wordSubtitle"),
   wordContent: document.querySelector("#wordContent"),
   noteTags: document.querySelector("#noteTags"),
+  noteTagSearch: document.querySelector("#noteTagSearch"),
   noteTagChoices: document.querySelector("#noteTagChoices"),
   noteTagSelectionCount: document.querySelector("#noteTagSelectionCount"),
   noteTagCreate: document.querySelector("#noteTagCreate"),
@@ -274,6 +278,9 @@ const els = {
   notesSearchStatus: document.querySelector("#notesSearchStatus"),
   notesSearchHelpButton: document.querySelector("#notesSearchHelpButton"),
   notesSearchHelp: document.querySelector("#notesSearchHelp"),
+  notesSearchScope: document.querySelector("#notesSearchScope"),
+  notesContentFilter: document.querySelector("#notesContentFilter"),
+  notesDateFilter: document.querySelector("#notesDateFilter"),
   notesSort: document.querySelector("#notesSort"),
   notesList: document.querySelector("#notesList"),
   sharedNotesLocked: document.querySelector("#sharedNotesLocked"),
@@ -303,6 +310,8 @@ const els = {
   globalSearch: document.querySelector("#globalSearch"),
   globalSearchHelpButton: document.querySelector("#globalSearchHelpButton"),
   globalSearchHelp: document.querySelector("#globalSearchHelp"),
+  globalSearchMatch: document.querySelector("#globalSearchMatch"),
+  globalSearchType: document.querySelector("#globalSearchType"),
   searchFilterButton: document.querySelector("#searchFilterButton"),
   searchFilterSummary: document.querySelector("#searchFilterSummary"),
   searchFilterSheet: document.querySelector("#searchFilterSheet"),
@@ -567,6 +576,7 @@ function bindEvents() {
   els.noteEditor.addEventListener("input", saveCurrentNote);
   els.noteName.addEventListener("input", saveCurrentNote);
   els.noteTags.addEventListener("input", saveCurrentNote);
+  els.noteTagSearch.addEventListener("input", renderNoteTagPicker);
   els.addNoteTag.addEventListener("click", createNoteTag);
   els.noteTagCreate.addEventListener("keydown", (event) => {
     if (event.key === "Enter") {
@@ -593,6 +603,12 @@ function bindEvents() {
   els.notesMindMapMode.addEventListener("click", () => setNotesViewMode("mindmap"));
   els.createNoteFolder.addEventListener("click", () => createNoteFolder(false));
   els.notesSearch.addEventListener("input", debounceInput(() => renderNotes({ animate: false }), 70));
+  [els.notesSearchScope, els.notesContentFilter, els.notesDateFilter].forEach((control) => control.addEventListener("change", () => {
+    state.notesSearchScope = els.notesSearchScope.value;
+    state.notesContentFilter = els.notesContentFilter.value;
+    state.notesDateFilter = els.notesDateFilter.value;
+    renderNotes({ animate: false });
+  }));
   els.notesSearchClear.addEventListener("click", () => {
     els.notesSearch.value = "";
     renderNotes({ animate: false });
@@ -661,6 +677,9 @@ function bindEvents() {
     if (query.length < 2) return;
     liveSearchTimer = setTimeout(runGlobalSearch, 320);
   });
+  [els.globalSearchMatch, els.globalSearchType].forEach((control) => control.addEventListener("change", () => {
+    if (els.globalSearch.value.trim().length >= 2) runGlobalSearch();
+  }));
   els.searchFilterButton.addEventListener("click", () => {
     renderSearchSourceFilters();
     openDialog(els.searchFilterSheet);
@@ -1682,6 +1701,7 @@ function openNote(key) {
   els.noteName.value = existing.title || "";
   els.noteEditor.value = existing.text || "";
   els.noteTags.value = (existing.tags || []).join(", ");
+  els.noteTagSearch.value = "";
   els.noteTagCreate.value = "";
   els.noteTagDescription.value = "";
   renderNoteFolderOptions(existing.folderId || "");
@@ -1971,18 +1991,37 @@ function renderNotes({ animate = true, hydrateReferences = true } = {}) {
       const folderName = state.noteFolders.find((folder) => folder.id === note.folderId)?.name || "";
       const tagDescriptions = tags.map((tag) => state.tagCatalog[tag]?.description || "").join(" ");
       const referenceText = (note.references || []).map((reference) => noteReferenceTextCache.get(reference) || "").join(" ");
-      const haystack = `${key} ${note.title || ""} ${formatReferenceKey(key)} ${note.text || ""} ${(note.references || []).map(formatReferenceKey).join(" ")} ${referenceText} ${tags.join(" ")} ${tagDescriptions} ${folderName}`;
+      const searchFields = {
+        title: note.title || "",
+        body: note.text || "",
+        references: `${key} ${formatReferenceKey(key)} ${(note.references || []).map(formatReferenceKey).join(" ")} ${referenceText}`,
+        tags: `${tags.join(" ")} ${tagDescriptions}`,
+        folders: folderName,
+      };
+      const haystack = state.notesSearchScope === "all" ? Object.values(searchFields).join(" ") : searchFields[state.notesSearchScope] || "";
       const matchesSearch = !query || searchExpression.matches(haystack);
-      const matchesTag = !state.noteTagFilters.size || [...state.noteTagFilters].every((tag) => tags.includes(tag));
+      // Multiple selected hashtags are inclusive: a note only needs one of
+      // them, making the rail useful for gathering related topics together.
+      const matchesTag = !state.noteTagFilters.size || [...state.noteTagFilters].some((tag) => tags.includes(tag));
+      const referenceCount = Array.isArray(note.references) ? note.references.length : 0;
+      const matchesContent = state.notesContentFilter === "all"
+        || (state.notesContentFilter === "references" && referenceCount > 0)
+        || (state.notesContentFilter === "no-references" && referenceCount === 0)
+        || (state.notesContentFilter === "tagged" && tags.length > 0)
+        || (state.notesContentFilter === "untagged" && tags.length === 0);
+      const days = Number(state.notesDateFilter);
+      const timestamp = Date.parse(note.updatedAt || note.createdAt || 0);
+      const matchesDate = state.notesDateFilter === "any" || (Number.isFinite(timestamp) && timestamp >= Date.now() - days * 86400000);
       const matchesFolder = !folderScope || folderScope.has(note.folderId || "");
-      return matchesSearch && matchesTag && matchesFolder;
+      return matchesSearch && matchesTag && matchesContent && matchesDate && matchesFolder;
     });
   els.notesSearchClear.hidden = !query;
-  const activeFilterCount = state.noteTagFilters.size;
+  const advancedFilterCount = Number(state.notesSearchScope !== "all") + Number(state.notesContentFilter !== "all") + Number(state.notesDateFilter !== "any");
+  const activeFilterCount = state.noteTagFilters.size + advancedFilterCount;
   const scopedLabel = state.noteViewMode === "mindmap" && !["", "all"].includes(state.selectedFolderId)
     ? ` in ${state.noteFolders.find((folder) => folder.id === state.selectedFolderId)?.name || "this folder"}` : "";
   els.notesSearchStatus.textContent = query || activeFilterCount
-    ? `${entries.length} ${entries.length === 1 ? "note" : "notes"} found${scopedLabel}${activeFilterCount ? ` · ${activeFilterCount} hashtag ${activeFilterCount === 1 ? "filter" : "filters"}` : ""}`
+    ? `${entries.length} ${entries.length === 1 ? "note" : "notes"} found${scopedLabel}${state.noteTagFilters.size ? ` · matches any of ${state.noteTagFilters.size} hashtag${state.noteTagFilters.size === 1 ? "" : "s"}` : ""}${advancedFilterCount ? ` · ${advancedFilterCount} detailed filter${advancedFilterCount === 1 ? "" : "s"}` : ""}`
     : "";
 
   const privateTotal = Object.values(state.notes).filter((note) => note.title?.trim() || note.text?.trim() || note.tags?.length || note.references?.length || note.standalone).length;
@@ -2378,11 +2417,7 @@ function renderTagFilters() {
   const tags = [...new Set(source.flatMap((note) => note.tags || []))].sort();
   els.privateNotesTab.classList.toggle("active", state.notesSection === "private" && !state.noteTagFilters.size);
   els.sharedNotesTab.classList.toggle("active", state.notesSection === "shared" && !state.noteTagFilters.size);
-  els.tagFilters.innerHTML = `${state.noteTagFilters.size ? `<button class="tag-chip clear-tag-filters" type="button" data-clear-tags aria-label="Clear ${state.noteTagFilters.size} hashtag filters"><i class="ti ti-x" aria-hidden="true"></i> Clear ${state.noteTagFilters.size}</button>` : ""}${tags.map((tag) => `<button class="tag-chip ${state.noteTagFilters.has(tag) ? "active" : ""}" type="button" data-tag="${escapeHTML(tag)}" aria-pressed="${state.noteTagFilters.has(tag)}">#${escapeHTML(tag)}</button>`).join("")}`;
-  els.tagFilters.querySelector("[data-clear-tags]")?.addEventListener("click", () => {
-    state.noteTagFilters.clear();
-    renderNotes();
-  });
+  els.tagFilters.innerHTML = tags.map((tag) => `<button class="tag-chip ${state.noteTagFilters.has(tag) ? "active" : ""}" type="button" data-tag="${escapeHTML(tag)}" aria-pressed="${state.noteTagFilters.has(tag)}">#${escapeHTML(tag)}</button>`).join("");
   els.tagFilters.querySelectorAll("button[data-tag]").forEach((button) => {
     button.addEventListener("click", () => {
       toggleNoteTagFilter(button.dataset.tag);
@@ -2405,7 +2440,12 @@ function getKnownNoteTags() {
 function renderNoteTagPicker() {
   const selected = new Set(parseTags(els.noteTags.value));
   els.noteTagSelectionCount.textContent = `${selected.size} selected`;
-  const tags = [...new Set([...getKnownNoteTags(), ...selected])];
+  const tagQuery = normalizeSearchText(els.noteTagSearch.value);
+  const tags = [...new Set([...getKnownNoteTags(), ...selected])].filter((tag) => {
+    if (!tagQuery || selected.has(tag)) return true;
+    const description = state.tagCatalog[tag]?.description || "";
+    return normalizeSearchText(`${tag} ${description}`).includes(tagQuery);
+  });
   els.noteTagChoices.innerHTML = tags.length
     ? tags.map((tag) => {
         const description = state.tagCatalog[tag]?.description || "";
@@ -2417,7 +2457,7 @@ function renderNoteTagPicker() {
           </span>
         </div>`;
       }).join("")
-    : `<p class="note-tag-empty">No tags yet. Create the first one below.</p>`;
+    : `<p class="note-tag-empty">${tagQuery ? "No matching hashtags. Try another word or create it below." : "No tags yet. Create the first one below."}</p>`;
   els.noteTagChoices.querySelectorAll("[data-note-tag]").forEach((button) => {
     button.addEventListener("click", () => toggleCurrentNoteTag(button.dataset.noteTag));
   });
@@ -3986,7 +4026,13 @@ function setupWorkspaceResizer(divider, pane) {
 
 async function runGlobalSearch() {
   const query = els.globalSearch.value.trim();
-  const selectedSources = new Set(state.selectedSearchSources);
+  const resultType = els.globalSearchType.value;
+  const selectedSources = new Set([...state.selectedSearchSources].filter((sourceId) => {
+    if (resultType === "all") return true;
+    if (resultType === "notes") return sourceId === "notes";
+    if (resultType === "study") return sourceId === "tafsir" || sourceId.startsWith("tafsir:") || sourceId.startsWith("commentary:");
+    return sourceId === "quran" || sourceId.startsWith("translation:") || sourceId.startsWith("bible:") || sourceId.startsWith("hadith:");
+  }));
   const token = Date.now();
   state.searchAbort = token;
   clearSearchSelection();
@@ -4027,7 +4073,11 @@ async function runGlobalSearch() {
 }
 
 async function searchOfflineTexts(query, selectedSources, token, onResult) {
-  const expression = parseSearchExpression(query);
+  const expression = els.globalSearchMatch.value === "exact"
+    ? { matches: (value) => normalizeSearchText(value).includes(normalizeSearchText(query)) }
+    : els.globalSearchMatch.value === "all"
+      ? parseNoteSearchExpression(query)
+      : parseSearchExpression(query.replaceAll("+", " "));
   const results = [];
   const pushResult = (_sourceId, result) => {
     const haystack = normalizeSearchText(`${result.title} ${result.label} ${result.text} ${result.extra || ""}`);
@@ -4037,6 +4087,32 @@ async function searchOfflineTexts(query, selectedSources, token, onResult) {
     }
   };
   const shouldStop = () => state.searchAbort !== token;
+
+  if (selectedSources.has("notes")) {
+    const noteEntries = [
+      ...Object.entries(state.notes),
+      ...state.sharedNotes.map((note) => [`shared:${note.id}`, note]),
+    ];
+    const references = [...new Set(noteEntries.flatMap(([, note]) => note.references || []))];
+    await Promise.all(references.map(async (reference) => {
+      if (noteReferenceTextCache.has(reference)) return;
+      noteReferenceTextCache.set(reference, await getReferenceSearchText(reference).catch(() => ""));
+    }));
+    for (const [key, note] of noteEntries) {
+      const tags = note.tags || [];
+      const referencesText = (note.references || []).map((reference) => `${formatReferenceKey(reference)} ${noteReferenceTextCache.get(reference) || ""}`).join(" ");
+      const folderName = state.noteFolders.find((folder) => folder.id === note.folderId)?.name || "All notes";
+      pushResult("notes", {
+        key,
+        type: "Note",
+        title: note.title?.trim() || "Untitled note",
+        label: [folderName, ...tags.map((tag) => `#${tag}`)].join(" · "),
+        book: "My notes",
+        text: `${note.text || ""} ${referencesText}`,
+      });
+      if (shouldStop()) break;
+    }
+  }
 
   if (selectedSources.has("quran")) {
     for (let chapter = 1; chapter <= 114 && !shouldStop(); chapter += 1) {
@@ -4374,6 +4450,10 @@ function bindRenderedSearchResults() {
       toggleSearchResult(card.dataset.searchId);
       return;
     }
+    if (button.dataset.type === "Note") {
+      openNote(button.dataset.key);
+      return;
+    }
     jumpToReference(button.dataset.key);
   });
   els.searchResults.addEventListener("change", (event) => {
@@ -4485,6 +4565,9 @@ function getSearchSourceGroups() {
     .filter((book) => book.source === "thaqalayn" || BUNDLED_HADITH_COLLECTIONS.has(book.key))
     .map((book) => ({ id: `hadith:${book.key}`, label: book.name, meta: `${book.tradition} hadith` }));
   return [
+    { id: "notes", label: "My notes", items: [
+      { id: "notes", label: "Titles, note text & verses", meta: "Private and shared notes" },
+    ] },
     { id: "quran", label: "Quran", items: [
       { id: "quran", label: "Quran", meta: "Arabic and translation" },
       ...downloadedTranslations,
@@ -4634,10 +4717,10 @@ function updateSearchSourceSummary() {
   const all = getSearchSourceGroups().flatMap((group) => group.items);
   const selected = all.filter((item) => state.selectedSearchSources.has(item.id));
   els.searchFilterSummary.textContent = selected.length === all.length
-    ? `All ${all.length} downloaded books`
+    ? `All ${all.length} search sources`
     : selected.length === 0
-      ? "No books selected"
-      : `${selected.length} of ${all.length} books`;
+      ? "No sources selected"
+      : `${selected.length} of ${all.length} sources`;
   els.sourceFilterSubtitle.textContent = `${selected.length} selected · ${all.length - selected.length} excluded`;
   els.searchFilterButton.classList.toggle("empty", selected.length === 0);
 }

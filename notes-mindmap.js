@@ -209,17 +209,34 @@ function svgElement(name, attributes = {}) {
 }
 
 function nodeWidth(node) {
-  if (node.type === "root") return 168;
-  if (node.type === "hub") return 138;
-  return clamp(78 + node.label.length * 9.4, 148, node.type === "note" ? 292 : 252);
+  const value = String(node.type === "tag" ? node.label.replace(/^#/, "") : node.label || "");
+  const longestWord = value.split(/\s+/).reduce((longest, word) => Math.max(longest, word.length), 0);
+  if (node.type === "hub") return clamp(118 + value.length * 5, 150, 220);
+  return clamp(112 + Math.min(value.length, 44) * 5.4 + longestWord * 2.2, node.type === "root" ? 190 : 176, node.type === "note" ? 380 : 330);
 }
 
 function nodeHeight(node) {
-  return node.type === "note" ? 68 : 56;
+  const lines = getNodeLabelLines(node, node.layoutWidth || nodeWidth(node));
+  return Math.max(node.type === "hub" ? 58 : 68, 32 + lines.length * 18 + (["root", "hub"].includes(node.type) ? 0 : 19));
 }
 
 function shortLabel(value, limit = 25) {
   return value.length > limit ? `${value.slice(0, limit - 1)}…` : value;
+}
+
+function getNodeLabelLines(node, width) {
+  const value = String(node.type === "tag" ? node.label.replace(/^#/, "") : node.label || "Untitled").trim();
+  const maxCharacters = Math.max(12, Math.floor((width - (node.type === "hub" ? 28 : 64)) / 8.2));
+  const words = value.split(/\s+/).flatMap((word) => word.length > maxCharacters
+    ? word.match(new RegExp(`.{1,${maxCharacters}}`, "g")) || [word]
+    : [word]);
+  const lines = [];
+  words.forEach((word) => {
+    const current = lines.at(-1) || "";
+    if (!current || `${current} ${word}`.length > maxCharacters) lines.push(word);
+    else lines[lines.length - 1] = `${current} ${word}`;
+  });
+  return lines.length ? lines : ["Untitled"];
 }
 
 export function renderNotesMindMap(container, options) {
@@ -281,15 +298,19 @@ export function renderNotesMindMap(container, options) {
     const icon = svgElement("text", { class: "node-icon", x: -width / 2 + 23, y: 1, "aria-hidden": "true" });
     icon.textContent = ({ root: "✦", hub: "•", note: "✎", folder: "▰", tag: "#", book: "▤", reference: "↗" })[node.type] || "•";
     const hasTypeLabel = !["root", "hub"].includes(node.type);
-    const label = svgElement("text", { class: "node-label", x: node.type === "hub" ? 0 : -width / 2 + 43, y: hasTypeLabel ? -8 : 1, "text-anchor": node.type === "hub" ? "middle" : "start" });
-    const visibleLabel = node.type === "tag" ? node.label.replace(/^#/, "") : node.label;
-    // Keep the rendered glyphs inside the pill. The full value remains in the
-    // accessible label and inspector, while the compact label prevents long
-    // note titles from visually colliding with neighboring nodes.
-    label.textContent = shortLabel(visibleLabel, node.type === "note" ? 18 : 19);
+    const lines = getNodeLabelLines(node, width);
+    const lineHeight = 18;
+    const labelCenter = hasTypeLabel ? -8 : 0;
+    const labelStartY = labelCenter - (lines.length - 1) * lineHeight / 2;
+    const label = svgElement("text", { class: "node-label", x: node.type === "hub" ? 0 : -width / 2 + 43, y: labelStartY, "text-anchor": node.type === "hub" ? "middle" : "start" });
+    lines.forEach((line, index) => {
+      const span = svgElement("tspan", { x: node.type === "hub" ? 0 : -width / 2 + 43, dy: index ? lineHeight : 0 });
+      span.textContent = index < lines.length - 1 ? `${line} ` : line;
+      label.append(span);
+    });
     group.append(icon, label);
     if (hasTypeLabel) {
-      const typeLabel = svgElement("text", { class: "node-type-label", x: -width / 2 + 43, y: 14 });
+      const typeLabel = svgElement("text", { class: "node-type-label", x: -width / 2 + 43, y: labelStartY + lines.length * lineHeight + 2 });
       typeLabel.textContent = ({ note: "NOTE", folder: "FOLDER", tag: "HASHTAG", book: "BOOK", reference: "VERSE / PASSAGE" })[node.type] || node.type.toUpperCase();
       group.append(typeLabel);
     }
@@ -300,7 +321,14 @@ export function renderNotesMindMap(container, options) {
   let tx = width / 2 - width / 2 * scale;
   let ty = height / 2 - height / 2 * scale;
   let selected = "";
-  const applyTransform = () => world.setAttribute("transform", `translate(${tx} ${ty}) scale(${scale})`);
+  let transformFrame = 0;
+  const applyTransform = () => {
+    if (transformFrame) return;
+    transformFrame = requestAnimationFrame(() => {
+      transformFrame = 0;
+      world.setAttribute("transform", `translate(${tx} ${ty}) scale(${scale})`);
+    });
+  };
   const fit = () => { scale = 1; tx = 0; ty = 0; applyTransform(); };
   const zoom = (factor, clientX = stage.clientWidth / 2, clientY = stage.clientHeight / 2) => {
     const next = clamp(scale * factor, .45, 3.2);
@@ -416,6 +444,8 @@ export function renderNotesMindMap(container, options) {
   container.querySelectorAll("[data-map-zoom]").forEach((button) => button.addEventListener("click", () => zoom(button.dataset.mapZoom === "in" ? 1.2 : .82)));
   container.querySelector(".mindmap-close").addEventListener("click", closeMap);
 
+  container._mindMapCleanup = () => cancelAnimationFrame(transformFrame);
+
   if ("ResizeObserver" in window) {
     const initial = {
       width: container.clientWidth || window.innerWidth,
@@ -435,6 +465,6 @@ export function renderNotesMindMap(container, options) {
       resizeFrame = requestAnimationFrame(() => renderNotesMindMap(container, options));
     });
     observer.observe(container);
-    container._mindMapCleanup = () => { cancelAnimationFrame(resizeFrame); observer.disconnect(); };
+    container._mindMapCleanup = () => { cancelAnimationFrame(transformFrame); cancelAnimationFrame(resizeFrame); observer.disconnect(); };
   }
 }
