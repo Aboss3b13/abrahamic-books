@@ -574,6 +574,28 @@
         </div>
         <div class="cross-ref-panel note-editor-section">
           <div class="note-editor-section-heading"><span class="note-editor-icon"><i class="ti ti-link" aria-hidden="true"></i></span><div><strong>Cross-references</strong><small>Connect any Quran verse, Bible passage, or hadith</small></div></div>
+          <button id="toggleVerseRangePicker" class="verse-range-trigger" type="button" aria-expanded="false" aria-controls="verseRangePicker">
+            <span class="note-editor-icon"><i class="ti ti-calendar-week" aria-hidden="true"></i></span>
+            <span><strong>Choose a verse range</strong><small>Pick the first and last verse, like choosing travel dates</small></span>
+            <i class="ti ti-chevron-down verse-range-trigger-chevron" aria-hidden="true"></i>
+          </button>
+          <section id="verseRangePicker" class="verse-range-picker" hidden aria-label="Choose a verse range">
+            <div class="verse-range-controls">
+              <label><span>Scripture</span><select id="verseRangeSource"><option value="quran">Quran</option><option value="old">Old Testament</option><option value="new">New Testament</option></select></label>
+              <label><span>Book / surah</span><select id="verseRangeBook"></select></label>
+              <label><span>Chapter</span><select id="verseRangeChapter"></select></label>
+            </div>
+            <div class="verse-range-summary" aria-live="polite">
+              <span id="verseRangeStart"><small>Start</small><strong>Choose a verse</strong></span>
+              <i class="ti ti-arrow-right" aria-hidden="true"></i>
+              <span id="verseRangeEnd"><small>End</small><strong>—</strong></span>
+            </div>
+            <div id="verseRangeGrid" class="verse-range-grid" role="grid" aria-label="Verses"></div>
+            <div class="verse-range-actions">
+              <button id="clearVerseRange" class="text-button" type="button">Clear</button>
+              <button id="addVerseRange" class="text-button primary" type="button" disabled><i class="ti ti-plus" aria-hidden="true"></i><span>Add range</span></button>
+            </div>
+          </section>
           <label class="reference-search-field">
             <i class="ti ti-search" aria-hidden="true"></i>
             <input id="referenceSearch" type="search" autocomplete="off" placeholder="Try Al-Baqarah, John 3, Bukhari 52, or a phrase">

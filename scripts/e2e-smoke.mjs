@@ -28,9 +28,12 @@ await page.waitForSelector("#noteDestinationSheet[open]");
 await page.locator("#noteDestinationSearch").fill("Mobile capture test");
 await page.locator('.note-destination-row:has-text("Mobile capture test")').click();
 await page.waitForSelector("#noteSheet[open]");
-if (await page.locator("#noteReferences .reference-pill").count() !== 2) {
+if (await page.locator("#noteReferences .reference-pill").count() !== 1 || !(await page.locator("#noteReferences .reference-jump").textContent()).includes("1.1-2")) {
   throw new Error("Adding a passage to an existing note did not merge references.");
 }
+await page.locator("#referenceSearch").fill("Quran 2:1");
+await page.locator("#referenceSearch").press("Enter");
+await page.waitForFunction(() => document.querySelectorAll("#noteReferences .reference-pill").length === 2);
 const referenceLabelsBefore = await page.locator("#noteReferences .reference-jump").allTextContents();
 await page.locator("#noteReferences .reference-drag-handle").nth(1).scrollIntoViewIfNeeded();
 const dragFrom = await page.locator("#noteReferences .reference-drag-handle").nth(1).boundingBox();
@@ -73,7 +76,10 @@ await page.waitForSelector("#noteSheet[open]");
 await page.locator("#noteName").fill("Reference only reading note");
 if (await page.locator("#noteEditor").inputValue()) throw new Error("Read multi-select copied verse text into the note.");
 if (await page.locator("#noteTags").inputValue()) throw new Error("Read multi-select added an automatic reading tag.");
-if (await page.locator("#noteReferences .reference-pill").count() !== 2) throw new Error("Read multi-select did not preserve both cross-references.");
+if (await page.locator("#noteReferences .reference-pill").count() !== 1
+  || !(await page.locator("#noteReferences .reference-jump").textContent()).includes("1.1-2")) {
+  throw new Error("Read multi-select did not compact consecutive cross-references.");
+}
 await page.locator('#noteSheet button[value="close"]').last().click();
 await page.waitForTimeout(400);
 await page.locator('[data-view="notesView"]').click();

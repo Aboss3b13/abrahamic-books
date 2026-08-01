@@ -5,6 +5,7 @@ import { Share } from "@capacitor/share";
 import "@tabler/icons-webfont/dist/tabler-icons.min.css";
 import { NotesSystem } from "./notes-system.js";
 import { renderNotesMindMap } from "./notes-mindmap.js";
+import { formatReferenceRange, groupConsecutiveReferences } from "./reference-ranges.js";
 
 const API = "https://api.quran.com/api/v4";
 const OFFLINE = {
@@ -150,6 +151,10 @@ const state = {
   workspaceTool: "notesView",
   workspaceToolScroll: { notesView: 0, searchView: 0 },
   pendingNoteCapture: null,
+  verseRangeStart: 0,
+  verseRangeEnd: 0,
+  verseRangeHover: 0,
+  verseRangeLoadToken: 0,
   currentStudyKey: "",
   currentStudyType: "",
 };
@@ -235,6 +240,16 @@ const els = {
   referenceSearch: document.querySelector("#referenceSearch"),
   referenceResults: document.querySelector("#referenceResults"),
   noteReferences: document.querySelector("#noteReferences"),
+  toggleVerseRangePicker: document.querySelector("#toggleVerseRangePicker"),
+  verseRangePicker: document.querySelector("#verseRangePicker"),
+  verseRangeSource: document.querySelector("#verseRangeSource"),
+  verseRangeBook: document.querySelector("#verseRangeBook"),
+  verseRangeChapter: document.querySelector("#verseRangeChapter"),
+  verseRangeStartLabel: document.querySelector("#verseRangeStart"),
+  verseRangeEndLabel: document.querySelector("#verseRangeEnd"),
+  verseRangeGrid: document.querySelector("#verseRangeGrid"),
+  clearVerseRange: document.querySelector("#clearVerseRange"),
+  addVerseRange: document.querySelector("#addVerseRange"),
   tagFilters: document.querySelector("#tagFilters"),
   notesVersePreview: document.querySelector("#notesVersePreview"),
   translationSheet: document.querySelector("#translationSheet"),
@@ -587,6 +602,12 @@ function bindEvents() {
   els.noteFolderSelect.addEventListener("change", saveCurrentNote);
   els.createFolderFromEditor.addEventListener("click", () => createNoteFolder(true));
   els.referenceSearch.addEventListener("input", renderReferenceResults);
+  els.toggleVerseRangePicker.addEventListener("click", toggleVerseRangePicker);
+  els.verseRangeSource.addEventListener("change", renderVerseRangeBookOptions);
+  els.verseRangeBook.addEventListener("change", renderVerseRangeChapterOptions);
+  els.verseRangeChapter.addEventListener("change", loadVerseRangeGrid);
+  els.clearVerseRange.addEventListener("click", clearVerseRangeSelection);
+  els.addVerseRange.addEventListener("click", addSelectedVerseRange);
   els.referenceSearch.addEventListener("keydown", (event) => {
     if (event.key === "Enter") {
       event.preventDefault();
@@ -1707,6 +1728,7 @@ function openNote(key) {
   renderNoteFolderOptions(existing.folderId || "");
   renderNoteTagPicker();
   els.referenceSearch.value = "";
+  closeVerseRangePicker();
   renderNoteReferences();
   renderReferenceResults();
   if (parsed.type !== "note" && !existing.references?.includes(key)) saveCurrentNote();
@@ -2069,8 +2091,9 @@ function renderNotes({ animate = true, hydrateReferences = true } = {}) {
     ? entries.map(([key, note], noteIndex) => {
         const tags = note.tags || [];
         const refs = note.references || [];
+        const referenceGroups = groupConsecutiveReferences(refs, parseReferenceKey);
         const referencesExpanded = state.expandedNoteReferences.has(key);
-        const visibleRefs = referencesExpanded ? refs : refs.slice(0, 4);
+        const visibleRefs = referencesExpanded ? referenceGroups : referenceGroups.slice(0, 4);
         const updatedLabel = formatNoteDate(note.updatedAt);
         const folderName = state.noteFolders.find((folder) => folder.id === note.folderId)?.name || "";
         const visibility = state.notesSection === "shared" ? "Shared" : "Private";
@@ -2084,7 +2107,7 @@ function renderNotes({ animate = true, hydrateReferences = true } = {}) {
             </button>
             ${tags.length ? `<div class="note-tags">${tags.map((tag) => `<button type="button" data-filter-tag="${escapeHTML(tag)}" aria-label="Show notes and verses tagged ${escapeHTML(tag)}">#${escapeHTML(tag)}</button>`).join("")}</div>` : ""}
             <div class="note-card-footer">
-              <div class="note-card-references">${visibleRefs.map((ref) => `<button class="reference-link" type="button" data-ref="${escapeHTML(ref)}"><i class="ti ti-book-2" aria-hidden="true"></i><span>${escapeHTML(formatReferenceKey(ref))}</span><i class="ti ti-chevron-right reference-link-arrow" aria-hidden="true"></i></button>`).join("")}${refs.length > 4 ? `<button class="reference-expand-button" type="button" data-expand-references="${escapeHTML(key)}" aria-expanded="${referencesExpanded}"><i class="ti ti-${referencesExpanded ? "chevron-up" : "chevron-down"}" aria-hidden="true"></i><span>${referencesExpanded ? "Show fewer" : `Show all ${refs.length}`}</span></button>` : ""}</div>
+              <div class="note-card-references">${visibleRefs.map((group) => `<button class="reference-link" type="button" data-ref="${escapeHTML(group.references[0])}" title="${escapeHTML(group.references.length > 1 ? `${group.references.length} verses` : formatReferenceKey(group.references[0]))}"><i class="ti ti-book-2" aria-hidden="true"></i><span>${escapeHTML(formatReferenceRange(group, { separator: "." }))}</span><i class="ti ti-chevron-right reference-link-arrow" aria-hidden="true"></i></button>`).join("")}${referenceGroups.length > 4 ? `<button class="reference-expand-button" type="button" data-expand-references="${escapeHTML(key)}" aria-expanded="${referencesExpanded}"><i class="ti ti-${referencesExpanded ? "chevron-up" : "chevron-down"}" aria-hidden="true"></i><span>${referencesExpanded ? "Show fewer" : `Show all ${referenceGroups.length}`}</span></button>` : ""}</div>
               <span class="note-visibility"><i class="ti ti-${state.notesSection === "shared" ? "users" : "lock"}" aria-hidden="true"></i>${visibility}</span>
             </div>
           </article>
@@ -2871,25 +2894,178 @@ async function collectReferenceSuggestions(query, token) {
   return { suggestions, truncated };
 }
 
+function toggleVerseRangePicker() {
+  const willOpen = els.verseRangePicker.hidden;
+  els.verseRangePicker.hidden = !willOpen;
+  els.toggleVerseRangePicker.setAttribute("aria-expanded", String(willOpen));
+  els.toggleVerseRangePicker.classList.toggle("active", willOpen);
+  if (!willOpen) return;
+  const source = ["quran", "old", "new"].includes(state.scripture) ? state.scripture : "quran";
+  els.verseRangeSource.value = source;
+  renderVerseRangeBookOptions();
+}
+
+function closeVerseRangePicker() {
+  els.verseRangePicker.hidden = true;
+  els.toggleVerseRangePicker.setAttribute("aria-expanded", "false");
+  els.toggleVerseRangePicker.classList.remove("active");
+  clearVerseRangeSelection(false);
+}
+
+function renderVerseRangeBookOptions() {
+  const source = els.verseRangeSource.value;
+  const previous = els.verseRangeBook.value;
+  const books = source === "quran"
+    ? state.chapters.map((chapter) => [String(chapter.id), `${chapter.id}. ${chapter.name_simple}`])
+    : (source === "new" ? NEW_TESTAMENT : OLD_TESTAMENT).map(([book]) => [book, book]);
+  els.verseRangeBook.innerHTML = books.map(([value, label]) => `<option value="${escapeHTML(value)}">${escapeHTML(label)}</option>`).join("");
+  const preferred = source === "quran" ? String(state.selectedChapter) : state.scripture === source ? state.selectedBibleBook : "";
+  if (books.some(([value]) => value === previous)) els.verseRangeBook.value = previous;
+  else if (books.some(([value]) => value === preferred)) els.verseRangeBook.value = preferred;
+  renderVerseRangeChapterOptions();
+}
+
+function renderVerseRangeChapterOptions() {
+  const source = els.verseRangeSource.value;
+  const previous = Number(els.verseRangeChapter.value) || 1;
+  let chapters;
+  if (source === "quran") {
+    const chapter = Number(els.verseRangeBook.value) || 1;
+    chapters = [chapter];
+  } else {
+    const collection = source === "new" ? NEW_TESTAMENT : OLD_TESTAMENT;
+    const count = collection.find(([book]) => book === els.verseRangeBook.value)?.[1] || 1;
+    chapters = Array.from({ length: count }, (_, index) => index + 1);
+  }
+  els.verseRangeChapter.innerHTML = chapters.map((chapter) => `<option value="${chapter}">${chapter}</option>`).join("");
+  const preferredChapter = source === "quran" ? chapters[0] : (state.scripture === source ? state.selectedBibleChapter : chapters[0]);
+  els.verseRangeChapter.value = String(chapters.includes(previous) ? previous : preferredChapter);
+  els.verseRangeChapter.disabled = source === "quran";
+  clearVerseRangeSelection(false);
+  loadVerseRangeGrid();
+}
+
+async function loadVerseRangeGrid() {
+  const token = ++state.verseRangeLoadToken;
+  const source = els.verseRangeSource.value;
+  const chapter = Number(els.verseRangeChapter.value) || 1;
+  clearVerseRangeSelection(false);
+  els.verseRangeGrid.innerHTML = '<div class="verse-range-loading"><span aria-hidden="true"></span>Loading verses…</div>';
+  let count = 0;
+  if (source === "quran") {
+    count = Number(getChapter(chapter)?.verses_count) || 0;
+  } else {
+    const book = els.verseRangeBook.value;
+    const data = await getOfflineJSON(`bible/${source}-${BOOK_IDS[book]}-${chapter}.json`).catch(() => null);
+    count = extractBibleVerses(data?.english).length;
+  }
+  if (token !== state.verseRangeLoadToken) return;
+  if (!count) {
+    els.verseRangeGrid.innerHTML = '<div class="verse-range-loading">This chapter is not available offline.</div>';
+    return;
+  }
+  els.verseRangeGrid.innerHTML = Array.from({ length: count }, (_, index) => {
+    const verse = index + 1;
+    return `<button type="button" role="gridcell" data-range-verse="${verse}" aria-label="Verse ${verse}" aria-pressed="false">${verse}</button>`;
+  }).join("");
+  els.verseRangeGrid.querySelectorAll("[data-range-verse]").forEach((button) => {
+    button.addEventListener("click", () => chooseVerseRangePoint(Number(button.dataset.rangeVerse)));
+    button.addEventListener("pointerenter", () => {
+      if (!state.verseRangeStart || state.verseRangeEnd) return;
+      state.verseRangeHover = Number(button.dataset.rangeVerse);
+      paintVerseRangeSelection();
+    });
+  });
+  els.verseRangeGrid.addEventListener("pointerleave", () => {
+    state.verseRangeHover = 0;
+    paintVerseRangeSelection();
+  });
+}
+
+function chooseVerseRangePoint(verse) {
+  if (!state.verseRangeStart || state.verseRangeEnd) {
+    state.verseRangeStart = verse;
+    state.verseRangeEnd = 0;
+  } else {
+    state.verseRangeEnd = verse;
+    if (state.verseRangeEnd < state.verseRangeStart) [state.verseRangeStart, state.verseRangeEnd] = [state.verseRangeEnd, state.verseRangeStart];
+  }
+  state.verseRangeHover = 0;
+  paintVerseRangeSelection();
+}
+
+function verseRangeLabel(verse) {
+  if (!verse) return "—";
+  const chapter = Number(els.verseRangeChapter.value) || 1;
+  return els.verseRangeSource.value === "quran" ? `${chapter}.${verse}` : `${els.verseRangeBook.value} ${chapter}.${verse}`;
+}
+
+function paintVerseRangeSelection() {
+  const previewEnd = state.verseRangeEnd || state.verseRangeHover || state.verseRangeStart;
+  const low = Math.min(state.verseRangeStart || 0, previewEnd || 0);
+  const high = Math.max(state.verseRangeStart || 0, previewEnd || 0);
+  els.verseRangeGrid.querySelectorAll("[data-range-verse]").forEach((button) => {
+    const verse = Number(button.dataset.rangeVerse);
+    const selected = Boolean(low && verse >= low && verse <= high);
+    button.classList.toggle("in-range", selected);
+    button.classList.toggle("range-edge", selected && (verse === low || verse === high));
+    button.setAttribute("aria-pressed", String(selected));
+  });
+  els.verseRangeStartLabel.innerHTML = `<small>Start</small><strong>${state.verseRangeStart ? escapeHTML(verseRangeLabel(state.verseRangeStart)) : "Choose a verse"}</strong>`;
+  els.verseRangeEndLabel.innerHTML = `<small>End</small><strong>${state.verseRangeEnd ? escapeHTML(verseRangeLabel(state.verseRangeEnd)) : state.verseRangeStart ? "Choose the last verse" : "—"}</strong>`;
+  els.addVerseRange.disabled = !state.verseRangeStart;
+  const amount = state.verseRangeStart ? Math.abs((state.verseRangeEnd || state.verseRangeStart) - state.verseRangeStart) + 1 : 0;
+  els.addVerseRange.querySelector("span").textContent = amount > 1 ? `Add ${amount} verses` : "Add verse";
+}
+
+function clearVerseRangeSelection(repaint = true) {
+  state.verseRangeStart = 0;
+  state.verseRangeEnd = 0;
+  state.verseRangeHover = 0;
+  if (repaint) paintVerseRangeSelection();
+}
+
+function addSelectedVerseRange() {
+  if (!state.verseRangeStart) return;
+  const source = els.verseRangeSource.value;
+  const chapter = Number(els.verseRangeChapter.value) || 1;
+  const start = Math.min(state.verseRangeStart, state.verseRangeEnd || state.verseRangeStart);
+  const end = Math.max(state.verseRangeStart, state.verseRangeEnd || state.verseRangeStart);
+  const keys = Array.from({ length: end - start + 1 }, (_, index) => {
+    const verse = start + index;
+    return source === "quran" ? `${chapter}:${verse}` : bibleKey(els.verseRangeBook.value, chapter, verse);
+  });
+  state.currentNoteReferences = [...new Set([...state.currentNoteReferences, ...keys])];
+  renderNoteReferences();
+  saveCurrentNote();
+  setStatus(`${verseRangeLabel(start)}${end > start ? `-${end}` : ""} added to the note.`);
+  clearVerseRangeSelection();
+}
+
 function renderNoteReferences() {
   els.openReferences.disabled = state.currentNoteReferences.length === 0;
   const referenceLabel = state.currentNoteReferences.length
     ? `View ${state.currentNoteReferences.length} ${state.currentNoteReferences.length === 1 ? "reference" : "references"}`
     : "View references";
   els.openReferences.innerHTML = `<i class="ti ti-books" aria-hidden="true"></i><span>${referenceLabel}</span>`;
-  els.noteReferences.innerHTML = state.currentNoteReferences.length
-    ? state.currentNoteReferences.map((key, index) => `
-      <div class="reference-pill" data-reference-key="${escapeHTML(key)}">
-        <button class="reference-drag-handle" type="button" aria-label="Drag to reorder ${escapeHTML(formatReferenceKey(key))}" title="Drag to reorder"><i class="ti ti-grip-vertical" aria-hidden="true"></i></button>
-        <button class="reference-jump" type="button" data-jump="${escapeHTML(key)}"><span class="reference-order">${index + 1}</span>${escapeHTML(formatReferenceKey(key))}</button>
-        <button class="reference-remove" type="button" data-remove="${escapeHTML(key)}" aria-label="Remove ${escapeHTML(key)}"><i class="ti ti-x" aria-hidden="true"></i></button>
+  const groups = groupConsecutiveReferences(state.currentNoteReferences, parseReferenceKey);
+  els.noteReferences.innerHTML = groups.length
+    ? groups.map((group, index) => {
+      const references = group.references.join(",");
+      const label = formatReferenceRange(group, { separator: "." });
+      return `
+      <div class="reference-pill" data-reference-keys="${escapeHTML(references)}">
+        <button class="reference-drag-handle" type="button" aria-label="Drag to reorder ${escapeHTML(label)}" title="Drag to reorder"><i class="ti ti-grip-vertical" aria-hidden="true"></i></button>
+        <button class="reference-jump" type="button" data-jump="${escapeHTML(group.references[0])}"><span class="reference-order">${index + 1}</span>${escapeHTML(label)}${group.references.length > 1 ? `<small>${group.references.length} verses</small>` : ""}</button>
+        <button class="reference-remove" type="button" data-remove-range="${escapeHTML(references)}" aria-label="Remove ${escapeHTML(label)}"><i class="ti ti-x" aria-hidden="true"></i></button>
       </div>
-    `).join("")
+    `}).join("")
     : "";
 
-  els.noteReferences.querySelectorAll("[data-remove]").forEach((button) => {
+  els.noteReferences.querySelectorAll("[data-remove-range]").forEach((button) => {
     button.addEventListener("click", () => {
-      state.currentNoteReferences = state.currentNoteReferences.filter((key) => key !== button.dataset.remove);
+      const removed = new Set(button.dataset.removeRange.split(","));
+      state.currentNoteReferences = state.currentNoteReferences.filter((key) => !removed.has(key));
       renderNoteReferences();
       saveCurrentNote();
     });
@@ -2902,7 +3078,7 @@ function renderNoteReferences() {
 }
 
 function commitReferenceOrder() {
-  const ordered = [...els.noteReferences.querySelectorAll("[data-reference-key]")].map((item) => item.dataset.referenceKey);
+  const ordered = [...els.noteReferences.querySelectorAll("[data-reference-keys]")].flatMap((item) => item.dataset.referenceKeys.split(","));
   if (ordered.join("\n") === state.currentNoteReferences.join("\n")) return;
   state.currentNoteReferences = ordered;
   renderNoteReferences();
@@ -2923,7 +3099,7 @@ function enableReferenceReordering() {
       event.preventDefault();
       els.noteReferences.insertBefore(pill, direction < 0 ? target : target.nextSibling);
       commitReferenceOrder();
-      els.noteReferences.querySelector(`[data-reference-key="${CSS.escape(pill.dataset.referenceKey)}"] .reference-drag-handle`)?.focus();
+      pill.querySelector(".reference-drag-handle")?.focus();
     });
     handle.addEventListener("pointerdown", (event) => {
       event.preventDefault();

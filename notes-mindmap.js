@@ -1,3 +1,5 @@
+import { formatReferenceRange, groupConsecutiveReferences, rangeIdentity } from "./reference-ranges.js";
+
 const SVG_NS = "http://www.w3.org/2000/svg";
 const clamp = (value, min, max) => Math.max(min, Math.min(max, value));
 const hash = (value) => [...String(value)].reduce((sum, char) => ((sum << 5) - sum + char.charCodeAt(0)) | 0, 0);
@@ -12,7 +14,7 @@ function scriptureBook(parsed) {
   return { id: "book:other", label: "References", group: "reference" };
 }
 
-function buildGraph({ entries, folders, formatReference, parseReference, rootLabel = "My notes", rootType = "root", focusFolderId = "" }) {
+function buildGraph({ entries, folders, formatReference, parseReference, expandedRangeIds = new Set(), rootLabel = "My notes", rootType = "root", focusFolderId = "" }) {
   const nodes = new Map();
   const edges = new Map();
   const addNode = (node) => {
@@ -53,15 +55,33 @@ function buildGraph({ entries, folders, formatReference, parseReference, rootLab
       addEdge(noteId, tagId, "tag");
     });
 
-    (note.references || []).forEach((reference) => {
-      const parsed = parseReference(reference);
+    groupConsecutiveReferences(note.references || [], parseReference).forEach((group) => {
+      const parsed = group.parsed;
       const book = scriptureBook(parsed);
       const bookNode = addNode({ ...book, type: "book" });
-      const referenceId = `reference:${reference}`;
-      addNode({ id: referenceId, label: formatReference(reference), type: "reference", rawId: reference, bookGroup: bookNode.group });
+      const isRange = group.references.length > 1;
+      const identity = rangeIdentity(group);
+      const referenceId = isRange ? `range:${identity}` : `reference:${group.references[0]}`;
+      const expanded = isRange && expandedRangeIds.has(identity);
+      addNode({
+        id: referenceId,
+        label: isRange ? formatReferenceRange(group, { separator: ":" }) : formatReference(group.references[0]),
+        type: "reference",
+        rawId: group.references[0],
+        references: group.references,
+        rangeIdentity: identity,
+        isRange,
+        expanded,
+        bookGroup: bookNode.group,
+      });
       addEdge("hub:books", bookNode.id, "book");
       addEdge(bookNode.id, referenceId, "reference");
       addEdge(noteId, referenceId, "reference");
+      if (expanded) group.references.forEach((reference) => {
+        const childId = `range-verse:${identity}:${reference}`;
+        addNode({ id: childId, label: formatReference(reference), type: "reference", rawId: reference, rangeChild: true, bookGroup: bookNode.group });
+        addEdge(referenceId, childId, "reference");
+      });
     });
   });
 
@@ -248,6 +268,8 @@ export function renderNotesMindMap(container, options) {
     container._mindMapCleanup = null;
     options.onClose();
   };
+  container._expandedReferenceRanges ||= new Set();
+  options.expandedRangeIds = container._expandedReferenceRanges;
   const graph = buildGraph(options);
   const counts = graph.nodes.reduce((result, node) => ({ ...result, [node.type]: (result[node.type] || 0) + 1 }), {});
   if (!options.entries.length && !options.folders.length) {
@@ -296,7 +318,7 @@ export function renderNotesMindMap(container, options) {
     const group = svgElement("g", { class: `mindmap-node node-${node.type}${node.scopeType ? ` scope-${node.scopeType}` : ""}`, transform: `translate(${node.x} ${node.y})`, tabindex: "0", role: "button", "aria-label": `${node.scopeType || node.type}: ${node.label}`, "data-node-id": node.id });
     group.append(svgElement("rect", { x: -width / 2, y: -height / 2, width, height, rx: height / 2 }));
     const icon = svgElement("text", { class: "node-icon", x: -width / 2 + 23, y: 1, "aria-hidden": "true" });
-    icon.textContent = ({ root: "✦", hub: "•", note: "✎", folder: "▰", tag: "#", book: "▤", reference: "↗" })[node.type] || "•";
+    icon.textContent = node.isRange ? (node.expanded ? "−" : "+") : ({ root: "✦", hub: "•", note: "✎", folder: "▰", tag: "#", book: "▤", reference: "↗" })[node.type] || "•";
     const hasTypeLabel = !["root", "hub"].includes(node.type);
     const lines = getNodeLabelLines(node, width);
     const lineHeight = 18;
@@ -311,7 +333,7 @@ export function renderNotesMindMap(container, options) {
     group.append(icon, label);
     if (hasTypeLabel) {
       const typeLabel = svgElement("text", { class: "node-type-label", x: -width / 2 + 43, y: labelStartY + lines.length * lineHeight + 2 });
-      typeLabel.textContent = ({ note: "NOTE", folder: "FOLDER", tag: "HASHTAG", book: "BOOK", reference: "VERSE / PASSAGE" })[node.type] || node.type.toUpperCase();
+      typeLabel.textContent = node.isRange ? `${node.references.length} VERSES · ${node.expanded ? "TAP TO COLLAPSE" : "TAP TO EXPAND"}` : ({ note: "NOTE", folder: "FOLDER", tag: "HASHTAG", book: "BOOK", reference: "VERSE / PASSAGE" })[node.type] || node.type.toUpperCase();
       group.append(typeLabel);
     }
     nodeLayer.append(group);
@@ -384,13 +406,36 @@ export function renderNotesMindMap(container, options) {
   let suppressClickUntil = 0;
   nodeLayer.querySelectorAll(".mindmap-node").forEach((group) => {
     const node = byId.get(group.dataset.nodeId);
-    group.addEventListener("click", (event) => { event.stopPropagation(); if (performance.now() < suppressClickUntil) return; selectNode(node); });
+    const toggleRangeNode = () => {
+      if (container._expandedReferenceRanges.has(node.rangeIdentity)) container._expandedReferenceRanges.delete(node.rangeIdentity);
+      else container._expandedReferenceRanges.add(node.rangeIdentity);
+      renderNotesMindMap(container, options);
+    };
+    let rangePointerStart = null;
+    let rangePointerHandledUntil = 0;
+    if (node.isRange) {
+      group.addEventListener("pointerdown", (event) => { rangePointerStart = { x: event.clientX, y: event.clientY }; });
+      group.addEventListener("pointerup", (event) => {
+        if (!rangePointerStart || Math.hypot(event.clientX - rangePointerStart.x, event.clientY - rangePointerStart.y) > 8) return;
+        rangePointerHandledUntil = performance.now() + 350;
+        toggleRangeNode();
+      });
+    }
+    group.addEventListener("click", (event) => {
+      event.stopPropagation();
+      if (node.isRange) {
+        if (performance.now() >= rangePointerHandledUntil) toggleRangeNode();
+        return;
+      }
+      if (performance.now() < suppressClickUntil) return;
+      selectNode(node);
+    });
     group.addEventListener("dblclick", () => {
       if (node.type === "note") options.onOpenNote(node.rawId);
       if (node.type === "reference") options.onOpenReference(node.rawId);
       if (node.type === "tag") options.onFilterTag(node.rawId);
     });
-    group.addEventListener("keydown", (event) => { if (["Enter", " "].includes(event.key)) { event.preventDefault(); selectNode(node); } });
+    group.addEventListener("keydown", (event) => { if (["Enter", " "].includes(event.key)) { event.preventDefault(); group.dispatchEvent(new MouseEvent("click", { bubbles: true })); } });
   });
   svg.addEventListener("click", () => { if (selected) selectNode(byId.get(selected)); });
   svg.addEventListener("wheel", (event) => { event.preventDefault(); zoom(event.deltaY < 0 ? 1.12 : .89, event.clientX, event.clientY); }, { passive: false });
@@ -409,6 +454,9 @@ export function renderNotesMindMap(container, options) {
     }
   };
   svg.addEventListener("pointerdown", (event) => {
+    // Keep taps on nodes as taps. Pointer capture is only needed for panning
+    // the empty canvas and otherwise retargets the eventual click to the SVG.
+    if (event.target.closest?.(".mindmap-node")) return;
     pointers.set(event.pointerId, { x: event.clientX, y: event.clientY });
     svg.setPointerCapture(event.pointerId);
     beginGesture();
