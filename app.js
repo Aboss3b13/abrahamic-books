@@ -123,7 +123,7 @@ const state = {
   selectedNotes: new Set(),
   expandedNoteReferences: new Set(),
   currentNoteReferences: [],
-  noteTagFilter: "",
+  noteTagFilters: new Set(),
   noteViewMode: "flat",
   selectedFolderId: "all",
   noteFolders: [],
@@ -221,6 +221,7 @@ const els = {
   wordContent: document.querySelector("#wordContent"),
   noteTags: document.querySelector("#noteTags"),
   noteTagChoices: document.querySelector("#noteTagChoices"),
+  noteTagSelectionCount: document.querySelector("#noteTagSelectionCount"),
   noteTagCreate: document.querySelector("#noteTagCreate"),
   addNoteTag: document.querySelector("#addNoteTag"),
   noteTagDescription: document.querySelector("#noteTagDescription"),
@@ -269,6 +270,8 @@ const els = {
   readView: document.querySelector("#readView"),
   notesCount: document.querySelector("#notesCount"),
   notesSearch: document.querySelector("#notesSearch"),
+  notesSearchClear: document.querySelector("#notesSearchClear"),
+  notesSearchStatus: document.querySelector("#notesSearchStatus"),
   notesSearchHelpButton: document.querySelector("#notesSearchHelpButton"),
   notesSearchHelp: document.querySelector("#notesSearchHelp"),
   notesSort: document.querySelector("#notesSort"),
@@ -590,6 +593,11 @@ function bindEvents() {
   els.notesMindMapMode.addEventListener("click", () => setNotesViewMode("mindmap"));
   els.createNoteFolder.addEventListener("click", () => createNoteFolder(false));
   els.notesSearch.addEventListener("input", debounceInput(() => renderNotes({ animate: false }), 70));
+  els.notesSearchClear.addEventListener("click", () => {
+    els.notesSearch.value = "";
+    renderNotes({ animate: false });
+    els.notesSearch.focus();
+  });
   els.notesSearchHelpButton.addEventListener("click", () => {
     const open = els.notesSearchHelp.hidden;
     els.notesSearchHelp.hidden = !open;
@@ -1954,6 +1962,7 @@ function renderNotes({ animate = true, hydrateReferences = true } = {}) {
   const sourceEntries = state.notesSection === "shared"
     ? state.sharedNotes.map((note) => [`shared:${note.id}`, note])
     : Object.entries(state.notes);
+  const folderScope = getActiveFolderScope();
   const entries = sourceEntries
     .filter(([, note]) => note.title?.trim() || note.text?.trim() || note.tags?.length || note.references?.length || note.standalone)
     .sort((a, b) => compareNotes(a[1], b[1], state.notesSort))
@@ -1964,10 +1973,17 @@ function renderNotes({ animate = true, hydrateReferences = true } = {}) {
       const referenceText = (note.references || []).map((reference) => noteReferenceTextCache.get(reference) || "").join(" ");
       const haystack = `${key} ${note.title || ""} ${formatReferenceKey(key)} ${note.text || ""} ${(note.references || []).map(formatReferenceKey).join(" ")} ${referenceText} ${tags.join(" ")} ${tagDescriptions} ${folderName}`;
       const matchesSearch = !query || searchExpression.matches(haystack);
-      const matchesTag = !state.noteTagFilter || tags.includes(state.noteTagFilter);
-      const matchesFolder = state.noteViewMode !== "folders" || (note.folderId || "") === (state.selectedFolderId === "all" ? "" : state.selectedFolderId);
+      const matchesTag = !state.noteTagFilters.size || [...state.noteTagFilters].every((tag) => tags.includes(tag));
+      const matchesFolder = !folderScope || folderScope.has(note.folderId || "");
       return matchesSearch && matchesTag && matchesFolder;
     });
+  els.notesSearchClear.hidden = !query;
+  const activeFilterCount = state.noteTagFilters.size;
+  const scopedLabel = state.noteViewMode === "mindmap" && !["", "all"].includes(state.selectedFolderId)
+    ? ` in ${state.noteFolders.find((folder) => folder.id === state.selectedFolderId)?.name || "this folder"}` : "";
+  els.notesSearchStatus.textContent = query || activeFilterCount
+    ? `${entries.length} ${entries.length === 1 ? "note" : "notes"} found${scopedLabel}${activeFilterCount ? ` · ${activeFilterCount} hashtag ${activeFilterCount === 1 ? "filter" : "filters"}` : ""}`
+    : "";
 
   const privateTotal = Object.values(state.notes).filter((note) => note.title?.trim() || note.text?.trim() || note.tags?.length || note.references?.length || note.standalone).length;
   const total = state.notesSection === "shared" ? state.sharedNotes.length : privateTotal;
@@ -1982,19 +1998,26 @@ function renderNotes({ animate = true, hydrateReferences = true } = {}) {
   renderTagFilters();
 
   if (mindMapMode && !locked) {
+    const scopedFolders = folderScope
+      ? state.noteFolders.filter((folder) => folderScope.has(folder.id) && folder.id !== state.selectedFolderId)
+      : state.noteFolders;
+    const activeFolder = state.noteFolders.find((folder) => folder.id === state.selectedFolderId);
     renderNotesMindMap(els.notesMindMap, {
       entries,
-      folders: state.noteFolders,
+      folders: scopedFolders,
+      rootLabel: activeFolder?.name || "My notes",
+      rootType: activeFolder ? "folder" : "root",
+      focusFolderId: activeFolder?.id || "",
       formatReference: formatReferenceKey,
       parseReference: parseReferenceKey,
-      onClose: () => setNotesViewMode("flat"),
+      onClose: () => setNotesViewMode(activeFolder ? "folders" : "flat"),
       onOpenNote: openNote,
       onOpenReference: (reference) => {
         setNotesViewMode("flat");
         navigateToReference(reference);
       },
       onFilterTag: (tag) => {
-        state.noteTagFilter = state.noteTagFilter === tag ? "" : tag;
+        toggleNoteTagFilter(tag);
         setNotesViewMode("flat");
       },
     });
@@ -2028,7 +2051,7 @@ function renderNotes({ animate = true, hydrateReferences = true } = {}) {
           </article>
         `;
       }).join("")
-    : `<div class="notes-empty"><i class="ti ti-notebook" aria-hidden="true"></i><h3>${query || state.noteTagFilter ? "No matching notes" : state.noteViewMode === "folders" ? "This folder is empty" : "Your notes start here"}</h3><p>${query || state.noteTagFilter ? "Try another search or filter." : state.noteViewMode === "folders" ? "Create a note here or open another folder." : "Capture a reflection, verse, or study thought and keep it close."}</p>${query || state.noteTagFilter ? "" : '<button class="text-button primary" type="button" data-empty-new><i class="ti ti-file-plus" aria-hidden="true"></i>Create a note</button>'}</div>`;
+    : `<div class="notes-empty"><i class="ti ti-notebook" aria-hidden="true"></i><h3>${query || state.noteTagFilters.size ? "No matching notes" : state.noteViewMode === "folders" ? "This folder is empty" : "Your notes start here"}</h3><p>${query || state.noteTagFilters.size ? "Try another search or remove a hashtag filter." : state.noteViewMode === "folders" ? "Create a note here or open another folder." : "Capture a reflection, verse, or study thought and keep it close."}</p>${query || state.noteTagFilters.size ? "" : '<button class="text-button primary" type="button" data-empty-new><i class="ti ti-file-plus" aria-hidden="true"></i>Create a note</button>'}</div>`;
 
   els.notesList.querySelectorAll("button[data-key]").forEach((button) => {
     button.addEventListener("click", () => {
@@ -2042,7 +2065,7 @@ function renderNotes({ animate = true, hydrateReferences = true } = {}) {
   });
   els.notesList.querySelectorAll("button[data-filter-tag]").forEach((button) => {
     button.addEventListener("click", () => {
-      state.noteTagFilter = button.dataset.filterTag;
+      toggleNoteTagFilter(button.dataset.filterTag);
       renderNotes();
       els.notesSearch.focus({ preventScroll: true });
       els.notesSearch.scrollIntoView({ behavior: matchMedia("(prefers-reduced-motion: reduce)").matches ? "auto" : "smooth", block: "center" });
@@ -2061,6 +2084,23 @@ function renderNotes({ animate = true, hydrateReferences = true } = {}) {
   updateNoteSelectionUI();
   if (!animate) requestAnimationFrame(() => requestAnimationFrame(() => els.notesList.classList.remove("notes-sync-update")));
   if (query && hydrateReferences) hydrateNoteReferenceSearch(sourceEntries, query);
+}
+
+function getActiveFolderScope() {
+  if (!["folders", "mindmap"].includes(state.noteViewMode) || ["all", ""].includes(state.selectedFolderId)) return null;
+  const scope = new Set([state.selectedFolderId]);
+  if (state.noteViewMode === "folders") return scope;
+  let changed = true;
+  while (changed) {
+    changed = false;
+    state.noteFolders.forEach((folder) => {
+      if (scope.has(folder.parentId || "") && !scope.has(folder.id)) {
+        scope.add(folder.id);
+        changed = true;
+      }
+    });
+  }
+  return scope;
 }
 
 async function hydrateNoteReferenceSearch(entries, query) {
@@ -2202,13 +2242,13 @@ function formatNoteDate(value) {
 
 function switchNotesSection(section) {
   state.notesSection = section;
-  state.noteTagFilter = "";
+  state.noteTagFilters.clear();
   state.selectedNotes.clear();
   state.noteSelectMode = false;
   els.privateNotesTab.classList.toggle("active", section === "private");
   els.sharedNotesTab.classList.toggle("active", section === "shared");
-  els.privateNotesTab.setAttribute("aria-selected", String(section === "private"));
-  els.sharedNotesTab.setAttribute("aria-selected", String(section === "shared"));
+  els.privateNotesTab.setAttribute("aria-pressed", String(section === "private"));
+  els.sharedNotesTab.setAttribute("aria-pressed", String(section === "shared"));
   renderNotes();
 }
 
@@ -2336,15 +2376,24 @@ async function applyNoteTransfer(mode, folderId) {
 function renderTagFilters() {
   const source = state.notesSection === "shared" ? state.sharedNotes : Object.values(state.notes);
   const tags = [...new Set(source.flatMap((note) => note.tags || []))].sort();
-  els.privateNotesTab.classList.toggle("active", state.notesSection === "private" && !state.noteTagFilter);
-  els.sharedNotesTab.classList.toggle("active", state.notesSection === "shared" && !state.noteTagFilter);
-  els.tagFilters.innerHTML = tags.map((tag) => `<button class="tag-chip ${state.noteTagFilter === tag ? "active" : ""}" type="button" data-tag="${escapeHTML(tag)}">#${escapeHTML(tag)}</button>`).join("");
-  els.tagFilters.querySelectorAll("button").forEach((button) => {
+  els.privateNotesTab.classList.toggle("active", state.notesSection === "private" && !state.noteTagFilters.size);
+  els.sharedNotesTab.classList.toggle("active", state.notesSection === "shared" && !state.noteTagFilters.size);
+  els.tagFilters.innerHTML = `${state.noteTagFilters.size ? `<button class="tag-chip clear-tag-filters" type="button" data-clear-tags aria-label="Clear ${state.noteTagFilters.size} hashtag filters"><i class="ti ti-x" aria-hidden="true"></i> Clear ${state.noteTagFilters.size}</button>` : ""}${tags.map((tag) => `<button class="tag-chip ${state.noteTagFilters.has(tag) ? "active" : ""}" type="button" data-tag="${escapeHTML(tag)}" aria-pressed="${state.noteTagFilters.has(tag)}">#${escapeHTML(tag)}</button>`).join("")}`;
+  els.tagFilters.querySelector("[data-clear-tags]")?.addEventListener("click", () => {
+    state.noteTagFilters.clear();
+    renderNotes();
+  });
+  els.tagFilters.querySelectorAll("button[data-tag]").forEach((button) => {
     button.addEventListener("click", () => {
-      state.noteTagFilter = button.dataset.tag;
+      toggleNoteTagFilter(button.dataset.tag);
       renderNotes();
     });
   });
+}
+
+function toggleNoteTagFilter(tag) {
+  if (state.noteTagFilters.has(tag)) state.noteTagFilters.delete(tag);
+  else state.noteTagFilters.add(tag);
 }
 
 function getKnownNoteTags() {
@@ -2355,6 +2404,7 @@ function getKnownNoteTags() {
 
 function renderNoteTagPicker() {
   const selected = new Set(parseTags(els.noteTags.value));
+  els.noteTagSelectionCount.textContent = `${selected.size} selected`;
   const tags = [...new Set([...getKnownNoteTags(), ...selected])];
   els.noteTagChoices.innerHTML = tags.length
     ? tags.map((tag) => {
@@ -2443,7 +2493,7 @@ async function renameNoteTag(oldTag) {
   const oldDetails = state.tagCatalog[oldTag] || {};
   state.tagCatalog[newTag] = { ...oldDetails, ...(state.tagCatalog[newTag] || {}) };
   delete state.tagCatalog[oldTag];
-  if (state.noteTagFilter === oldTag) state.noteTagFilter = newTag;
+  if (state.noteTagFilters.delete(oldTag)) state.noteTagFilters.add(newTag);
   try {
     await updateTagAcrossNotes(oldTag, newTag);
     saveNotesOrganizer();
@@ -2457,7 +2507,7 @@ async function deleteNoteTag(tag) {
   if (!window.confirm(`Delete #${tag}? It will be removed from every note.`)) return;
   els.noteTags.value = parseTags(els.noteTags.value).filter((item) => item !== tag).join(", ");
   delete state.tagCatalog[tag];
-  if (state.noteTagFilter === tag) state.noteTagFilter = "";
+  state.noteTagFilters.delete(tag);
   try {
     await updateTagAcrossNotes(tag);
     saveNotesOrganizer();
@@ -4917,7 +4967,7 @@ function applySyncedNotes(notes) {
 async function loadLocalState() {
   try {
     const organizer = JSON.parse(localStorage.getItem(STORE.notesOrganizer) || "null") || {};
-    state.noteViewMode = organizer.viewMode === "folders" ? "folders" : "flat";
+    state.noteViewMode = ["folders", "mindmap"].includes(organizer.viewMode) ? organizer.viewMode : "flat";
     state.selectedFolderId = typeof organizer.selectedFolderId === "string" ? organizer.selectedFolderId : "all";
     state.noteFolders = Array.isArray(organizer.folders)
       ? organizer.folders.filter((folder) => folder && typeof folder.id === "string" && typeof folder.name === "string").map((folder) => ({ ...folder, parentId: typeof folder.parentId === "string" ? folder.parentId : "" }))
@@ -5586,8 +5636,15 @@ function parseNoteSearchExpression(query) {
     matches(value) {
       if (!terms.length) return true;
       const normalized = normalizeSearchText(value);
-      const tokens = new Set(normalized.match(/[\p{L}\p{N}]+(?::[\p{L}\p{N}]+)*/gu) || []);
-      return terms.every((term) => term.phrase ? normalized.includes(term.value) : tokens.has(term.value));
+      const tokens = normalized.match(/[\p{L}\p{N}]+(?::[\p{L}\p{N}]+)*/gu) || [];
+      return terms.every((term) => {
+        if (term.phrase) return normalized.includes(term.value);
+        if (tokens.includes(term.value)) return true;
+        // Incomplete verse numbers and reasonably long word beginnings are
+        // useful intent signals, while short fragments remain precise.
+        const canUsePrefix = term.value.includes(":") || term.value.length >= 5;
+        return canUsePrefix && tokens.some((token) => token.startsWith(term.value));
+      });
     },
   };
 }

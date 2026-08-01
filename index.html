@@ -141,19 +141,21 @@
               <div class="notes-search-wrap">
                 <i class="ti ti-search" aria-hidden="true"></i>
                 <input id="notesSearch" class="wide-search" type="search" autocomplete="off" placeholder="Search notes, verses, or phrases">
+                <button id="notesSearchClear" class="notes-search-clear" type="button" aria-label="Clear notes search" hidden><i class="ti ti-x" aria-hidden="true"></i></button>
                 <button id="notesSearchHelpButton" class="search-help-button" type="button" aria-label="Search syntax help" aria-controls="notesSearchHelp" aria-expanded="false"><i class="ti ti-help-circle" aria-hidden="true"></i></button>
               </div>
               <div id="notesSearchHelp" class="search-syntax-hint search-help-panel help-guide" hidden>
                 <strong>Using Notes</strong>
-                <p>Tap <b>New note</b> for a standalone study note, or use a verse’s note button to attach a note directly to it. Add comma-separated tags to organise a topic.</p>
+                <p>Tap <b>New note</b> for a standalone study note, or use a verse’s note button to attach a note directly to it. Select several hashtags to show only notes that contain all of them.</p>
                 <p>Cross-references can connect Quran verses, Bible passages, and hadith. Tap a reference on a note to read it, or use <b>View references</b> in the editor to compare them together.</p>
-                <p><b>Search:</b> every word must match exactly, <code>"exact phrase"</code> keeps words together, and referenced passage text is searched too.</p>
+                <p><b>Search:</b> use any part of a verse, title, note, reference, folder, or hashtag. Long word beginnings and incomplete verse numbers work too; use <code>"exact phrase"</code> to keep words together.</p>
               </div>
-              <div class="tag-filters notes-filter-row" role="tablist" aria-label="Filter notes">
-                <button id="privateNotesTab" class="tag-chip active" type="button" role="tab" aria-selected="true">Private</button>
-                <button id="sharedNotesTab" class="tag-chip" type="button" role="tab" aria-selected="false">Shared <span id="sharedNotesBadge">0</span></button>
+              <div class="tag-filters notes-filter-row" role="group" aria-label="Filter notes">
+                <button id="privateNotesTab" class="tag-chip active" type="button" aria-pressed="true">Private</button>
+                <button id="sharedNotesTab" class="tag-chip" type="button" aria-pressed="false">Shared <span id="sharedNotesBadge">0</span></button>
                 <div id="tagFilters" class="custom-tag-filters"></div>
               </div>
+              <p id="notesSearchStatus" class="notes-search-status" role="status" aria-live="polite"></p>
             </div>
           </div>
           <div id="noteFolderBrowser" class="note-folder-browser" aria-label="Note folders" hidden></div>
@@ -540,10 +542,12 @@
             <span><i class="ti ti-heading" aria-hidden="true"></i> Title</span>
             <input id="noteName" type="text" maxlength="120" placeholder="Give this note a name">
           </label>
-          <div class="note-field note-tag-field">
-            <span><i class="ti ti-tags" aria-hidden="true"></i> Tags</span>
-            <input id="noteTags" type="hidden">
-            <div id="noteTagChoices" class="note-tag-choices" aria-label="Available tags"></div>
+        </div>
+        <div class="note-field note-tag-field note-editor-section">
+          <div class="note-editor-section-heading"><span class="note-editor-icon note-editor-tag-icon"><i class="ti ti-tags" aria-hidden="true"></i></span><div><strong>Hashtags</strong><small>Select several topics to connect this note across your mind map</small></div><span id="noteTagSelectionCount" class="note-tag-selection-count">0 selected</span></div>
+          <input id="noteTags" type="hidden">
+          <div id="noteTagChoices" class="note-tag-choices" aria-label="Available tags"></div>
+          <div class="note-tag-create-panel">
             <div class="note-tag-create-row">
               <input id="noteTagCreate" type="text" maxlength="40" autocomplete="off" placeholder="Create a new tag">
               <button id="addNoteTag" class="text-button" type="button"><i class="ti ti-plus" aria-hidden="true"></i><span>Add tag</span></button>

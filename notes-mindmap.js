@@ -12,7 +12,7 @@ function scriptureBook(parsed) {
   return { id: "book:other", label: "References", group: "reference" };
 }
 
-function buildGraph({ entries, folders, formatReference, parseReference }) {
+function buildGraph({ entries, folders, formatReference, parseReference, rootLabel = "My notes", rootType = "root", focusFolderId = "" }) {
   const nodes = new Map();
   const edges = new Map();
   const addNode = (node) => {
@@ -24,9 +24,9 @@ function buildGraph({ entries, folders, formatReference, parseReference }) {
     if (!edges.has(id)) edges.set(id, { id, source, target, kind });
   };
 
-  addNode({ id: "root", label: "My notes", type: "root", weight: Math.max(1, entries.length) });
+  addNode({ id: "root", label: rootLabel, type: "root", scopeType: rootType, weight: Math.max(1, entries.length) });
   const hubs = [
-    ["hub:folders", "Folders", "folder"],
+    ...(!focusFolderId ? [["hub:folders", "Folders", "folder"]] : []),
     ["hub:topics", "Topics", "tag"],
     ["hub:books", "Books", "book"],
   ];
@@ -34,13 +34,17 @@ function buildGraph({ entries, folders, formatReference, parseReference }) {
 
   folders.forEach((folder) => {
     addNode({ id: `folder:${folder.id}`, label: folder.name, type: "folder", rawId: folder.id });
-    addEdge(folder.parentId ? `folder:${folder.parentId}` : "hub:folders", `folder:${folder.id}`, "folder");
+    const parent = !folder.parentId || folder.parentId === focusFolderId ? (focusFolderId ? "root" : "hub:folders") : `folder:${folder.parentId}`;
+    addEdge(parent, `folder:${folder.id}`, "folder");
   });
 
   entries.forEach(([key, note]) => {
     const noteId = `note:${key}`;
     addNode({ id: noteId, label: note.title?.trim() || "Untitled note", type: "note", rawId: key, summary: note.text || "", weight: 1 + (note.tags?.length || 0) + (note.references?.length || 0) });
-    addEdge(note.folderId ? `folder:${note.folderId}` : "hub:folders", noteId, "folder");
+    const folderSource = focusFolderId && note.folderId === focusFolderId
+      ? "root"
+      : note.folderId ? `folder:${note.folderId}` : "hub:folders";
+    addEdge(folderSource, noteId, "folder");
 
     (note.tags || []).forEach((tag) => {
       const tagId = `tag:${tag}`;
@@ -192,7 +196,10 @@ function layOut(nodes, edges, viewport) {
   const offsetX = (width - contentWidth) / 2 - minX;
   const offsetY = (height - contentHeight) / 2 - minY;
   nodes.forEach((node) => { node.x += offsetX; node.y += offsetY; });
-  return { width, height, byId, links, openingScale: Math.max(1, width / viewport.width) };
+  // The SVG viewBox already fits the complete graph to the stage. Starting at
+  // a second scale clips the outer nodes on phones and hides the relationships
+  // the map is meant to explain.
+  return { width, height, byId, links, openingScale: 1 };
 }
 
 function svgElement(name, attributes = {}) {
@@ -226,7 +233,7 @@ export function renderNotesMindMap(container, options) {
   };
   const graph = buildGraph(options);
   const counts = graph.nodes.reduce((result, node) => ({ ...result, [node.type]: (result[node.type] || 0) + 1 }), {});
-  if (!options.entries.length) {
+  if (!options.entries.length && !options.folders.length) {
     container.innerHTML = `<button class="mindmap-close mindmap-empty-close" type="button" aria-label="Close mind map"><i class="ti ti-x"></i></button><div class="mindmap-empty"><i class="ti ti-affiliate" aria-hidden="true"></i><h3>No notes to map yet</h3><p>Create a note or clear the current filters to reveal your knowledge map.</p></div>`;
     container.querySelector(".mindmap-close").addEventListener("click", closeMap);
     return;
@@ -234,7 +241,7 @@ export function renderNotesMindMap(container, options) {
 
   container.innerHTML = `
     <header class="mindmap-header">
-      <div><span class="mindmap-kicker">Knowledge graph</span><h3>Connections across your library</h3><p>${counts.note || 0} notes · ${counts.tag || 0} topics · ${counts.reference || 0} references · ${counts.book || 0} books</p></div>
+      <div><span class="mindmap-kicker">Knowledge graph</span><h3>${options.focusFolderId ? `${escapeHTML(options.rootLabel)} connections` : "Connections across your library"}</h3><p>${counts.note || 0} ${(counts.note || 0) === 1 ? "note" : "notes"} · ${counts.tag || 0} ${(counts.tag || 0) === 1 ? "topic" : "topics"} · ${counts.reference || 0} ${(counts.reference || 0) === 1 ? "verse" : "verses"} · ${counts.folder || 0} ${(counts.folder || 0) === 1 ? "folder" : "folders"}</p></div>
       <div class="mindmap-actions" role="group" aria-label="Mind map controls">
         <button type="button" data-map-zoom="out" aria-label="Zoom out"><i class="ti ti-minus"></i></button>
         <button type="button" data-map-reset aria-label="Fit map"><i class="ti ti-focus-centered"></i><span>Fit</span></button>
@@ -242,6 +249,7 @@ export function renderNotesMindMap(container, options) {
       </div>
       <button class="mindmap-close" type="button" aria-label="Close mind map"><i class="ti ti-x"></i></button>
     </header>
+    <div class="mindmap-legend" aria-label="Mind map key"><span data-legend="folder"><i></i>Folder</span><span data-legend="note"><i></i>Note</span><span data-legend="tag"><i></i>Hashtag</span><span data-legend="book"><i></i>Book</span><span data-legend="reference"><i></i>Verse</span></div>
     <div class="mindmap-stage"><svg role="img" aria-label="Interactive graph connecting notes, folders, hashtags, books and scripture references"></svg></div>
     <div class="mindmap-hint"><i class="ti ti-zoom-scan"></i> Drag to explore · pinch or scroll to zoom · tap for details</div>
     <aside class="mindmap-inspector" hidden></aside>`;
@@ -258,24 +266,34 @@ export function renderNotesMindMap(container, options) {
 
   links.forEach((edge) => {
     const path = svgElement("path", { class: `mindmap-edge edge-${edge.kind}`, "data-edge-id": edge.id, "data-source": edge.source, "data-target": edge.target });
-    const mx = (edge.a.x + edge.b.x) / 2;
-    path.setAttribute("d", `M ${edge.a.x} ${edge.a.y} Q ${mx} ${(edge.a.y + edge.b.y) / 2 - Math.min(34, Math.abs(edge.b.x - edge.a.x) * .08)} ${edge.b.x} ${edge.b.y}`);
+    const dx = edge.b.x - edge.a.x;
+    const bend = Math.min(48, Math.abs(dx) * .1) * (hash(edge.id) % 2 ? 1 : -1);
+    const c1x = edge.a.x + dx * .42;
+    const c2x = edge.a.x + dx * .58;
+    path.setAttribute("d", `M ${edge.a.x} ${edge.a.y} C ${c1x} ${edge.a.y + bend}, ${c2x} ${edge.b.y + bend}, ${edge.b.x} ${edge.b.y}`);
     edgeLayer.append(path);
   });
 
   graph.nodes.forEach((node) => {
     const width = nodeWidth(node); const height = nodeHeight(node);
-    const group = svgElement("g", { class: `mindmap-node node-${node.type}`, transform: `translate(${node.x} ${node.y})`, tabindex: "0", role: "button", "aria-label": `${node.type}: ${node.label}`, "data-node-id": node.id });
+    const group = svgElement("g", { class: `mindmap-node node-${node.type}${node.scopeType ? ` scope-${node.scopeType}` : ""}`, transform: `translate(${node.x} ${node.y})`, tabindex: "0", role: "button", "aria-label": `${node.scopeType || node.type}: ${node.label}`, "data-node-id": node.id });
     group.append(svgElement("rect", { x: -width / 2, y: -height / 2, width, height, rx: height / 2 }));
     const icon = svgElement("text", { class: "node-icon", x: -width / 2 + 23, y: 1, "aria-hidden": "true" });
     icon.textContent = ({ root: "✦", hub: "•", note: "✎", folder: "▰", tag: "#", book: "▤", reference: "↗" })[node.type] || "•";
-    const label = svgElement("text", { class: "node-label", x: node.type === "hub" ? 0 : -width / 2 + 43, y: 1, "text-anchor": node.type === "hub" ? "middle" : "start" });
+    const hasTypeLabel = !["root", "hub"].includes(node.type);
+    const label = svgElement("text", { class: "node-label", x: node.type === "hub" ? 0 : -width / 2 + 43, y: hasTypeLabel ? -8 : 1, "text-anchor": node.type === "hub" ? "middle" : "start" });
     const visibleLabel = node.type === "tag" ? node.label.replace(/^#/, "") : node.label;
     // Keep the rendered glyphs inside the pill. The full value remains in the
     // accessible label and inspector, while the compact label prevents long
     // note titles from visually colliding with neighboring nodes.
     label.textContent = shortLabel(visibleLabel, node.type === "note" ? 18 : 19);
-    group.append(icon, label); nodeLayer.append(group);
+    group.append(icon, label);
+    if (hasTypeLabel) {
+      const typeLabel = svgElement("text", { class: "node-type-label", x: -width / 2 + 43, y: 14 });
+      typeLabel.textContent = ({ note: "NOTE", folder: "FOLDER", tag: "HASHTAG", book: "BOOK", reference: "VERSE / PASSAGE" })[node.type] || node.type.toUpperCase();
+      group.append(typeLabel);
+    }
+    nodeLayer.append(group);
   });
 
   let scale = openingScale;

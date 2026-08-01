@@ -371,7 +371,7 @@ export class NotesSystem extends EventTarget {
       ]))
       : {};
     const clean = {
-      viewMode: organizer.viewMode === "folders" ? "folders" : "flat",
+      viewMode: ["folders", "mindmap"].includes(organizer.viewMode) ? organizer.viewMode : "flat",
       selectedFolderId: typeof organizer.selectedFolderId === "string" ? organizer.selectedFolderId : "all",
       folders,
       tagCatalog,
