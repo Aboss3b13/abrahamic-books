@@ -4060,6 +4060,7 @@ a.pill-button { position: relative; isolation: isolate; }
 .mindmap-legend [data-legend="tag"] { color: #8355cf; }
 .mindmap-legend [data-legend="book"] { color: #168b7a; }
 .mindmap-legend [data-legend="reference"] { color: #cf604b; }
+.mindmap-legend [data-legend="collection"] { color: #b14f3c; }
 .mindmap-legend [data-legend] i { background: currentColor; }
 
 .mindmap-edge { stroke-width: 1.7; opacity: .68; }
@@ -4067,6 +4068,7 @@ a.pill-button { position: relative; isolation: isolate; }
 .mindmap-edge.edge-tag { stroke: color-mix(in srgb, #8b5cf6 62%, transparent); stroke-dasharray: 5 4; }
 .mindmap-edge.edge-book { stroke: color-mix(in srgb, #159383 60%, transparent); }
 .mindmap-edge.edge-reference { stroke: color-mix(in srgb, #d66752 62%, transparent); }
+.mindmap-edge.edge-collection { stroke: color-mix(in srgb, #d66752 52%, transparent); stroke-dasharray: 3 4; }
 .mindmap-edge.is-connected { stroke-width: 3; opacity: 1; filter: drop-shadow(0 0 3px color-mix(in srgb, currentColor 40%, transparent)); }
 .mindmap-edge.edge-folder.is-connected { stroke: #d18a12; }
 .mindmap-edge.edge-tag.is-connected { stroke: #8b5cf6; }
@@ -4083,6 +4085,8 @@ a.pill-button { position: relative; isolation: isolate; }
 .mindmap-node.node-book .node-icon { fill: #168b7a; }
 .mindmap-node.node-reference rect { fill: color-mix(in srgb, #e47a64 10%, var(--panel)); stroke: color-mix(in srgb, #cf604b 50%, var(--line)); }
 .mindmap-node.node-reference .node-icon { fill: #cf604b; }
+.mindmap-node.node-collection rect { fill: color-mix(in srgb, #e47a64 16%, var(--panel)); stroke: color-mix(in srgb, #cf604b 62%, var(--line)); }
+.mindmap-node.node-collection .node-icon { fill: #cf604b; }
 .mindmap-node.node-root.scope-folder rect { fill: #b9770e; stroke: #f0c463; }
 .mindmap-node .node-type-label { dominant-baseline: middle; fill: var(--muted); font-size: 9px; font-weight: 900; letter-spacing: 1.1px; pointer-events: none; }
 .mindmap-node.is-connected rect { filter: drop-shadow(0 0 9px color-mix(in srgb, var(--green-2) 30%, transparent)); }
@@ -4645,6 +4649,15 @@ a.pill-button { position: relative; isolation: isolate; }
   transition: opacity 160ms ease, transform 180ms ease, border-color 160ms ease, box-shadow 160ms ease;
 }
 
+.note-references .reference-pill.is-reference-collection {
+  border-color: color-mix(in srgb, var(--green-2) 34%, var(--line));
+  background: color-mix(in srgb, var(--green-2) 8%, var(--panel));
+}
+.note-references .reference-pill.is-expanded {
+  grid-column: 1 / -1;
+  box-shadow: 0 12px 30px color-mix(in srgb, var(--ink) 10%, transparent);
+}
+
 .note-references .reference-pill.is-dragging {
   z-index: 3;
   opacity: .7;
@@ -4672,7 +4685,42 @@ a.pill-button { position: relative; isolation: isolate; }
   text-overflow: ellipsis;
   white-space: nowrap;
 }
-.note-references .reference-jump small { margin-left: auto; color: var(--muted); font-size: .62rem; font-weight: 700; }
+.note-references .reference-main-label { display: grid; min-width: 0; gap: 1px; text-align: left; }
+.note-references .reference-main-label strong { overflow: hidden; text-overflow: ellipsis; }
+.note-references .reference-jump small { color: var(--muted); font-size: .62rem; font-weight: 700; }
+.reference-collection-chevron { margin-left: auto; color: var(--green); transition: transform 280ms cubic-bezier(.16,1,.3,1); }
+.reference-pill.is-expanded .reference-collection-chevron { transform: rotate(180deg); }
+.reference-collection-verses {
+  display: grid;
+  grid-column: 1 / -1;
+  grid-template-columns: repeat(auto-fill, minmax(92px, 1fr));
+  gap: 6px;
+  padding: 9px;
+  border-top: 1px solid color-mix(in srgb, var(--green-2) 22%, var(--line));
+  background: color-mix(in srgb, var(--paper) 72%, transparent);
+  animation: editor-reference-unfold 300ms cubic-bezier(.16,1,.3,1) both;
+}
+.reference-collection-verses[hidden] { display: none; }
+.reference-collection-verses > button {
+  display: grid;
+  min-width: 0;
+  min-height: 42px;
+  grid-template-columns: 20px minmax(0, 1fr) 16px;
+  align-items: center;
+  gap: 6px;
+  padding: 0 8px;
+  border: 1px solid color-mix(in srgb, var(--green-2) 16%, var(--line));
+  border-radius: 9px !important;
+  background: var(--panel) !important;
+  text-align: left;
+  animation: editor-reference-item-in 320ms cubic-bezier(.16,1,.3,1) both;
+}
+.reference-collection-verses > button:hover { border-color: var(--green-2); transform: translateY(-1px); }
+.reference-collection-verses > button > span { color: var(--muted); font-size: .6rem; font-weight: 800; }
+.reference-collection-verses > button > strong { overflow: hidden; color: var(--ink); font-size: .72rem; text-overflow: ellipsis; white-space: nowrap; }
+.reference-collection-verses > button > i { color: var(--green); }
+@keyframes editor-reference-unfold { from { opacity: 0; transform: translateY(-8px); } to { opacity: 1; transform: none; } }
+@keyframes editor-reference-item-in { from { opacity: 0; transform: scale(.96); } to { opacity: 1; transform: none; } }
 .reference-order {
   display: grid;
   width: 21px;
@@ -5301,6 +5349,23 @@ body.mindmap-fullscreen .notes-mindmap {
 .mindmap-actions .mindmap-close:hover { color: var(--rose); border-color: var(--rose); }
 .mindmap-empty-close { position: absolute; z-index: 5; top: max(14px, env(safe-area-inset-top)); right: max(14px, env(safe-area-inset-right)); width: 46px; min-height: 46px; border: 1px solid var(--line); border-radius: 14px; }
 
+.mindmap-guide {
+  position: relative;
+  z-index: 3;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 9px;
+  padding: 8px 14px;
+  border-bottom: 1px solid color-mix(in srgb, var(--green-2) 18%, var(--line));
+  color: var(--muted);
+  background: color-mix(in srgb, var(--green-2) 7%, var(--panel));
+  font-size: .72rem;
+  line-height: 1.35;
+}
+.mindmap-guide > i { flex: 0 0 auto; color: var(--green); font-size: 1rem; }
+.mindmap-guide strong { color: var(--ink); }
+
 .mindmap-stage { position: relative; height: clamp(520px, 68dvh, 800px); touch-action: none; }
 body.mindmap-fullscreen .mindmap-stage { flex: 1 1 auto; height: auto; min-height: 0; }
 .mindmap-stage svg { display: block; width: 100%; height: 100%; cursor: grab; user-select: none; }
@@ -5317,8 +5382,17 @@ body.mindmap-fullscreen .mindmap-stage { flex: 1 1 auto; height: auto; min-heigh
 .mindmap-edge.edge-folder { stroke: color-mix(in srgb, var(--gold) 42%, transparent); }
 .mindmap-edge.edge-book,
 .mindmap-edge.edge-reference { stroke: color-mix(in srgb, var(--green-2) 42%, transparent); }
+.mindmap-edge.edge-collection { stroke: color-mix(in srgb, #cf604b 50%, transparent); stroke-dasharray: 3 4; }
 
-.mindmap-node { cursor: pointer; outline: none; transition: opacity .2s ease; }
+.mindmap-node {
+  cursor: pointer;
+  outline: none;
+  transform-box: fill-box;
+  transform-origin: center;
+  animation: mindmap-node-arrive 380ms cubic-bezier(.16,1,.3,1) both;
+  animation-delay: calc(var(--node-order) * 12ms);
+  transition: opacity 260ms ease;
+}
 .mindmap-node rect {
   fill: color-mix(in srgb, var(--panel) 91%, var(--paper));
   stroke: color-mix(in srgb, var(--line) 88%, transparent);
@@ -5344,11 +5418,15 @@ body.mindmap-fullscreen .mindmap-stage { flex: 1 1 auto; height: auto; min-heigh
 .mindmap-node.node-book rect { fill: color-mix(in srgb, var(--green-2) 12%, var(--panel)); }
 .mindmap-node.node-book .node-icon,
 .mindmap-node.node-reference .node-icon { fill: var(--green-2); }
+.mindmap-node.node-collection rect { fill: color-mix(in srgb, #e47a64 17%, var(--panel)); stroke: color-mix(in srgb, #cf604b 68%, var(--line)); stroke-width: 1.8; }
+.mindmap-node.node-collection .node-icon { fill: #cf604b; }
+.mindmap-node.node-collection .node-label { font-weight: 900; }
 .mindmap-node.node-note rect { fill: var(--paper); }
 .mindmap-node.node-note .node-label { font-size: 21px; font-weight: 850; }
 .notes-mindmap.has-map-selection .mindmap-node:not(.is-connected),
 .notes-mindmap.has-map-selection .mindmap-edge:not(.is-connected) { opacity: .12; }
 .mindmap-edge.is-connected { opacity: 1; stroke: var(--green-2); stroke-width: 2.4; }
+@keyframes mindmap-node-arrive { from { opacity: 0; } to { opacity: 1; } }
 
 .mindmap-hint {
   position: relative;
@@ -5395,6 +5473,73 @@ body.mindmap-fullscreen .mindmap-stage { flex: 1 1 auto; height: auto; min-heigh
 .mindmap-inspector .text-button { justify-content: space-between; margin-top: 4px; }
 .mindmap-inspector-close { position: static; grid-column: 4; grid-row: 1 / span 3; align-self: center; width: 44px; min-height: 44px; border: 0; border-radius: 11px; color: var(--muted); background: transparent; }
 
+.mindmap-collection-panel {
+  position: relative;
+  z-index: 5;
+  display: grid;
+  max-height: min(38dvh, 360px);
+  overflow: hidden;
+  border-top: 1px solid color-mix(in srgb, #cf604b 38%, var(--line));
+  background: color-mix(in srgb, var(--paper) 96%, transparent);
+  box-shadow: 0 -14px 36px color-mix(in srgb, var(--ink) 13%, transparent);
+  backdrop-filter: blur(18px);
+  animation: mindmap-collection-open 320ms cubic-bezier(.16,1,.3,1) both;
+}
+.mindmap-collection-panel[hidden] { display: none; }
+.mindmap-collection-heading {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto auto;
+  align-items: center;
+  gap: 14px;
+  padding: 10px max(16px, env(safe-area-inset-right)) 8px max(16px, env(safe-area-inset-left));
+  border-bottom: 1px solid var(--line);
+}
+.mindmap-collection-heading > span:first-child { display: grid; gap: 1px; }
+.mindmap-collection-heading small { color: #b14f3c; font-size: .62rem; font-weight: 900; letter-spacing: .08em; text-transform: uppercase; }
+.mindmap-collection-heading strong { color: var(--ink); font-size: .96rem; }
+.mindmap-collection-heading > span:nth-child(2) { color: var(--muted); font-size: .7rem; font-weight: 750; }
+.mindmap-collection-heading button {
+  display: inline-flex;
+  min-height: 40px;
+  align-items: center;
+  gap: 6px;
+  padding: 0 12px;
+  border: 1px solid color-mix(in srgb, #cf604b 30%, var(--line));
+  border-radius: 11px;
+  color: #a34433;
+  background: color-mix(in srgb, #e47a64 9%, var(--panel));
+  font-weight: 850;
+}
+.mindmap-collection-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(150px, 1fr));
+  gap: 7px;
+  padding: 9px max(16px, env(safe-area-inset-right)) max(11px, env(safe-area-inset-bottom)) max(16px, env(safe-area-inset-left));
+  overflow-y: auto;
+  overscroll-behavior: contain;
+}
+.mindmap-collection-grid > button {
+  display: grid;
+  min-width: 0;
+  min-height: 42px;
+  grid-template-columns: 22px minmax(0, 1fr) 17px;
+  align-items: center;
+  gap: 6px;
+  padding: 0 9px;
+  border: 1px solid color-mix(in srgb, #cf604b 22%, var(--line));
+  border-radius: 10px;
+  color: var(--ink);
+  background: color-mix(in srgb, #e47a64 5%, var(--panel));
+  text-align: left;
+  transition: border-color 160ms ease, background 160ms ease, transform 200ms cubic-bezier(.16,1,.3,1);
+}
+.mindmap-collection-grid > button:hover,
+.mindmap-collection-grid > button:focus-visible { border-color: #cf604b; background: color-mix(in srgb, #e47a64 11%, var(--panel)); transform: translateY(-2px); }
+.mindmap-collection-grid small { color: var(--muted); font-size: .58rem; font-weight: 850; }
+.mindmap-collection-grid strong { overflow: hidden; font-size: .72rem; text-overflow: ellipsis; white-space: nowrap; }
+.mindmap-collection-grid i { color: #b14f3c; }
+@keyframes mindmap-collection-open { from { opacity: 0; transform: translateY(14px); } to { opacity: 1; transform: none; } }
+
 .mindmap-empty { display: grid; place-items: center; min-height: 430px; padding: 30px; text-align: center; }
 .mindmap-empty i { color: var(--green); font-size: 2.5rem; }
 .mindmap-empty h3 { margin: 12px 0 4px; }
@@ -5409,6 +5554,7 @@ body.mindmap-fullscreen .mindmap-stage { flex: 1 1 auto; height: auto; min-heigh
   .mindmap-kicker { font-size: .66rem; }
   .mindmap-header h3 { max-width: 100%; font-size: 1.06rem; line-height: 1.18; }
   .mindmap-header p { margin-top: 4px; max-width: 100%; font-size: .72rem; }
+  .mindmap-guide { justify-content: flex-start; padding: 7px 12px; font-size: .67rem; }
   .mindmap-actions { grid-column: 1 / -1; grid-row: 2; justify-self: center; flex-wrap: nowrap; gap: 6px; }
   .mindmap-actions button { min-width: 44px; min-height: 44px; padding: 0; border-radius: 12px; font-size: 1.05rem; }
   .mindmap-actions button span { display: none; }
@@ -5423,6 +5569,19 @@ body.mindmap-fullscreen .mindmap-stage { flex: 1 1 auto; height: auto; min-heigh
   .mindmap-inspector-close { grid-column: 2; grid-row: 1; justify-self: end; }
   .mindmap-inspector > strong { font-size: 1.08rem; }
   .mindmap-inspector p { font-size: .84rem; }
+  .mindmap-collection-panel { max-height: min(42dvh, 390px); }
+  .mindmap-collection-heading { grid-template-columns: minmax(0, 1fr) auto; gap: 7px; padding: 9px 12px 7px; }
+  .mindmap-collection-heading > span:nth-child(2) { grid-column: 1; grid-row: 2; }
+  .mindmap-collection-heading button { grid-column: 2; grid-row: 1 / span 2; padding: 0 10px; }
+  .mindmap-collection-heading button span { display: none; }
+  .mindmap-collection-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); padding: 8px 12px max(10px, env(safe-area-inset-bottom)); }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .mindmap-node,
+  .mindmap-collection-panel,
+  .reference-collection-verses,
+  .reference-collection-verses > button { animation: none; }
 }
 
 .note-folder-browser {

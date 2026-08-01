@@ -1,4 +1,4 @@
-import { formatReferenceRange, groupConsecutiveReferences, rangeIdentity } from "./reference-ranges.js";
+import { collectReferenceCollections, formatReferenceRange, rangeIdentity } from "./reference-ranges.js";
 
 const SVG_NS = "http://www.w3.org/2000/svg";
 const clamp = (value, min, max) => Math.max(min, Math.min(max, value));
@@ -28,9 +28,9 @@ function buildGraph({ entries, folders, formatReference, parseReference, expande
 
   addNode({ id: "root", label: rootLabel, type: "root", scopeType: rootType, weight: Math.max(1, entries.length) });
   const hubs = [
-    ...(!focusFolderId ? [["hub:folders", "Folders", "folder"]] : []),
+    ...(!focusFolderId ? [["hub:folders", "Notes", "folder"]] : []),
     ["hub:topics", "Topics", "tag"],
-    ["hub:books", "Books", "book"],
+    ["hub:books", "Scripture", "book"],
   ];
   hubs.forEach(([id, label, type]) => { addNode({ id, label, type: "hub" }); addEdge("root", id, type); });
 
@@ -55,34 +55,33 @@ function buildGraph({ entries, folders, formatReference, parseReference, expande
       addEdge(noteId, tagId, "tag");
     });
 
-    groupConsecutiveReferences(note.references || [], parseReference).forEach((group) => {
-      const parsed = group.parsed;
-      const book = scriptureBook(parsed);
-      const bookNode = addNode({ ...book, type: "book" });
-      const isRange = group.references.length > 1;
-      const identity = rangeIdentity(group);
-      const referenceId = isRange ? `range:${identity}` : `reference:${group.references[0]}`;
-      const expanded = isRange && expandedRangeIds.has(identity);
-      addNode({
-        id: referenceId,
-        label: isRange ? formatReferenceRange(group, { separator: ":" }) : formatReference(group.references[0]),
-        type: "reference",
-        rawId: group.references[0],
-        references: group.references,
-        rangeIdentity: identity,
-        isRange,
-        expanded,
-        bookGroup: bookNode.group,
-      });
-      addEdge("hub:books", bookNode.id, "book");
-      addEdge(bookNode.id, referenceId, "reference");
-      addEdge(noteId, referenceId, "reference");
-      if (expanded) group.references.forEach((reference) => {
-        const childId = `range-verse:${identity}:${reference}`;
-        addNode({ id: childId, label: formatReference(reference), type: "reference", rawId: reference, rangeChild: true, bookGroup: bookNode.group });
-        addEdge(referenceId, childId, "reference");
-      });
+  });
+
+  // Build shared scripture nodes after every note is known. A verse therefore
+  // appears once globally, even when one note stores it by itself and another
+  // stores it as part of a consecutive passage.
+  collectReferenceCollections(entries, parseReference).forEach((collection) => {
+    const book = scriptureBook(collection.parsed);
+    const bookNode = addNode({ ...book, type: "book" });
+    const isCollection = collection.references.length > 1;
+    const identity = rangeIdentity(collection);
+    const referenceId = isCollection ? `collection:${identity}` : `reference:${collection.references[0]}`;
+    const expanded = isCollection && expandedRangeIds.has(identity);
+    addNode({
+      id: referenceId,
+      label: isCollection ? formatReferenceRange(collection, { separator: ":" }) : formatReference(collection.references[0]),
+      type: isCollection ? "collection" : "reference",
+      rawId: collection.references[0],
+      references: collection.references,
+      rangeIdentity: identity,
+      isCollection,
+      expanded,
+      noteCount: collection.noteIds.size,
+      bookGroup: bookNode.group,
     });
+    addEdge("hub:books", bookNode.id, "book");
+    addEdge(bookNode.id, referenceId, "reference");
+    collection.noteIds.forEach((noteKey) => addEdge(`note:${noteKey}`, referenceId, "reference"));
   });
 
   return { nodes: [...nodes.values()], edges: [...edges.values()] };
@@ -100,10 +99,10 @@ function layOut(nodes, edges, viewport) {
   const point = (x, y) => ({ x: width * x, y: height * y });
   const anchors = portrait ? {
     root: point(.5, .42), folder: point(.5, .2), note: point(.48, .43),
-    tag: point(.22, .76), book: point(.77, .78), reference: point(.76, .48),
+    tag: point(.22, .76), book: point(.77, .78), reference: point(.76, .48), collection: point(.76, .48),
   } : {
     root: point(.48, .5), folder: point(.2, .32), note: point(.45, .52),
-    tag: point(.4, .82), book: point(.79, .26), reference: point(.8, .61),
+    tag: point(.4, .82), book: point(.79, .26), reference: point(.8, .61), collection: point(.8, .61),
   };
   const anchorFor = (node) => {
     if (node.id === "root") return center;
@@ -280,7 +279,7 @@ export function renderNotesMindMap(container, options) {
 
   container.innerHTML = `
     <header class="mindmap-header">
-      <div><span class="mindmap-kicker">Knowledge graph</span><h3>${options.focusFolderId ? `${escapeHTML(options.rootLabel)} connections` : "Connections across your library"}</h3><p>${counts.note || 0} ${(counts.note || 0) === 1 ? "note" : "notes"} · ${counts.tag || 0} ${(counts.tag || 0) === 1 ? "topic" : "topics"} · ${counts.reference || 0} ${(counts.reference || 0) === 1 ? "verse" : "verses"} · ${counts.folder || 0} ${(counts.folder || 0) === 1 ? "folder" : "folders"}</p></div>
+      <div><span class="mindmap-kicker">Your notes, clearly connected</span><h3>${options.focusFolderId ? `${escapeHTML(options.rootLabel)} connections` : "Notes and their scripture"}</h3><p>${counts.note || 0} ${(counts.note || 0) === 1 ? "note" : "notes"} · ${counts.collection || 0} ${(counts.collection || 0) === 1 ? "collection" : "collections"} · ${counts.reference || 0} individual ${(counts.reference || 0) === 1 ? "verse" : "verses"}</p></div>
       <div class="mindmap-actions" role="group" aria-label="Mind map controls">
         <button type="button" data-map-zoom="out" aria-label="Zoom out"><i class="ti ti-minus"></i></button>
         <button type="button" data-map-reset aria-label="Fit map"><i class="ti ti-focus-centered"></i><span>Fit</span></button>
@@ -288,14 +287,17 @@ export function renderNotesMindMap(container, options) {
       </div>
       <button class="mindmap-close" type="button" aria-label="Close mind map"><i class="ti ti-x"></i></button>
     </header>
-    <div class="mindmap-legend" aria-label="Mind map key"><span data-legend="folder"><i></i>Folder</span><span data-legend="note"><i></i>Note</span><span data-legend="tag"><i></i>Hashtag</span><span data-legend="book"><i></i>Book</span><span data-legend="reference"><i></i>Verse</span></div>
+    <div class="mindmap-guide"><i class="ti ti-bulb" aria-hidden="true"></i><span><strong>Follow the lines from a note.</strong> Tap any item to focus its connections. Tap a collection to show or hide its verses.</span></div>
+    <div class="mindmap-legend" aria-label="Mind map key"><span data-legend="note"><i></i>Note</span><span data-legend="collection"><i></i>Verse collection</span><span data-legend="reference"><i></i>Single verse</span><span data-legend="tag"><i></i>Topic</span><span data-legend="folder"><i></i>Folder</span><span data-legend="book"><i></i>Scripture</span></div>
     <div class="mindmap-stage"><svg role="img" aria-label="Interactive graph connecting notes, folders, hashtags, books and scripture references"></svg></div>
-    <div class="mindmap-hint"><i class="ti ti-zoom-scan"></i> Drag to explore · pinch or scroll to zoom · tap for details</div>
-    <aside class="mindmap-inspector" hidden></aside>`;
+    <div class="mindmap-hint"><i class="ti ti-zoom-scan"></i> Drag to move · pinch or scroll to zoom · tap a collection to expand</div>
+    <aside class="mindmap-inspector" hidden></aside>
+    <aside class="mindmap-collection-panel" hidden></aside>`;
 
   const stage = container.querySelector(".mindmap-stage");
   const svg = stage.querySelector("svg");
   const inspector = container.querySelector(".mindmap-inspector");
+  const collectionPanel = container.querySelector(".mindmap-collection-panel");
   const { width, height, byId, links, openingScale } = layOut(graph.nodes, graph.edges, { width: stage.clientWidth, height: stage.clientHeight });
   svg.setAttribute("viewBox", `0 0 ${width} ${height}`);
   const world = svgElement("g", { class: "mindmap-world" });
@@ -313,12 +315,12 @@ export function renderNotesMindMap(container, options) {
     edgeLayer.append(path);
   });
 
-  graph.nodes.forEach((node) => {
+  graph.nodes.forEach((node, nodeIndex) => {
     const width = nodeWidth(node); const height = nodeHeight(node);
-    const group = svgElement("g", { class: `mindmap-node node-${node.type}${node.scopeType ? ` scope-${node.scopeType}` : ""}`, transform: `translate(${node.x} ${node.y})`, tabindex: "0", role: "button", "aria-label": `${node.scopeType || node.type}: ${node.label}`, "data-node-id": node.id });
+    const group = svgElement("g", { class: `mindmap-node node-${node.type}${node.scopeType ? ` scope-${node.scopeType}` : ""}`, transform: `translate(${node.x} ${node.y})`, tabindex: "0", role: "button", "aria-label": node.isCollection ? `Verse collection ${node.label}. ${node.expanded ? "Expanded. Activate to collapse." : "Collapsed. Activate to expand."}` : `${node.scopeType || node.type}: ${node.label}`, "data-node-id": node.id, style: `--node-order:${Math.min(nodeIndex, 16)}` });
     group.append(svgElement("rect", { x: -width / 2, y: -height / 2, width, height, rx: height / 2 }));
     const icon = svgElement("text", { class: "node-icon", x: -width / 2 + 23, y: 1, "aria-hidden": "true" });
-    icon.textContent = node.isRange ? (node.expanded ? "−" : "+") : ({ root: "✦", hub: "•", note: "✎", folder: "▰", tag: "#", book: "▤", reference: "↗" })[node.type] || "•";
+    icon.textContent = node.isCollection ? (node.expanded ? "−" : "+") : ({ root: "✦", hub: "•", note: "✎", folder: "▰", tag: "#", book: "▤", reference: "↗" })[node.type] || "•";
     const hasTypeLabel = !["root", "hub"].includes(node.type);
     const lines = getNodeLabelLines(node, width);
     const lineHeight = 18;
@@ -333,15 +335,16 @@ export function renderNotesMindMap(container, options) {
     group.append(icon, label);
     if (hasTypeLabel) {
       const typeLabel = svgElement("text", { class: "node-type-label", x: -width / 2 + 43, y: labelStartY + lines.length * lineHeight + 2 });
-      typeLabel.textContent = node.isRange ? `${node.references.length} VERSES · ${node.expanded ? "TAP TO COLLAPSE" : "TAP TO EXPAND"}` : ({ note: "NOTE", folder: "FOLDER", tag: "HASHTAG", book: "BOOK", reference: "VERSE / PASSAGE" })[node.type] || node.type.toUpperCase();
+      typeLabel.textContent = node.isCollection ? `${node.references.length} VERSES · ${node.noteCount} ${node.noteCount === 1 ? "NOTE" : "NOTES"} · ${node.expanded ? "COLLAPSE" : "EXPAND"}` : ({ note: "NOTE", folder: "FOLDER", tag: "TOPIC", book: "SCRIPTURE", reference: node.rangeChild ? "VERSE IN COLLECTION" : "SINGLE VERSE" })[node.type] || node.type.toUpperCase();
       group.append(typeLabel);
     }
     nodeLayer.append(group);
   });
 
-  let scale = openingScale;
-  let tx = width / 2 - width / 2 * scale;
-  let ty = height / 2 - height / 2 * scale;
+  const savedView = container._mindMapView;
+  let scale = savedView?.scale || openingScale;
+  let tx = savedView ? width / 2 - savedView.centerX * width * scale : width / 2 - width / 2 * scale;
+  let ty = savedView ? height / 2 - savedView.centerY * height * scale : height / 2 - height / 2 * scale;
   let selected = "";
   let transformFrame = 0;
   const applyTransform = () => {
@@ -349,6 +352,11 @@ export function renderNotesMindMap(container, options) {
     transformFrame = requestAnimationFrame(() => {
       transformFrame = 0;
       world.setAttribute("transform", `translate(${tx} ${ty}) scale(${scale})`);
+      container._mindMapView = {
+        scale,
+        centerX: (width / 2 - tx) / scale / width,
+        centerY: (height / 2 - ty) / scale / height,
+      };
     });
   };
   const fit = () => { scale = 1; tx = 0; ty = 0; applyTransform(); };
@@ -360,6 +368,30 @@ export function renderNotesMindMap(container, options) {
     tx = x - (x - tx) * next / scale; ty = y - (y - ty) * next / scale; scale = next; applyTransform();
   };
   applyTransform();
+  if (container._mindMapWasUpdated && !matchMedia("(prefers-reduced-motion: reduce)").matches) {
+    stage.animate(
+      [{ opacity: .72, transform: "scale(.992)" }, { opacity: 1, transform: "none" }],
+      { duration: 280, easing: "cubic-bezier(.16,1,.3,1)" },
+    );
+  }
+  container._mindMapWasUpdated = false;
+  const expandedCollection = graph.nodes.find((node) => node.isCollection && node.expanded);
+  if (expandedCollection) {
+    collectionPanel.hidden = false;
+    collectionPanel.innerHTML = `
+      <div class="mindmap-collection-heading">
+        <span><small>Expanded verse collection</small><strong>${escapeHTML(expandedCollection.label)}</strong></span>
+        <span>${expandedCollection.references.length} verses · used in ${expandedCollection.noteCount} ${expandedCollection.noteCount === 1 ? "note" : "notes"}</span>
+        <button type="button" data-collapse-collection aria-label="Collapse ${escapeHTML(expandedCollection.label)}"><i class="ti ti-chevron-down"></i><span>Collapse</span></button>
+      </div>
+      <div class="mindmap-collection-grid">${expandedCollection.references.map((reference, index) => `
+        <button type="button" data-collection-reference="${escapeHTML(reference)}"><small>${index + 1}</small><strong>${escapeHTML(options.formatReference(reference))}</strong><i class="ti ti-arrow-up-right" aria-hidden="true"></i></button>
+      `).join("")}</div>`;
+    collectionPanel.querySelector("[data-collapse-collection]").addEventListener("click", () => {
+      nodeLayer.querySelector(`[data-node-id="${CSS.escape(expandedCollection.id)}"]`)?.dispatchEvent(new MouseEvent("click", { bubbles: true }));
+    });
+    collectionPanel.querySelectorAll("[data-collection-reference]").forEach((button) => button.addEventListener("click", () => options.onOpenReference(button.dataset.collectionReference)));
+  }
   const selectNode = (node) => {
     selected = selected === node.id ? "" : node.id;
     const neighbors = new Set([selected]);
@@ -377,7 +409,7 @@ export function renderNotesMindMap(container, options) {
         const noteId = taggedNoteIds.has(edge.source) ? edge.source : taggedNoteIds.has(edge.target) ? edge.target : "";
         if (!noteId) return;
         const relatedId = edge.source === noteId ? edge.target : edge.source;
-        if (byId.get(relatedId)?.type !== "reference") return;
+        if (!["reference", "collection"].includes(byId.get(relatedId)?.type)) return;
         neighbors.add(relatedId);
         connectedEdgeIds.add(edge.id);
       });
@@ -388,11 +420,11 @@ export function renderNotesMindMap(container, options) {
     if (!selected) { inspector.hidden = true; return; }
     const related = Math.max(0, neighbors.size - 1);
     const relatedNotes = [...neighbors].filter((id) => byId.get(id)?.type === "note").length;
-    const relatedReferences = [...neighbors].filter((id) => byId.get(id)?.type === "reference").length;
+    const relatedReferences = [...neighbors].filter((id) => ["reference", "collection"].includes(byId.get(id)?.type)).length;
     const relationSummary = node.type === "tag"
       ? `${relatedNotes} ${relatedNotes === 1 ? "note" : "notes"} · ${relatedReferences} ${relatedReferences === 1 ? "passage" : "passages"}`
       : `${related} direct ${related === 1 ? "connection" : "connections"}`;
-    const action = node.type === "note" ? "Open note" : node.type === "reference" ? "Read passage" : node.type === "tag" ? "Show notes & verses" : "";
+    const action = node.type === "note" ? "Open note" : node.type === "reference" ? "Read verse" : node.type === "tag" ? "Show related notes" : "";
     inspector.innerHTML = `<button class="mindmap-inspector-close" type="button" aria-label="Close details"><i class="ti ti-x"></i></button><span>${escapeHTML(node.type)}</span><strong>${escapeHTML(node.label)}</strong>${node.summary ? `<p>${escapeHTML(shortLabel(node.summary, 150))}</p>` : ""}<small>${escapeHTML(relationSummary)}</small>${action ? `<button class="text-button primary" type="button" data-map-action>${escapeHTML(action)}<i class="ti ti-arrow-right"></i></button>` : ""}`;
     inspector.hidden = false;
     inspector.querySelector(".mindmap-inspector-close").addEventListener("click", () => selectNode(node));
@@ -407,26 +439,23 @@ export function renderNotesMindMap(container, options) {
   nodeLayer.querySelectorAll(".mindmap-node").forEach((group) => {
     const node = byId.get(group.dataset.nodeId);
     const toggleRangeNode = () => {
-      if (container._expandedReferenceRanges.has(node.rangeIdentity)) container._expandedReferenceRanges.delete(node.rangeIdentity);
-      else container._expandedReferenceRanges.add(node.rangeIdentity);
-      renderNotesMindMap(container, options);
+      const collapsing = container._expandedReferenceRanges.has(node.rangeIdentity);
+      const complete = () => {
+        container._expandedReferenceRanges.clear();
+        if (!collapsing) container._expandedReferenceRanges.add(node.rangeIdentity);
+        container._mindMapWasUpdated = true;
+        renderNotesMindMap(container, options);
+      };
+      if (collapsing && !collectionPanel.hidden && !matchMedia("(prefers-reduced-motion: reduce)").matches) {
+        collectionPanel.animate(
+          [{ opacity: 1, transform: "none" }, { opacity: 0, transform: "translateY(12px)" }],
+          { duration: 190, easing: "cubic-bezier(.4,0,.2,1)" },
+        ).finished.then(complete).catch(complete);
+      } else complete();
     };
-    let rangePointerStart = null;
-    let rangePointerHandledUntil = 0;
-    if (node.isRange) {
-      group.addEventListener("pointerdown", (event) => { rangePointerStart = { x: event.clientX, y: event.clientY }; });
-      group.addEventListener("pointerup", (event) => {
-        if (!rangePointerStart || Math.hypot(event.clientX - rangePointerStart.x, event.clientY - rangePointerStart.y) > 8) return;
-        rangePointerHandledUntil = performance.now() + 350;
-        toggleRangeNode();
-      });
-    }
     group.addEventListener("click", (event) => {
       event.stopPropagation();
-      if (node.isRange) {
-        if (performance.now() >= rangePointerHandledUntil) toggleRangeNode();
-        return;
-      }
+      if (node.isCollection) return toggleRangeNode();
       if (performance.now() < suppressClickUntil) return;
       selectNode(node);
     });

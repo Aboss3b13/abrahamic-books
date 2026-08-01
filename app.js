@@ -5,7 +5,7 @@ import { Share } from "@capacitor/share";
 import "@tabler/icons-webfont/dist/tabler-icons.min.css";
 import { NotesSystem } from "./notes-system.js";
 import { renderNotesMindMap } from "./notes-mindmap.js";
-import { formatReferenceRange, groupConsecutiveReferences } from "./reference-ranges.js";
+import { formatReferenceRange, groupConsecutiveReferences, rangeIdentity } from "./reference-ranges.js";
 
 const API = "https://api.quran.com/api/v4";
 const OFFLINE = {
@@ -155,6 +155,7 @@ const state = {
   verseRangeEnd: 0,
   verseRangeHover: 0,
   verseRangeLoadToken: 0,
+  expandedEditorReferenceRanges: new Set(),
   currentStudyKey: "",
   currentStudyType: "",
 };
@@ -1717,6 +1718,7 @@ function openNote(key) {
   if (parsed.type !== "note" && !references.includes(key)) references.unshift(key);
   state.currentNoteKey = key;
   state.currentNoteReferences = references;
+  state.expandedEditorReferenceRanges.clear();
   els.noteTitle.textContent = existing.title?.trim() || "Edit note";
   els.noteSubtitle.textContent = sharedNote ? `Shared by ${sharedNote.ownerEmail || "a collaborator"} · live editing` : parsed.type === "note" ? "All fields can be changed" : `${chapter?.name_simple || parsed.label || "Verse"} · reference saved below`;
   els.noteName.value = existing.title || "";
@@ -3053,14 +3055,50 @@ function renderNoteReferences() {
     ? groups.map((group, index) => {
       const references = group.references.join(",");
       const label = formatReferenceRange(group, { separator: "." });
+      const isCollection = group.references.length > 1;
+      const identity = rangeIdentity(group);
+      const expanded = isCollection && state.expandedEditorReferenceRanges.has(identity);
       return `
-      <div class="reference-pill" data-reference-keys="${escapeHTML(references)}">
+      <div class="reference-pill${isCollection ? " is-reference-collection" : ""}${expanded ? " is-expanded" : ""}" data-reference-keys="${escapeHTML(references)}">
         <button class="reference-drag-handle" type="button" aria-label="Drag to reorder ${escapeHTML(label)}" title="Drag to reorder"><i class="ti ti-grip-vertical" aria-hidden="true"></i></button>
-        <button class="reference-jump" type="button" data-jump="${escapeHTML(group.references[0])}"><span class="reference-order">${index + 1}</span>${escapeHTML(label)}${group.references.length > 1 ? `<small>${group.references.length} verses</small>` : ""}</button>
+        <button class="reference-jump" type="button" ${isCollection ? `data-toggle-reference-range="${escapeHTML(identity)}" aria-expanded="${expanded}" aria-controls="editor-range-${index}"` : `data-jump="${escapeHTML(group.references[0])}"`}>
+          <span class="reference-order">${index + 1}</span>
+          <span class="reference-main-label"><strong>${escapeHTML(label)}</strong>${isCollection ? `<small class="reference-collection-summary">${group.references.length} consecutive verses · ${expanded ? "Hide verses" : "Show verses"}</small>` : ""}</span>
+          ${isCollection ? `<i class="ti ti-chevron-down reference-collection-chevron" aria-hidden="true"></i>` : ""}
+        </button>
         <button class="reference-remove" type="button" data-remove-range="${escapeHTML(references)}" aria-label="Remove ${escapeHTML(label)}"><i class="ti ti-x" aria-hidden="true"></i></button>
+        ${isCollection ? `<div id="editor-range-${index}" class="reference-collection-verses" ${expanded ? "" : "hidden"}>${group.references.map((reference, verseIndex) => `
+          <button type="button" data-jump="${escapeHTML(reference)}"><span>${verseIndex + 1}</span><strong>${escapeHTML(formatReferenceRange({ ...group, start: group.start + verseIndex, end: group.start + verseIndex, references: [reference] }, { separator: "." }))}</strong><i class="ti ti-arrow-up-right" aria-hidden="true"></i></button>
+        `).join("")}</div>` : ""}
       </div>
     `}).join("")
     : "";
+
+  els.noteReferences.querySelectorAll("[data-toggle-reference-range]").forEach((button) => {
+    button.addEventListener("click", () => {
+      const identity = button.dataset.toggleReferenceRange;
+      const pill = button.closest(".reference-pill");
+      const panel = pill.querySelector(".reference-collection-verses");
+      const expanding = !state.expandedEditorReferenceRanges.has(identity);
+      if (expanding) state.expandedEditorReferenceRanges.add(identity);
+      else state.expandedEditorReferenceRanges.delete(identity);
+      button.setAttribute("aria-expanded", String(expanding));
+      pill.classList.toggle("is-expanded", expanding);
+      button.querySelector(".reference-collection-summary").textContent = `${panel.children.length} consecutive verses · ${expanding ? "Hide verses" : "Show verses"}`;
+      const reduceMotion = matchMedia("(prefers-reduced-motion: reduce)").matches;
+      if (expanding) {
+        panel.hidden = false;
+        if (!reduceMotion) panel.animate(
+          [{ opacity: 0, maxHeight: "0px", transform: "translateY(-6px)" }, { opacity: 1, maxHeight: `${panel.scrollHeight}px`, transform: "none" }],
+          { duration: 300, easing: "cubic-bezier(.16,1,.3,1)" },
+        );
+      } else if (reduceMotion) panel.hidden = true;
+      else panel.animate(
+        [{ opacity: 1, maxHeight: `${panel.scrollHeight}px`, transform: "none" }, { opacity: 0, maxHeight: "0px", transform: "translateY(-5px)" }],
+        { duration: 220, easing: "cubic-bezier(.4,0,.2,1)" },
+      ).finished.then(() => { if (!state.expandedEditorReferenceRanges.has(identity)) panel.hidden = true; }).catch(() => {});
+    });
+  });
 
   els.noteReferences.querySelectorAll("[data-remove-range]").forEach((button) => {
     button.addEventListener("click", () => {
