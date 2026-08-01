@@ -7,6 +7,7 @@ const errors = [];
 page.on("pageerror", (error) => errors.push(error.message));
 
 await page.goto(baseURL, { waitUntil: "domcontentloaded" });
+await page.waitForSelector(".ayah-card", { timeout: 30000 });
 await page.locator('[data-view="notesView"]').click();
 
 async function createNote(title, body, tag) {

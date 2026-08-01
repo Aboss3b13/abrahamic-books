@@ -115,11 +115,14 @@ await page.locator('.note-card:has-text("Mobile capture test") .note-card-main')
 await page.locator("#deleteNote").click();
 await page.waitForTimeout(450);
 await page.reload({ waitUntil: "domcontentloaded" });
+await page.waitForTimeout(1500);
 await page.locator('[data-view="notesView"]').click();
+await page.waitForSelector("#notesView.view.active");
 if (await page.locator('.note-card:has-text("Mobile capture test")').count()) {
   throw new Error("Deleted note reappeared after reload.");
 }
 await page.locator('[data-view="searchView"]').click();
+await page.waitForSelector("#searchView.view.active");
 await page.locator("#searchFilterButton").click();
 await page.waitForSelector("#searchFilterSheet[open]");
 const sourceGroups = await page.locator("#sourceFilterList").innerText();
