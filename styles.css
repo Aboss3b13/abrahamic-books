@@ -6349,3 +6349,89 @@ dialog::backdrop { animation-duration: 180ms; }
   .note-sheet { width: 100%; }
   .note-sheet .note-tag-choices { min-height: 220px; max-height: 42dvh; }
 }
+
+/* Notes and mind-map interaction polish. Keep complete reference names visible. */
+.note-references .reference-jump {
+  min-height: 50px;
+  padding-block: 7px;
+  overflow: visible;
+  white-space: normal;
+}
+
+.note-references .reference-main-label strong,
+.reference-collection-verses > button > strong,
+.reference-results .reference-row > strong {
+  overflow: visible;
+  text-overflow: clip;
+  white-space: normal;
+  line-height: 1.3;
+  overflow-wrap: anywhere;
+}
+
+.reference-collection-verses {
+  grid-template-columns: repeat(auto-fill, minmax(160px, 1fr));
+  gap: 8px;
+  padding: 11px;
+}
+
+.reference-collection-verses > button {
+  min-height: 50px;
+  padding-block: 7px;
+  border-radius: 12px !important;
+  box-shadow: 0 3px 10px color-mix(in srgb, var(--ink) 5%, transparent);
+  transition: transform 220ms cubic-bezier(.16,1,.3,1), border-color 160ms ease, box-shadow 220ms ease;
+}
+
+.reference-collection-verses > button:hover,
+.reference-collection-verses > button:focus-visible {
+  box-shadow: 0 9px 20px color-mix(in srgb, var(--ink) 10%, transparent);
+  transform: translateY(-2px);
+}
+
+.mindmap-stage {
+  background:
+    radial-gradient(circle at center, color-mix(in srgb, var(--green-2) 7%, transparent), transparent 52%),
+    linear-gradient(color-mix(in srgb, var(--line) 22%, transparent) 1px, transparent 1px),
+    linear-gradient(90deg, color-mix(in srgb, var(--line) 22%, transparent) 1px, transparent 1px);
+  background-size: auto, 36px 36px, 36px 36px;
+}
+
+.mindmap-node.node-collection.is-expanded rect {
+  fill: color-mix(in srgb, #e47a64 24%, var(--panel));
+  stroke-width: 2.4;
+  filter: drop-shadow(0 8px 16px color-mix(in srgb, #cf604b 22%, transparent));
+}
+
+.mindmap-node.is-range-child rect {
+  fill: color-mix(in srgb, #e47a64 7%, var(--paper));
+  stroke: color-mix(in srgb, #cf604b 62%, var(--line));
+}
+
+.mindmap-node.is-range-child .node-icon { fill: #cf604b; }
+.mindmap-node.is-range-child { animation: mindmap-verse-unfold 440ms cubic-bezier(.16,1,.3,1) both; }
+.mindmap-edge.edge-collection { stroke-width: 2; stroke-dasharray: 5 5; }
+
+@keyframes mindmap-verse-unfold {
+  from { opacity: 0; filter: blur(3px); }
+  to { opacity: 1; filter: none; }
+}
+
+#notesView .note-card,
+.note-editor-section,
+.note-editor-identity,
+.note-references .reference-pill {
+  transition: transform 260ms cubic-bezier(.16,1,.3,1), border-color 180ms ease, box-shadow 260ms ease, background-color 180ms ease;
+}
+
+.note-references .reference-pill.is-expanded {
+  border-color: color-mix(in srgb, var(--green-2) 52%, var(--line));
+  box-shadow: 0 16px 36px color-mix(in srgb, var(--green) 12%, transparent);
+}
+
+@media (max-width: 420px) {
+  .reference-collection-verses { grid-template-columns: 1fr; }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .mindmap-node.is-range-child { animation: none; }
+}

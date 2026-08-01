@@ -81,7 +81,27 @@ function buildGraph({ entries, folders, formatReference, parseReference, expande
     });
     addEdge("hub:books", bookNode.id, "book");
     addEdge(bookNode.id, referenceId, "reference");
-    collection.noteIds.forEach((noteKey) => addEdge(`note:${noteKey}`, referenceId, "reference"));
+    if (expanded) {
+      collection.references.forEach((reference, verseIndex) => {
+        const verseId = `reference:${reference}`;
+        addNode({
+          id: verseId,
+          label: formatReference(reference),
+          type: "reference",
+          rawId: reference,
+          references: [reference],
+          rangeChild: true,
+          rangeParentId: referenceId,
+          rangeIdentity: identity,
+          verseIndex,
+          bookGroup: bookNode.group,
+        });
+        addEdge(referenceId, verseId, "collection");
+        (collection.referenceNoteIds.get(reference) || []).forEach((noteKey) => addEdge(`note:${noteKey}`, verseId, "reference"));
+      });
+    } else {
+      collection.noteIds.forEach((noteKey) => addEdge(`note:${noteKey}`, referenceId, "reference"));
+    }
   });
 
   return { nodes: [...nodes.values()], edges: [...edges.values()] };
@@ -109,6 +129,11 @@ function layOut(nodes, edges, viewport) {
     if (node.id === "hub:folders") return portrait ? point(.5, .1) : point(.12, .23);
     if (node.id === "hub:topics") return portrait ? point(.18, .61) : point(.36, .91);
     if (node.id === "hub:books") return portrait ? point(.82, .63) : point(.88, .14);
+    if (node.rangeChild) {
+      const seed = Math.abs(hash(node.rangeParentId));
+      const side = seed % 2 ? 1 : -1;
+      return portrait ? point(side > 0 ? .82 : .18, .48) : point(.82, side > 0 ? .7 : .52);
+    }
     return anchors[node.type] || center;
   };
   const byId = new Map(nodes.map((node, index) => {
@@ -158,7 +183,7 @@ function layOut(nodes, edges, viewport) {
     links.forEach(({ a, b, kind }) => {
       const dx = b.x - a.x; const dy = b.y - a.y;
       const distance = Math.max(1, Math.hypot(dx, dy));
-      const desired = (a.layoutWidth + b.layoutWidth) * .28 + (kind === "tag" ? 115 : 88);
+      const desired = (a.layoutWidth + b.layoutWidth) * .28 + (kind === "tag" ? 115 : kind === "collection" ? 58 : 88);
       const pull = (distance - desired) * .006;
       a.vx += dx / distance * pull; a.vy += dy / distance * pull;
       b.vx -= dx / distance * pull; b.vy -= dy / distance * pull;
@@ -245,7 +270,9 @@ function shortLabel(value, limit = 25) {
 
 function getNodeLabelLines(node, width) {
   const value = String(node.type === "tag" ? node.label.replace(/^#/, "") : node.label || "Untitled").trim();
-  const maxCharacters = Math.max(12, Math.floor((width - (node.type === "hub" ? 28 : 64)) / 8.2));
+  // SVG text does not participate in normal CSS wrapping. Use a conservative
+  // character width so labels always remain inside their node at every zoom.
+  const maxCharacters = Math.max(10, Math.floor((width - (node.type === "hub" ? 28 : 64)) / 10.2));
   const words = value.split(/\s+/).flatMap((word) => word.length > maxCharacters
     ? word.match(new RegExp(`.{1,${maxCharacters}}`, "g")) || [word]
     : [word]);
@@ -287,17 +314,15 @@ export function renderNotesMindMap(container, options) {
       </div>
       <button class="mindmap-close" type="button" aria-label="Close mind map"><i class="ti ti-x"></i></button>
     </header>
-    <div class="mindmap-guide"><i class="ti ti-bulb" aria-hidden="true"></i><span><strong>Follow the lines from a note.</strong> Tap any item to focus its connections. Tap a collection to show or hide its verses.</span></div>
+    <div class="mindmap-guide"><i class="ti ti-bulb" aria-hidden="true"></i><span><strong>Explore every connection.</strong> Tap a collection to unfold its verses directly in the map; tap it again to collapse.</span></div>
     <div class="mindmap-legend" aria-label="Mind map key"><span data-legend="note"><i></i>Note</span><span data-legend="collection"><i></i>Verse collection</span><span data-legend="reference"><i></i>Single verse</span><span data-legend="tag"><i></i>Topic</span><span data-legend="folder"><i></i>Folder</span><span data-legend="book"><i></i>Scripture</span></div>
     <div class="mindmap-stage"><svg role="img" aria-label="Interactive graph connecting notes, folders, hashtags, books and scripture references"></svg></div>
-    <div class="mindmap-hint"><i class="ti ti-zoom-scan"></i> Drag to move · pinch or scroll to zoom · tap a collection to expand</div>
-    <aside class="mindmap-inspector" hidden></aside>
-    <aside class="mindmap-collection-panel" hidden></aside>`;
+    <div class="mindmap-hint"><i class="ti ti-zoom-scan"></i> Drag to move · pinch or scroll to zoom · double-tap a verse to read</div>
+    <aside class="mindmap-inspector" hidden></aside>`;
 
   const stage = container.querySelector(".mindmap-stage");
   const svg = stage.querySelector("svg");
   const inspector = container.querySelector(".mindmap-inspector");
-  const collectionPanel = container.querySelector(".mindmap-collection-panel");
   const { width, height, byId, links, openingScale } = layOut(graph.nodes, graph.edges, { width: stage.clientWidth, height: stage.clientHeight });
   svg.setAttribute("viewBox", `0 0 ${width} ${height}`);
   const world = svgElement("g", { class: "mindmap-world" });
@@ -317,7 +342,10 @@ export function renderNotesMindMap(container, options) {
 
   graph.nodes.forEach((node, nodeIndex) => {
     const width = nodeWidth(node); const height = nodeHeight(node);
-    const group = svgElement("g", { class: `mindmap-node node-${node.type}${node.scopeType ? ` scope-${node.scopeType}` : ""}`, transform: `translate(${node.x} ${node.y})`, tabindex: "0", role: "button", "aria-label": node.isCollection ? `Verse collection ${node.label}. ${node.expanded ? "Expanded. Activate to collapse." : "Collapsed. Activate to expand."}` : `${node.scopeType || node.type}: ${node.label}`, "data-node-id": node.id, style: `--node-order:${Math.min(nodeIndex, 16)}` });
+    const group = svgElement("g", { class: `mindmap-node node-${node.type}${node.scopeType ? ` scope-${node.scopeType}` : ""}${node.expanded ? " is-expanded" : ""}${node.rangeChild ? " is-range-child" : ""}`, transform: `translate(${node.x} ${node.y})`, tabindex: "0", role: "button", "aria-label": node.isCollection ? `Verse collection ${node.label}. ${node.expanded ? "Expanded. Activate to collapse." : "Collapsed. Activate to expand."}` : `${node.scopeType || node.type}: ${node.label}`, "data-node-id": node.id, style: `--node-order:${Math.min(nodeIndex, 16)}` });
+    const fullLabel = svgElement("title");
+    fullLabel.textContent = node.label;
+    group.append(fullLabel);
     group.append(svgElement("rect", { x: -width / 2, y: -height / 2, width, height, rx: height / 2 }));
     const icon = svgElement("text", { class: "node-icon", x: -width / 2 + 23, y: 1, "aria-hidden": "true" });
     icon.textContent = node.isCollection ? (node.expanded ? "−" : "+") : ({ root: "✦", hub: "•", note: "✎", folder: "▰", tag: "#", book: "▤", reference: "↗" })[node.type] || "•";
@@ -375,23 +403,6 @@ export function renderNotesMindMap(container, options) {
     );
   }
   container._mindMapWasUpdated = false;
-  const expandedCollection = graph.nodes.find((node) => node.isCollection && node.expanded);
-  if (expandedCollection) {
-    collectionPanel.hidden = false;
-    collectionPanel.innerHTML = `
-      <div class="mindmap-collection-heading">
-        <span><small>Expanded verse collection</small><strong>${escapeHTML(expandedCollection.label)}</strong></span>
-        <span>${expandedCollection.references.length} verses · used in ${expandedCollection.noteCount} ${expandedCollection.noteCount === 1 ? "note" : "notes"}</span>
-        <button type="button" data-collapse-collection aria-label="Collapse ${escapeHTML(expandedCollection.label)}"><i class="ti ti-chevron-down"></i><span>Collapse</span></button>
-      </div>
-      <div class="mindmap-collection-grid">${expandedCollection.references.map((reference, index) => `
-        <button type="button" data-collection-reference="${escapeHTML(reference)}"><small>${index + 1}</small><strong>${escapeHTML(options.formatReference(reference))}</strong><i class="ti ti-arrow-up-right" aria-hidden="true"></i></button>
-      `).join("")}</div>`;
-    collectionPanel.querySelector("[data-collapse-collection]").addEventListener("click", () => {
-      nodeLayer.querySelector(`[data-node-id="${CSS.escape(expandedCollection.id)}"]`)?.dispatchEvent(new MouseEvent("click", { bubbles: true }));
-    });
-    collectionPanel.querySelectorAll("[data-collection-reference]").forEach((button) => button.addEventListener("click", () => options.onOpenReference(button.dataset.collectionReference)));
-  }
   const selectNode = (node) => {
     selected = selected === node.id ? "" : node.id;
     const neighbors = new Set([selected]);
@@ -441,15 +452,21 @@ export function renderNotesMindMap(container, options) {
     const toggleRangeNode = () => {
       const collapsing = container._expandedReferenceRanges.has(node.rangeIdentity);
       const complete = () => {
-        container._expandedReferenceRanges.clear();
-        if (!collapsing) container._expandedReferenceRanges.add(node.rangeIdentity);
+        if (collapsing) container._expandedReferenceRanges.delete(node.rangeIdentity);
+        else container._expandedReferenceRanges.add(node.rangeIdentity);
+        // Expansion changes the graph bounds and topology. Fit the new graph so
+        // every newly revealed verse is visible instead of inheriting a pan
+        // position calculated for the smaller collapsed graph.
+        container._mindMapView = null;
         container._mindMapWasUpdated = true;
         renderNotesMindMap(container, options);
       };
-      if (collapsing && !collectionPanel.hidden && !matchMedia("(prefers-reduced-motion: reduce)").matches) {
-        collectionPanel.animate(
-          [{ opacity: 1, transform: "none" }, { opacity: 0, transform: "translateY(12px)" }],
-          { duration: 190, easing: "cubic-bezier(.4,0,.2,1)" },
+      if (!matchMedia("(prefers-reduced-motion: reduce)").matches) {
+        group.querySelector("rect").animate(
+          collapsing
+            ? [{ transform: "scale(1)" }, { transform: "scale(.94)" }]
+            : [{ transform: "scale(1)" }, { transform: "scale(1.06)" }],
+          { duration: 150, easing: "cubic-bezier(.4,0,.2,1)" },
         ).finished.then(complete).catch(complete);
       } else complete();
     };
