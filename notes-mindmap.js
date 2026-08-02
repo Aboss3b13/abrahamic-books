@@ -278,7 +278,7 @@ export function renderNotesMindMap(container, options) {
       </div>
       <button class="mindmap-close" type="button" aria-label="Close mind map"><i class="ti ti-x"></i></button>
     </header>
-    <div class="mindmap-guide"><i class="ti ti-pointer" aria-hidden="true"></i><span><strong>Tap anything to show only its direct connections.</strong> Tap a passage to reveal or hide its verses.</span></div>
+    <div class="mindmap-guide"><i class="ti ti-pointer" aria-hidden="true"></i><span><strong>Tap anything to reveal its entire connection network.</strong> Tap a passage to reveal or hide its verses.</span></div>
     <div class="mindmap-legend" aria-label="Mind map key"><span data-legend="note"><i></i>Note</span><span data-legend="note-link"><i></i>Linked note</span><span data-legend="tag"><i></i>Topic</span><span data-legend="folder"><i></i>Folder</span><span data-legend="book"><i></i>Scripture</span><span data-legend="collection"><i></i>Passage</span><span data-legend="reference"><i></i>Verse</span></div>
     <div class="mindmap-stage"><svg role="img" aria-label="Interactive clustered graph of notes, topics, scripture passages, and verses"></svg></div>
     <div class="mindmap-hint"><i class="ti ti-zoom-scan"></i> Drag to move · pinch or scroll to zoom · tap empty space to clear focus</div>
@@ -293,12 +293,15 @@ export function renderNotesMindMap(container, options) {
   const viewportWidth = 1200;
   const viewportHeight = Math.max(620, viewportWidth * (stageRect.height || 700) / Math.max(stageRect.width || 1000, 1));
   const portrait = window.innerHeight > window.innerWidth;
+  let responsiveBucket = `${portrait ? "portrait" : "landscape"}:${Math.round(stageRect.width / 160)}`;
   const visibleNodes = graph.nodes.filter((node) => node.visible !== false);
   const { width, height, zones, byId } = layOut(visibleNodes, { width: stageRect.width, height: stageRect.height, portrait });
   let resizeTimer = 0;
   const resizeObserver = new ResizeObserver(() => {
     const nextPortrait = window.innerHeight > window.innerWidth;
-    if (nextPortrait === portrait) return;
+    const nextBucket = `${nextPortrait ? "portrait" : "landscape"}:${Math.round(stage.getBoundingClientRect().width / 160)}`;
+    if (nextBucket === responsiveBucket) return;
+    responsiveBucket = nextBucket;
     clearTimeout(resizeTimer);
     resizeTimer = window.setTimeout(() => renderNotesMindMap(container, options), 180);
   });
@@ -465,12 +468,21 @@ export function renderNotesMindMap(container, options) {
     selected = node.id;
     const connected = new Set([node.id]);
     const connectedEdges = new Set();
-    (adjacency.get(node.id) || []).forEach((edge) => {
-      if (!visibleEdge(edge)) return;
-      const other = edge.source === node.id ? edge.target : edge.source;
-      connected.add(other);
-      connectedEdges.add(edge.id);
-    });
+    const queue = [node.id];
+    // Walk the complete visible component. A note can reach another note via
+    // a topic, folder, scripture book, passage, verse, or direct note link;
+    // stopping after one edge made those real relationships appear missing.
+    while (queue.length) {
+      const currentId = queue.shift();
+      (adjacency.get(currentId) || []).forEach((edge) => {
+        if (!visibleEdge(edge)) return;
+        connectedEdges.add(edge.id);
+        const other = edge.source === currentId ? edge.target : edge.source;
+        if (connected.has(other)) return;
+        connected.add(other);
+        queue.push(other);
+      });
+    }
     container.classList.add("has-map-selection");
     nodeLayer.querySelectorAll(".mindmap-node").forEach((item) => item.classList.toggle("is-connected", connected.has(item.dataset.nodeId)));
     edgeLayer.querySelectorAll(".mindmap-edge").forEach((item) => item.classList.toggle("is-connected", connectedEdges.has(item.dataset.edgeId)));

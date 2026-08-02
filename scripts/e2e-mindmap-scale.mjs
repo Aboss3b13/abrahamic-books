@@ -54,13 +54,13 @@ if (!(await page.locator("#notesMindMap.has-map-selection").count())) throw new 
 await page.waitForTimeout(300);
 if (!(await page.locator(".mindmap-inspector:not([hidden])").count())) throw new Error("The selected item inspector closed itself.");
 const connectedTypes = await page.locator(".mindmap-node.is-connected").evaluateAll((items) => items.map((item) => item.dataset.nodeType));
-if (connectedTypes.some((type) => !["tag", "note"].includes(type))) throw new Error(`Topic focus included indirect connections: ${JSON.stringify(connectedTypes)}`);
+if (!["tag", "note", "folder", "book", "collection"].every((type) => connectedTypes.includes(type))) throw new Error(`Topic focus did not reveal the full connection network: ${JSON.stringify(connectedTypes)}`);
 const focusOpacity = await page.evaluate(() => {
   const connected = document.querySelector(".mindmap-node.is-connected");
   const unrelated = document.querySelector(".mindmap-node:not(.is-connected):not(.is-map-hidden)");
-  return { connected: Number(getComputedStyle(connected).opacity), unrelated: Number(getComputedStyle(unrelated).opacity), container: document.querySelector("#notesMindMap").className, unrelatedClass: unrelated?.getAttribute("class") };
+  return { connected: Number(getComputedStyle(connected).opacity), unrelated: unrelated ? Number(getComputedStyle(unrelated).opacity) : null, container: document.querySelector("#notesMindMap").className, unrelatedClass: unrelated?.getAttribute("class") };
 });
-if (!(focusOpacity.connected > focusOpacity.unrelated * 5)) throw new Error(`Focus contrast was too weak: ${JSON.stringify(focusOpacity)}`);
+if (focusOpacity.unrelated !== null && !(focusOpacity.connected > focusOpacity.unrelated * 5)) throw new Error(`Focus contrast was too weak: ${JSON.stringify(focusOpacity)}`);
 
 await page.locator(".mindmap-node.node-collection").first().evaluate((node) => node.dispatchEvent(new KeyboardEvent("keydown", { key: "Enter", bubbles: true })));
 await page.waitForSelector(".mindmap-node.is-range-child:not(.is-map-hidden)");

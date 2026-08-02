@@ -6619,3 +6619,93 @@ dialog::backdrop { animation-duration: 180ms; }
   .mindmap-actions { right: 7px; }
   .mindmap-actions button { min-width: 38px; min-height: 38px; }
 }
+
+/* Connection-map and note-editor finishing pass. */
+body.mindmap-fullscreen .mindmap-header {
+  position: sticky;
+  top: 0;
+  z-index: 20;
+  flex: 0 0 auto;
+  box-shadow: 0 8px 28px color-mix(in srgb, var(--ink) 9%, transparent);
+}
+
+.mindmap-header > .mindmap-close {
+  position: relative;
+  z-index: 22;
+  display: grid;
+  place-items: center;
+  flex: 0 0 44px;
+  color: var(--rose);
+  background: color-mix(in srgb, var(--rose) 9%, var(--paper));
+  box-shadow: 0 5px 16px color-mix(in srgb, var(--rose) 13%, transparent);
+}
+
+.mindmap-stage svg { min-width: 0; min-height: 0; }
+.mindmap-world { will-change: transform; }
+.mindmap-node,
+.mindmap-edge { vector-effect: non-scaling-stroke; }
+.mindmap-node { transition: opacity 180ms ease; }
+
+.note-sheet .sheet-header {
+  z-index: 12;
+  border-bottom-color: color-mix(in srgb, var(--green-2) 30%, var(--line));
+  background: color-mix(in srgb, var(--paper) 94%, transparent);
+  box-shadow: 0 9px 24px color-mix(in srgb, var(--ink) 8%, transparent);
+  backdrop-filter: blur(18px);
+}
+
+.note-sheet .sheet-header .icon-button {
+  position: sticky;
+  top: max(10px, env(safe-area-inset-top));
+  z-index: 14;
+  width: 46px;
+  height: 46px;
+  flex-basis: 46px;
+  color: var(--rose);
+  border-color: color-mix(in srgb, var(--rose) 30%, var(--line));
+  background: color-mix(in srgb, var(--rose) 9%, var(--paper));
+  box-shadow: 0 6px 18px color-mix(in srgb, var(--rose) 13%, transparent);
+}
+
+.note-sheet .note-editor-section {
+  box-shadow: inset 0 1px 0 color-mix(in srgb, white 28%, transparent), 0 7px 20px color-mix(in srgb, var(--ink) 5%, transparent);
+}
+
+.note-sheet .note-body-field {
+  background: linear-gradient(145deg, color-mix(in srgb, var(--green-2) 7%, var(--paper)), var(--paper));
+}
+
+.note-sheet .note-body-field textarea {
+  padding: 14px;
+  border-color: color-mix(in srgb, var(--green-2) 28%, var(--line));
+  background: color-mix(in srgb, var(--paper) 96%, transparent);
+  resize: vertical;
+}
+
+.note-sheet .note-link-panel {
+  border-color: color-mix(in srgb, #7c3aed 30%, var(--line));
+  background: linear-gradient(145deg, color-mix(in srgb, #3b82f6 7%, var(--panel)), color-mix(in srgb, #8b5cf6 6%, var(--panel)));
+}
+
+@media (max-width: 599px) {
+  .note-sheet .note-link-panel { order: 7; }
+  .note-sheet .sheet-actions { order: 8; }
+  .note-sheet .sheet-header .icon-button { margin-top: max(0px, env(safe-area-inset-top)); }
+  .mindmap-header > .mindmap-close { align-self: start; }
+  body.mindmap-fullscreen .mindmap-stage { min-height: 0; }
+}
+
+@media (min-width: 600px) and (max-width: 959px) {
+  .note-sheet .note-link-panel { grid-column: 1 / -1; }
+  .note-sheet .sheet-actions { grid-column: 1 / -1; }
+}
+
+@media (max-height: 560px) and (orientation: landscape) {
+  .mindmap-kicker,
+  .mindmap-header p,
+  .mindmap-guide { display: none; }
+  .mindmap-header { padding-block: max(7px, env(safe-area-inset-top)) 7px; }
+  .mindmap-actions button,
+  .mindmap-header > .mindmap-close { min-height: 40px; height: 40px; }
+  body.mindmap-fullscreen .mindmap-stage { min-height: 0; }
+}
