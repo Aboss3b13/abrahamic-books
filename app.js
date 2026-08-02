@@ -3132,7 +3132,7 @@ function renderNoteLinks() {
     ? linkedKeys.map((key) => {
       const note = state.notes[key];
       const location = getFolderDisplayPath(note.folderId || "") || "Top-level notes";
-      return `<div class="note-link-chip"><span class="note-link-chip-icon"><i class="ti ti-notes" aria-hidden="true"></i></span><span><strong>${escapeHTML(noteLinkLabel(key))}</strong><small class="note-link-location"><i class="ti ti-folder" aria-hidden="true"></i>${escapeHTML(location)}</small><small>${escapeHTML((note.text || "No text yet").slice(0, 100))}</small></span><button type="button" data-unlink-note="${escapeHTML(key)}" aria-label="Unlink ${escapeHTML(noteLinkLabel(key))}"><i class="ti ti-unlink"></i></button></div>`;
+      return `<div class="note-link-chip"><span class="note-link-chip-icon"><i class="ti ti-notes" aria-hidden="true"></i></span><span class="note-link-copy"><strong>${escapeHTML(noteLinkLabel(key))}</strong><small class="note-link-location"><i class="ti ti-folder" aria-hidden="true"></i><span>${escapeHTML(location)}</span></small><small class="note-link-preview">${escapeHTML((note.text || "No text yet").slice(0, 100))}</small></span><button type="button" data-unlink-note="${escapeHTML(key)}" aria-label="Unlink ${escapeHTML(noteLinkLabel(key))}"><i class="ti ti-unlink"></i></button></div>`;
     }).join("")
     : '<p class="note-link-empty">No linked notes yet. Choose one below to create a direct connection.</p>';
   const matches = candidates.filter(([key, note]) => {
@@ -3143,7 +3143,7 @@ function renderNoteLinks() {
   els.noteLinkResults.innerHTML = matches.length
     ? matches.map(([key, note]) => {
       const location = getFolderDisplayPath(note.folderId || "") || "Top-level notes";
-      return `<button type="button" data-link-note="${escapeHTML(key)}"><span class="note-link-result-icon"><i class="ti ti-link-plus" aria-hidden="true"></i></span><span><strong>${escapeHTML(noteLinkLabel(key))}</strong><small class="note-link-location"><i class="ti ti-folder" aria-hidden="true"></i>${escapeHTML(location)}</small><small>${escapeHTML((note.text || (note.tags || []).map((tag) => `#${tag}`).join(" ") || "No preview").slice(0, 110))}</small></span><i class="ti ti-plus" aria-hidden="true"></i></button>`;
+      return `<button type="button" data-link-note="${escapeHTML(key)}"><span class="note-link-result-icon"><i class="ti ti-link-plus" aria-hidden="true"></i></span><span class="note-link-copy"><strong>${escapeHTML(noteLinkLabel(key))}</strong><small class="note-link-location"><i class="ti ti-folder" aria-hidden="true"></i><span>${escapeHTML(location)}</span></small><small class="note-link-preview">${escapeHTML((note.text || (note.tags || []).map((tag) => `#${tag}`).join(" ") || "No preview").slice(0, 110))}</small></span><i class="ti ti-plus" aria-hidden="true"></i></button>`;
     }).join("")
     : `<p class="note-link-empty">${query ? "No other notes match this search." : "There are no other notes to link yet."}</p>`;
   els.noteLinkResults.querySelectorAll("[data-link-note]").forEach((button) => button.addEventListener("click", () => toggleNoteLink(button.dataset.linkNote)));

@@ -1,5 +1,5 @@
 import assert from "node:assert/strict";
-import { filterGraphForSearch } from "../notes-mindmap.js";
+import { filterGraphForSearch, wrapNodeText } from "../notes-mindmap.js";
 
 const graph = {
   nodes: [
@@ -23,4 +23,8 @@ assert(visibleIds.has("reference:quran:1:1"), "the matching note's expanded vers
 assert(visibleIds.has("collection:quran:1:1-2"), "the expanded passage must remain visible so it can be collapsed");
 assert(visibleIds.has("book:quran"), "the passage should retain its scripture context");
 
-console.log("Mindmap search keeps expanded passage controls visible.");
+const wrapped = wrapNodeText("An extraordinarilylongunbrokenword followed by a note title that keeps going", 14, 4);
+assert(wrapped.length <= 4, "mindmap labels must stay within their maximum line count");
+assert(wrapped.every((line) => line.length <= 14), "every mindmap label line must fit its node width");
+
+console.log("Mindmap search and text containment checks passed.");
