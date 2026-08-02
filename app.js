@@ -2084,12 +2084,23 @@ function renderNotes({ animate = true, hydrateReferences = true } = {}) {
   renderTagFilters();
 
   if (mindMapMode && !locked) {
+    let mapEntries = entries;
+    if (state.notesSection === "private" && !["", "all"].includes(state.selectedFolderId)) {
+      const scopedKeys = new Set(entries.map(([key]) => key));
+      const visibleKeys = new Set(scopedKeys);
+      entries.forEach(([, note]) => (note.linkedNoteIds || []).forEach((linkedKey) => visibleKeys.add(linkedKey)));
+      mapEntries = [...visibleKeys]
+        .filter((key) => state.notes[key])
+        .map((key) => [key, { ...state.notes[key], mindMapExternal: !scopedKeys.has(key) }]);
+    }
+    const mapFolderIds = new Set(mapEntries.map(([, note]) => note.folderId).filter(Boolean));
     const scopedFolders = folderScope
       ? state.noteFolders.filter((folder) => folderScope.has(folder.id) && folder.id !== state.selectedFolderId)
       : state.noteFolders;
+    state.noteFolders.filter((folder) => mapFolderIds.has(folder.id) && !scopedFolders.some((item) => item.id === folder.id)).forEach((folder) => scopedFolders.push(folder));
     const activeFolder = state.noteFolders.find((folder) => folder.id === state.selectedFolderId);
     renderNotesMindMap(els.notesMindMap, {
-      entries,
+      entries: mapEntries,
       folders: scopedFolders,
       rootLabel: activeFolder?.name || "My notes",
       rootType: activeFolder ? "folder" : "root",
@@ -3110,16 +3121,20 @@ function renderNoteLinks() {
   els.noteLinks.innerHTML = linkedKeys.length
     ? linkedKeys.map((key) => {
       const note = state.notes[key];
-      return `<div class="note-link-chip"><span class="note-link-chip-icon"><i class="ti ti-notes" aria-hidden="true"></i></span><span><strong>${escapeHTML(noteLinkLabel(key))}</strong><small>${escapeHTML((note.text || "No text yet").slice(0, 100))}</small></span><button type="button" data-unlink-note="${escapeHTML(key)}" aria-label="Unlink ${escapeHTML(noteLinkLabel(key))}"><i class="ti ti-unlink"></i></button></div>`;
+      const location = getFolderDisplayPath(note.folderId || "") || "Top-level notes";
+      return `<div class="note-link-chip"><span class="note-link-chip-icon"><i class="ti ti-notes" aria-hidden="true"></i></span><span><strong>${escapeHTML(noteLinkLabel(key))}</strong><small class="note-link-location"><i class="ti ti-folder" aria-hidden="true"></i>${escapeHTML(location)}</small><small>${escapeHTML((note.text || "No text yet").slice(0, 100))}</small></span><button type="button" data-unlink-note="${escapeHTML(key)}" aria-label="Unlink ${escapeHTML(noteLinkLabel(key))}"><i class="ti ti-unlink"></i></button></div>`;
     }).join("")
     : '<p class="note-link-empty">No linked notes yet. Choose one below to create a direct connection.</p>';
   const matches = candidates.filter(([key, note]) => {
     if (linkedKeys.includes(key)) return false;
     if (!query) return true;
-    return `${noteLinkLabel(key)} ${note.text || ""} ${(note.tags || []).join(" ")}`.toLocaleLowerCase().includes(query);
+    return `${noteLinkLabel(key)} ${note.text || ""} ${(note.tags || []).join(" ")} ${getFolderDisplayPath(note.folderId || "")}`.toLocaleLowerCase().includes(query);
   }).slice(0, query ? 20 : 8);
   els.noteLinkResults.innerHTML = matches.length
-    ? matches.map(([key, note]) => `<button type="button" data-link-note="${escapeHTML(key)}"><span class="note-link-result-icon"><i class="ti ti-link-plus" aria-hidden="true"></i></span><span><strong>${escapeHTML(noteLinkLabel(key))}</strong><small>${escapeHTML((note.text || (note.tags || []).map((tag) => `#${tag}`).join(" ") || "No preview").slice(0, 110))}</small></span><i class="ti ti-plus" aria-hidden="true"></i></button>`).join("")
+    ? matches.map(([key, note]) => {
+      const location = getFolderDisplayPath(note.folderId || "") || "Top-level notes";
+      return `<button type="button" data-link-note="${escapeHTML(key)}"><span class="note-link-result-icon"><i class="ti ti-link-plus" aria-hidden="true"></i></span><span><strong>${escapeHTML(noteLinkLabel(key))}</strong><small class="note-link-location"><i class="ti ti-folder" aria-hidden="true"></i>${escapeHTML(location)}</small><small>${escapeHTML((note.text || (note.tags || []).map((tag) => `#${tag}`).join(" ") || "No preview").slice(0, 110))}</small></span><i class="ti ti-plus" aria-hidden="true"></i></button>`;
+    }).join("")
     : `<p class="note-link-empty">${query ? "No other notes match this search." : "There are no other notes to link yet."}</p>`;
   els.noteLinkResults.querySelectorAll("[data-link-note]").forEach((button) => button.addEventListener("click", () => toggleNoteLink(button.dataset.linkNote)));
   els.noteLinks.querySelectorAll("[data-unlink-note]").forEach((button) => button.addEventListener("click", () => toggleNoteLink(button.dataset.unlinkNote)));

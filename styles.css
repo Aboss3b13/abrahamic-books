@@ -5299,7 +5299,7 @@ body.mindmap-fullscreen .notes-mindmap {
 
 .mindmap-header {
   position: relative;
-  z-index: 3;
+  z-index: 4;
   display: grid;
   grid-template-columns: minmax(0, 1fr) auto auto;
   align-items: center;
@@ -6470,6 +6470,8 @@ dialog::backdrop { animation-duration: 180ms; }
 
 .mindmap-stage {
   isolation: isolate;
+  overflow: hidden;
+  overscroll-behavior: none;
   background:
     radial-gradient(circle at 52% 32%, color-mix(in srgb, var(--green-2) 7%, transparent), transparent 36%),
     linear-gradient(color-mix(in srgb, var(--line) 18%, transparent) 1px, transparent 1px),
@@ -6506,6 +6508,8 @@ dialog::backdrop { animation-duration: 180ms; }
 .mindmap-node rect { rx: 14px; filter: drop-shadow(0 3px 6px color-mix(in srgb, var(--ink) 9%, transparent)); }
 .mindmap-node.node-note rect { fill: color-mix(in srgb, #3b82f6 11%, var(--paper)); stroke: color-mix(in srgb, #2563eb 64%, var(--line)); }
 .mindmap-node.node-note .node-icon { fill: #2563eb; }
+.mindmap-node.node-note.is-external-note rect { fill: color-mix(in srgb, #db2777 8%, var(--paper)); stroke: color-mix(in srgb, #db2777 72%, var(--line)); stroke-dasharray: 5 3; }
+.mindmap-node.node-note.is-external-note .node-icon { fill: #db2777; }
 .mindmap-node.node-folder rect { fill: color-mix(in srgb, #f59e0b 13%, var(--paper)); stroke: color-mix(in srgb, #d97706 64%, var(--line)); }
 .mindmap-node.node-folder .node-icon { fill: #d97706; }
 .mindmap-node.node-tag rect { fill: color-mix(in srgb, #8b5cf6 12%, var(--paper)); stroke: color-mix(in srgb, #7c3aed 64%, var(--line)); }
@@ -6577,6 +6581,8 @@ dialog::backdrop { animation-duration: 180ms; }
 .note-link-chip strong { overflow-wrap: anywhere; font-size: .78rem; line-height: 1.25; }
 .note-link-results small,
 .note-link-chip small { display: -webkit-box; overflow: hidden; color: var(--muted); font-size: .66rem; line-height: 1.35; -webkit-box-orient: vertical; -webkit-line-clamp: 2; }
+.note-link-results .note-link-location,
+.note-link-chip .note-link-location { display: flex; align-items: center; gap: 4px; overflow: visible; color: color-mix(in srgb, #2563eb 76%, var(--muted)); font-weight: 800; white-space: normal; overflow-wrap: anywhere; -webkit-line-clamp: unset; }
 .note-link-chip { border-color: color-mix(in srgb, #7c3aed 32%, var(--line)); background: color-mix(in srgb, #8b5cf6 7%, var(--paper)); }
 .note-link-chip > button { display: grid; width: 28px; min-height: 28px; place-items: center; padding: 0; border: 0; border-radius: 8px; color: var(--rose); background: transparent; }
 .note-link-empty { grid-column: 1 / -1; margin: 0; padding: 11px; border: 1px dashed var(--line); border-radius: 12px; color: var(--muted); font-size: .72rem; line-height: 1.45; text-align: center; }
@@ -6593,4 +6599,23 @@ dialog::backdrop { animation-duration: 180ms; }
   .note-link-results,
   .note-links { grid-template-columns: 1fr; }
   .mindmap-guide { align-items: flex-start; }
+  .mindmap-header { gap: 7px; padding-bottom: 8px; }
+  .mindmap-header > div:first-child { min-width: 0; }
+  .mindmap-kicker { display: none; }
+  .mindmap-header h3 { font-size: .98rem; }
+  .mindmap-header p { font-size: .66rem; }
+  .mindmap-search { min-height: 40px; }
+  .mindmap-actions { position: absolute; z-index: 5; right: max(10px, env(safe-area-inset-right)); bottom: -62px; padding: 5px; border: 1px solid color-mix(in srgb, var(--line) 76%, transparent); border-radius: 15px; background: color-mix(in srgb, var(--paper) 88%, transparent); box-shadow: 0 8px 24px color-mix(in srgb, var(--ink) 13%, transparent); backdrop-filter: blur(12px); }
+  .mindmap-actions button { min-width: 40px; min-height: 40px; }
+  .mindmap-guide { padding-right: 160px; }
+  .mindmap-legend { overflow-x: auto; justify-content: flex-start; padding-inline: 10px; scrollbar-width: none; }
+  .mindmap-legend span { flex: 0 0 auto; }
+  .mindmap-hint { font-size: .64rem; }
+}
+
+@media (max-width: 380px) {
+  .mindmap-guide { padding-right: 142px; font-size: .62rem; }
+  .mindmap-guide strong { display: block; }
+  .mindmap-actions { right: 7px; }
+  .mindmap-actions button { min-width: 38px; min-height: 38px; }
 }

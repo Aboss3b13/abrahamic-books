@@ -58,7 +58,7 @@ const focusOpacity = await page.evaluate(() => {
 });
 if (!(focusOpacity.connected > focusOpacity.unrelated * 5)) throw new Error(`Focus contrast was too weak: ${JSON.stringify(focusOpacity)}`);
 
-await page.locator(".mindmap-node.node-collection").first().click();
+await page.locator(".mindmap-node.node-collection").first().evaluate((node) => node.dispatchEvent(new KeyboardEvent("keydown", { key: "Enter", bubbles: true })));
 await page.waitForSelector(".mindmap-node.is-range-child:not(.is-map-hidden)");
 const expansion = await page.evaluate(() => {
   const collection = document.querySelector(".mindmap-node.node-collection.is-expanded");
@@ -70,12 +70,45 @@ const expansion = await page.evaluate(() => {
 });
 if (expansion.expandedVerses < 2 || expansion.collectionEdges < expansion.expandedVerses) throw new Error(`Collection expansion was incomplete: ${JSON.stringify(expansion)}`);
 
-await page.locator(".mindmap-node.is-range-child:not(.is-map-hidden)").first().click();
+await page.locator(".mindmap-node.is-range-child:not(.is-map-hidden)").first().evaluate((node) => node.dispatchEvent(new KeyboardEvent("keydown", { key: "Enter", bubbles: true })));
 if (!(await page.locator(".mindmap-node.node-note.is-connected").count())) throw new Error("Selecting a verse did not reveal its connected note.");
 await page.locator(".mindmap-search input").fill("Study note 119");
 if (!(await page.locator(".mindmap-node.is-search-match").count())) throw new Error("Large-map search did not find a note.");
 await page.waitForTimeout(450);
 await page.screenshot({ path: "/tmp/abrahamic-mindmap-130-notes.png", fullPage: true });
+console.log(`Large landscape map rendered in ${Math.round(renderTime)}ms; testing phone gestures.`);
+
+await page.setViewportSize({ width: 390, height: 844 });
+await page.reload({ waitUntil: "domcontentloaded" });
+await page.waitForSelector(".ayah-card", { timeout: 30000 });
+await page.locator('[data-view="notesView"]').first().evaluate((button) => button.click());
+if (await page.locator("#notesMindMap[hidden]").count()) await page.locator("#notesMindMapMode").click();
+await page.waitForSelector("#notesMindMap:not([hidden]) .mindmap-node");
+console.log("Phone map opened.");
+if (await page.locator('.mindmap-stage svg[data-layout="portrait"]').count() !== 1) throw new Error("The mind map did not switch to its portrait layout on a phone.");
+const zoneFlow = await page.locator(".mindmap-zone").evaluateAll((items) => items.map((item) => item.getBBox()).map(({ x, y }) => ({ x, y })));
+if (!zoneFlow.every((zone, index) => index === 0 || zone.y > zoneFlow[index - 1].y)) throw new Error(`Portrait zones were not stacked into a readable flow: ${JSON.stringify(zoneFlow)}`);
+
+const draggableNode = page.locator(".mindmap-node:not(.is-map-hidden)").first();
+const dragBox = await draggableNode.boundingBox();
+const transformBeforeDrag = await page.locator(".mindmap-world").getAttribute("transform");
+await page.mouse.move(dragBox.x + dragBox.width / 2, dragBox.y + dragBox.height / 2);
+await page.mouse.down();
+await page.mouse.move(dragBox.x + dragBox.width / 2 + 55, dragBox.y + dragBox.height / 2 + 45, { steps: 5 });
+await page.mouse.up();
+await page.waitForTimeout(80);
+const transformAfterDrag = await page.locator(".mindmap-world").getAttribute("transform");
+if (transformAfterDrag === transformBeforeDrag) throw new Error("Dragging from a node did not pan the phone mind map.");
+await page.screenshot({ path: "/tmp/abrahamic-mindmap-phone-portrait.png" });
+console.log("Phone drag passed; testing extended zoom.");
+
+const readScale = async () => Number((await page.locator(".mindmap-world").getAttribute("transform")).match(/scale\(([^)]+)/)?.[1]);
+for (let index = 0; index < 18; index += 1) await page.locator('[data-map-zoom="in"]').click();
+const maximumScale = await readScale();
+for (let index = 0; index < 55; index += 1) await page.locator('[data-map-zoom="out"]').click();
+const minimumScale = await readScale();
+if (maximumScale < 12 || minimumScale > .12) throw new Error(`Extended zoom range was unavailable: ${minimumScale}–${maximumScale}`);
+console.log(`Phone portrait, pan, and zoom ${minimumScale.toFixed(2)}–${maximumScale.toFixed(2)} passed.`);
 
 await browser.close();
 if (errors.length) throw new Error(`Browser errors:\n${errors.join("\n")}`);

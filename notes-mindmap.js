@@ -2,6 +2,8 @@ import { collectReferenceCollections, formatReferenceRange, rangeIdentity } from
 
 const SVG_NS = "http://www.w3.org/2000/svg";
 const clamp = (value, min, max) => Math.max(min, Math.min(max, value));
+const MIN_MAP_SCALE = .025;
+const MAX_MAP_SCALE = 40;
 const titleCase = (value) => String(value || "").replaceAll("_", " ").replace(/\b\w/g, (letter) => letter.toUpperCase());
 const escapeHTML = (value) => String(value ?? "").replace(/[&<>"']/g, (character) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" })[character]);
 
@@ -36,6 +38,7 @@ function buildGraph({ entries, folders, formatReference, parseReference, expande
       type: "note",
       rawId: key,
       summary: note.text || "",
+      externalScope: Boolean(note.mindMapExternal),
       searchText: `${note.title || ""} ${note.text || ""} ${(note.tags || []).join(" ")}`,
     });
     if (note.folderId && nodes.has(`folder:${note.folderId}`)) addEdge(`folder:${note.folderId}`, noteId, "folder");
@@ -150,8 +153,9 @@ const ZONE_META = {
   reference: { label: "Verses", description: "Individual scripture references", icon: "↗", columns: 3 },
 };
 
-function layOut(nodes) {
+function layOut(nodes, viewport) {
   const order = ["folder", "note", "tag", "book", "collection", "reference"];
+  const portrait = viewport.height > viewport.width * 1.08;
   const zoneGap = 34;
   const panelPadding = 26;
   const headerHeight = 78;
@@ -160,17 +164,19 @@ function layOut(nodes) {
   const rowHeight = 104;
   const zones = [];
   let cursorX = 24;
+  let cursorY = 24;
 
   order.forEach((type) => {
     const items = nodes.filter((node) => node.type === type).sort((left, right) => left.label.localeCompare(right.label));
     if (!items.length) return;
-    const desiredColumns = ZONE_META[type].columns;
+    const desiredColumns = portrait ? (type === "folder" || type === "book" ? 1 : 2) : ZONE_META[type].columns;
     const columns = Math.max(1, Math.min(desiredColumns, items.length));
     const cellWidth = Math.max(...items.map((node) => nodeWidth(node))) + cellGapX;
     const rows = Math.ceil(items.length / columns);
     const width = panelPadding * 2 + columns * cellWidth;
     const height = headerHeight + panelPadding + rows * rowHeight;
-    const zone = { type, items, columns, cellWidth, x: cursorX, y: 24, width, height };
+    const zoneWidth = portrait ? Math.max(620, width) : width;
+    const zone = { type, items, columns, cellWidth, x: portrait ? 24 : cursorX, y: portrait ? cursorY : 24, width: zoneWidth, height };
     items.forEach((node, index) => {
       node.layoutWidth = nodeWidth(node);
       node.layoutHeight = nodeHeight(node);
@@ -178,18 +184,27 @@ function layOut(nodes) {
       node.y = zone.y + headerHeight + rowHeight * Math.floor(index / columns) + rowHeight / 2;
     });
     zones.push(zone);
-    cursorX += width + zoneGap;
+    if (portrait) cursorY += height + zoneGap;
+    else cursorX += width + zoneGap;
   });
 
-  const height = Math.max(520, ...zones.map((zone) => zone.height + 48));
-  zones.forEach((zone) => { zone.height = height - 48; });
-  const width = Math.max(720, cursorX - zoneGap + 24);
+  const height = portrait ? Math.max(760, cursorY - zoneGap + 24) : Math.max(520, ...zones.map((zone) => zone.height + 48));
+  if (!portrait) zones.forEach((zone) => { zone.height = height - 48; });
+  const width = portrait ? Math.max(668, ...zones.map((zone) => zone.width + 48)) : Math.max(720, cursorX - zoneGap + 24);
   const byId = new Map(nodes.map((node) => [node.id, node]));
-  return { width, height, zones, byId };
+  return { width, height, zones, byId, portrait };
 }
 
 function edgePath(edge) {
   const dx = edge.b.x - edge.a.x;
+  const dy = edge.b.y - edge.a.y;
+  if (Math.abs(dy) > Math.abs(dx) * 1.15) {
+    const direction = Math.sign(dy) || 1;
+    const startY = edge.a.y + direction * edge.a.layoutHeight / 2;
+    const endY = edge.b.y - direction * edge.b.layoutHeight / 2;
+    const bend = Math.max(48, Math.abs(endY - startY) * .42);
+    return `M ${edge.a.x} ${startY} C ${edge.a.x} ${startY + direction * bend}, ${edge.b.x} ${endY - direction * bend}, ${edge.b.x} ${endY}`;
+  }
   const direction = Math.sign(dx) || 1;
   const startX = edge.a.x + direction * edge.a.layoutWidth / 2;
   const endX = edge.b.x - direction * edge.b.layoutWidth / 2;
@@ -237,7 +252,20 @@ export function renderNotesMindMap(container, options) {
   const inspector = container.querySelector(".mindmap-inspector");
   const searchInput = container.querySelector(".mindmap-search input");
   const searchClear = container.querySelector(".mindmap-search button");
-  const { width, height, zones, byId } = layOut(graph.nodes);
+  const stageRect = stage.getBoundingClientRect();
+  const viewportWidth = 1200;
+  const viewportHeight = Math.max(620, viewportWidth * (stageRect.height || 700) / Math.max(stageRect.width || 1000, 1));
+  const { width, height, zones, byId, portrait } = layOut(graph.nodes, { width: stageRect.width, height: stageRect.height });
+  let resizeTimer = 0;
+  const resizeObserver = new ResizeObserver((records) => {
+    const rect = records.at(-1)?.contentRect;
+    if (!rect) return;
+    const nextPortrait = rect.height > rect.width * 1.08;
+    if (nextPortrait === portrait) return;
+    clearTimeout(resizeTimer);
+    resizeTimer = window.setTimeout(() => renderNotesMindMap(container, options), 180);
+  });
+  resizeObserver.observe(stage);
   const links = graph.edges.map((edge) => ({ ...edge, a: byId.get(edge.source), b: byId.get(edge.target) })).filter((edge) => edge.a && edge.b);
   const linkById = new Map(links.map((edge) => [edge.id, edge]));
   const adjacency = new Map();
@@ -247,7 +275,8 @@ export function renderNotesMindMap(container, options) {
     adjacency.get(edge.source).push(edge);
     adjacency.get(edge.target).push(edge);
   });
-  svg.setAttribute("viewBox", `0 0 ${width} ${height}`);
+  svg.setAttribute("viewBox", `0 0 ${viewportWidth} ${viewportHeight}`);
+  svg.dataset.layout = portrait ? "portrait" : "landscape";
   const world = svgElement("g", { class: "mindmap-world" });
   const zoneLayer = svgElement("g", { class: "mindmap-zones" });
   const edgeLayer = svgElement("g", { class: "mindmap-edges" });
@@ -284,7 +313,7 @@ export function renderNotesMindMap(container, options) {
   });
 
   graph.nodes.forEach((node, nodeIndex) => {
-    const nodeClass = `mindmap-node node-${node.type}${node.expanded ? " is-expanded" : ""}${node.rangeChild ? " is-range-child" : ""}${node.visible === false ? " is-map-hidden" : ""}`;
+    const nodeClass = `mindmap-node node-${node.type}${node.expanded ? " is-expanded" : ""}${node.rangeChild ? " is-range-child" : ""}${node.externalScope ? " is-external-note" : ""}${node.visible === false ? " is-map-hidden" : ""}`;
     const group = svgElement("g", {
       class: nodeClass,
       transform: `translate(${node.x} ${node.y})`,
@@ -310,17 +339,23 @@ export function renderNotesMindMap(container, options) {
     });
     const typeLabel = svgElement("text", { class: "node-type-label", x: -node.layoutWidth / 2 + 38, y: 13 + (lines.length - 1) * 8 });
     typeLabel.textContent = node.isCollection
-      ? `${node.references.length} VERSES · ${node.expanded ? "SHOWN" : "TAP TO SHOW"}`
-      : node.rangeChild ? "VERSE FROM PASSAGE" : ({ note: "NOTE", folder: "FOLDER", tag: "TOPIC", book: "SCRIPTURE", reference: "VERSE" })[node.type];
+      ? `${node.references.length} VERSES · ${node.noteCount} NOTES · ${node.expanded ? "SHOWN" : "TAP TO SHOW"}`
+      : node.rangeChild ? "VERSE FROM PASSAGE" : node.externalScope ? "LINKED NOTE · OTHER FOLDER" : ({ note: "NOTE", folder: "FOLDER", tag: "TOPIC", book: "SCRIPTURE", reference: "VERSE" })[node.type];
     group.append(icon, label, typeLabel);
     nodeLayer.append(group);
   });
 
   const noteZone = zones.find((zone) => zone.type === "note");
   const largeMap = graph.nodes.length > 90;
-  let scale = container._mindMapView?.scale || (largeMap ? 1.85 : 1);
-  let tx = container._mindMapView?.tx ?? (largeMap && noteZone ? width / 2 - (noteZone.x + noteZone.width / 2) * scale : 0);
-  let ty = container._mindMapView?.ty ?? 0;
+  const fitPadding = portrait ? 22 : 34;
+  const fitScale = clamp(Math.min((viewportWidth - fitPadding * 2) / width, (viewportHeight - fitPadding * 2) / height), MIN_MAP_SCALE, 4);
+  const startScale = portrait ? clamp((viewportWidth - 28) / width, MIN_MAP_SCALE, 4) : fitScale;
+  const startX = (viewportWidth - width * startScale) / 2;
+  const startY = portrait ? 18 : (viewportHeight - height * startScale) / 2;
+  const savedView = container._mindMapView?.orientation === (portrait ? "portrait" : "landscape") ? container._mindMapView : null;
+  let scale = savedView?.scale || startScale;
+  let tx = savedView?.tx ?? startX;
+  let ty = savedView?.ty ?? startY;
   let transformFrame = 0;
   let cameraFrame = 0;
   let selected = "";
@@ -329,7 +364,7 @@ export function renderNotesMindMap(container, options) {
     transformFrame = requestAnimationFrame(() => {
       transformFrame = 0;
       world.setAttribute("transform", `translate(${tx} ${ty}) scale(${scale})`);
-      container._mindMapView = { scale, tx, ty };
+      container._mindMapView = { scale, tx, ty, orientation: portrait ? "portrait" : "landscape" };
     });
   };
   const animateView = (nextScale, nextTx, nextTy) => {
@@ -345,18 +380,20 @@ export function renderNotesMindMap(container, options) {
       tx = startX + (nextTx - startX) * eased;
       ty = startY + (nextTy - startY) * eased;
       world.setAttribute("transform", `translate(${tx} ${ty}) scale(${scale})`);
-      container._mindMapView = { scale, tx, ty };
+      container._mindMapView = { scale, tx, ty, orientation: portrait ? "portrait" : "landscape" };
       if (progress < 1) cameraFrame = requestAnimationFrame(step);
     };
     cameraFrame = requestAnimationFrame(step);
   };
-  const fit = () => animateView(1, 0, 0);
-  const zoom = (factor, clientX = stage.clientWidth / 2, clientY = stage.clientHeight / 2) => {
+  const fit = () => animateView(fitScale, (viewportWidth - width * fitScale) / 2, (viewportHeight - height * fitScale) / 2);
+  const zoom = (factor, clientX, clientY) => {
     cancelAnimationFrame(cameraFrame);
-    const next = clamp(scale * factor, .55, 5);
+    const next = clamp(scale * factor, MIN_MAP_SCALE, MAX_MAP_SCALE);
     const rect = svg.getBoundingClientRect();
-    const x = (clientX - rect.left) / rect.width * width;
-    const y = (clientY - rect.top) / rect.height * height;
+    const focalX = clientX ?? rect.left + rect.width / 2;
+    const focalY = clientY ?? rect.top + rect.height / 2;
+    const x = (focalX - rect.left) / rect.width * viewportWidth;
+    const y = (focalY - rect.top) / rect.height * viewportHeight;
     tx = x - (x - tx) * next / scale;
     ty = y - (y - ty) * next / scale;
     scale = next;
@@ -438,7 +475,7 @@ export function renderNotesMindMap(container, options) {
     group.classList.toggle("is-expanded", expanding);
     group.setAttribute("aria-label", `Passage ${node.label}. ${expanding ? "Expanded; activate to collapse." : "Collapsed; activate to show its verses."}`);
     group.querySelector(".node-icon").textContent = expanding ? "−" : "+";
-    group.querySelector(".node-type-label").textContent = `${node.references.length} VERSES · ${expanding ? "SHOWN" : "TAP TO SHOW"}`;
+    group.querySelector(".node-type-label").textContent = `${node.references.length} VERSES · ${node.noteCount} NOTES · ${expanding ? "SHOWN" : "TAP TO SHOW"}`;
     edgesForRange(node.rangeIdentity, false).forEach((edge) => {
       edge.classList.toggle("is-map-hidden", expanding);
       linkById.get(edge.dataset.edgeId).visible = !expanding;
@@ -469,14 +506,12 @@ export function renderNotesMindMap(container, options) {
     selectNode(node);
   };
 
-  nodeLayer.addEventListener("click", (event) => {
-    const group = event.target.closest?.(".mindmap-node");
+  const activateNode = (group) => {
     if (!group || group.classList.contains("is-map-hidden")) return;
-    event.stopPropagation();
     const node = byId.get(group.dataset.nodeId);
     if (node.isCollection) toggleCollection(node, group);
     else selectNode(node);
-  });
+  };
   nodeLayer.addEventListener("dblclick", (event) => {
     const group = event.target.closest?.(".mindmap-node");
     const node = byId.get(group?.dataset.nodeId);
@@ -489,9 +524,8 @@ export function renderNotesMindMap(container, options) {
     const group = event.target.closest?.(".mindmap-node");
     if (!group) return;
     event.preventDefault();
-    group.dispatchEvent(new MouseEvent("click", { bubbles: true }));
+    activateNode(group);
   });
-  svg.addEventListener("click", (event) => { if (!event.target.closest?.(".mindmap-node")) clearSelection(); });
 
   const runSearch = () => {
     const query = searchInput.value.trim().toLocaleLowerCase();
@@ -507,30 +541,32 @@ export function renderNotesMindMap(container, options) {
     });
     if (query.length >= 2 && firstMatch) {
       const nextScale = Math.max(scale, largeMap ? 4.2 : 2.2);
-      animateView(nextScale, width / 2 - firstMatch.x * nextScale, height / 2 - firstMatch.y * nextScale);
+      animateView(nextScale, viewportWidth / 2 - firstMatch.x * nextScale, viewportHeight / 2 - firstMatch.y * nextScale);
     }
   };
   searchInput.addEventListener("input", runSearch);
   searchClear.addEventListener("click", () => { searchInput.value = ""; runSearch(); searchInput.focus(); });
 
-  svg.addEventListener("wheel", (event) => { event.preventDefault(); zoom(event.deltaY < 0 ? 1.14 : .88, event.clientX, event.clientY); }, { passive: false });
+  svg.addEventListener("wheel", (event) => { event.preventDefault(); zoom(Math.exp(-event.deltaY * .0015), event.clientX, event.clientY); }, { passive: false });
   const pointers = new Map();
   let gesture = null;
-  const mapPoint = (point) => { const rect = svg.getBoundingClientRect(); return { x: (point.x - rect.left) / rect.width * width, y: (point.y - rect.top) / rect.height * height }; };
+  let gestureMoved = false;
+  let pressedNode = null;
+  const mapPoint = (point) => { const rect = svg.getBoundingClientRect(); return { x: (point.x - rect.left) / rect.width * viewportWidth, y: (point.y - rect.top) / rect.height * viewportHeight }; };
   const beginGesture = () => {
     const points = [...pointers.values()].slice(0, 2);
     if (points.length === 2) {
       const a = mapPoint(points[0]); const b = mapPoint(points[1]);
       gesture = { type: "pinch", distance: Math.max(1, Math.hypot(b.x - a.x, b.y - a.y)), midpoint: { x: (a.x + b.x) / 2, y: (a.y + b.y) / 2 }, scale, tx, ty };
-    } else if (points.length === 1) gesture = { type: "pan", point: mapPoint(points[0]), tx, ty };
+    } else if (points.length === 1) gesture = { type: "pan", point: mapPoint(points[0]), clientPoint: points[0], tx, ty };
   };
   svg.addEventListener("pointerdown", (event) => {
-    if (event.target.closest?.(".mindmap-node")) return;
     cancelAnimationFrame(cameraFrame);
     pointers.set(event.pointerId, { x: event.clientX, y: event.clientY });
-    svg.setPointerCapture(event.pointerId);
+    pressedNode = pointers.size === 1 ? event.target.closest?.(".mindmap-node") : null;
+    gestureMoved = false;
+    svg.setPointerCapture?.(event.pointerId);
     beginGesture();
-    stage.classList.add("is-panning");
   });
   svg.addEventListener("pointermove", (event) => {
     if (!pointers.has(event.pointerId)) return;
@@ -538,29 +574,46 @@ export function renderNotesMindMap(container, options) {
     const points = [...pointers.values()].slice(0, 2);
     if (points.length === 2 && gesture?.type !== "pinch") beginGesture();
     if (gesture?.type === "pinch" && points.length === 2) {
+      gestureMoved = true;
+      stage.classList.add("is-panning");
       const a = mapPoint(points[0]); const b = mapPoint(points[1]);
       const distance = Math.max(1, Math.hypot(b.x - a.x, b.y - a.y));
       const midpoint = { x: (a.x + b.x) / 2, y: (a.y + b.y) / 2 };
-      const next = clamp(gesture.scale * distance / gesture.distance, .55, 5);
+      const next = clamp(gesture.scale * distance / gesture.distance, MIN_MAP_SCALE, MAX_MAP_SCALE);
       tx = midpoint.x - (gesture.midpoint.x - gesture.tx) * next / gesture.scale;
       ty = midpoint.y - (gesture.midpoint.y - gesture.ty) * next / gesture.scale;
       scale = next;
     } else if (gesture?.type === "pan" && points.length === 1) {
       const point = mapPoint(points[0]);
-      tx = gesture.tx + point.x - gesture.point.x;
-      ty = gesture.ty + point.y - gesture.point.y;
+      const distance = Math.hypot(points[0].x - gesture.clientPoint.x, points[0].y - gesture.clientPoint.y);
+      if (distance > 5) {
+        gestureMoved = true;
+        stage.classList.add("is-panning");
+        tx = gesture.tx + point.x - gesture.point.x;
+        ty = gesture.ty + point.y - gesture.point.y;
+      }
     }
     applyTransform();
   });
   const endPointer = (event) => {
+    const shouldActivate = pointers.size === 1 && !gestureMoved;
+    const targetNode = pressedNode;
     pointers.delete(event.pointerId);
     if (pointers.size) beginGesture();
-    else { gesture = null; stage.classList.remove("is-panning"); }
+    else {
+      gesture = null;
+      stage.classList.remove("is-panning");
+      pressedNode = null;
+      if (shouldActivate) {
+        if (targetNode) activateNode(targetNode);
+        else clearSelection();
+      }
+    }
   };
   svg.addEventListener("pointerup", endPointer);
-  svg.addEventListener("pointercancel", endPointer);
+  svg.addEventListener("pointercancel", (event) => { gestureMoved = true; endPointer(event); });
   container.querySelector("[data-map-reset]").addEventListener("click", fit);
   container.querySelectorAll("[data-map-zoom]").forEach((button) => button.addEventListener("click", () => zoom(button.dataset.mapZoom === "in" ? 1.22 : .82)));
   container.querySelector(".mindmap-close").addEventListener("click", options.onClose);
-  container._mindMapCleanup = () => { cancelAnimationFrame(transformFrame); cancelAnimationFrame(cameraFrame); };
+  container._mindMapCleanup = () => { cancelAnimationFrame(transformFrame); cancelAnimationFrame(cameraFrame); clearTimeout(resizeTimer); resizeObserver.disconnect(); };
 }

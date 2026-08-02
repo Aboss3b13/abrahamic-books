@@ -10,27 +10,38 @@ await page.goto(baseURL, { waitUntil: "domcontentloaded" });
 await page.waitForSelector(".ayah-card", { timeout: 30000 });
 await page.locator('[data-view="notesView"]').click();
 
-async function createNote(title, body, tag) {
+async function createNote(title, body, tag, folderName = "") {
   await page.locator("#newStudyNote").click();
   await page.waitForSelector("#noteSheet[open]");
   await page.locator("#noteName").fill(title);
   await page.locator("#noteEditor").fill(body);
   await page.locator("#noteTagCreate").fill(tag);
   await page.locator("#addNoteTag").click();
+  if (folderName) {
+    page.once("dialog", (dialog) => dialog.accept(folderName));
+    await page.locator("#createFolderFromEditor").click();
+    await page.waitForFunction((name) => [...document.querySelectorAll("#noteFolderSelect option")].some((option) => option.textContent.includes(name)), folderName);
+  }
   await page.locator('#noteSheet button[value="close"]').last().click();
   await page.waitForTimeout(400);
 }
 
 const longTitle = "A complete mind map title that must remain visible inside its node";
 await createNote(longTitle, "inclusive-search-marker mercy and patience", "alpha");
-await createNote("Second topic note", "inclusive-search-marker wisdom", "beta");
+await createNote("Second topic note", "inclusive-search-marker wisdom", "beta", "Other studies");
 
 await page.locator('.note-card:has-text("Second topic note") .note-card-main').click();
 await page.locator("#noteLinkSearch").fill("complete mind map title");
+if (!(await page.locator('#noteLinkResults [data-link-note]:has-text("Top-level notes")').count())) throw new Error("The note linker did not search or identify notes outside the current folder.");
 await page.locator('#noteLinkResults [data-link-note]:has-text("A complete mind map title")').click();
 await page.waitForSelector('#noteLinks .note-link-chip:has-text("A complete mind map title")');
 await page.locator('#noteSheet button[value="close"]').last().click();
 await page.waitForTimeout(300);
+await page.locator("#notesMindMapMode").click();
+await page.waitForSelector("#notesMindMap:not([hidden]) .mindmap-node.is-external-note");
+if (!(await page.locator(".mindmap-edge.edge-note-link").count())) throw new Error("A linked note outside the folder was missing from the scoped mind map.");
+await page.locator(".mindmap-close").click();
+await page.locator("#notesFlatMode").click();
 await page.locator(`.note-card:has-text("${longTitle}") .note-card-main`).click();
 if (!(await page.locator('#noteLinks .note-link-chip:has-text("Second topic note")').count())) throw new Error("A note link was not reciprocal in the other note.");
 await page.screenshot({ path: "/tmp/abrahamic-note-links-editor.png", fullPage: true });
