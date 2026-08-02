@@ -308,6 +308,39 @@ export class NotesSystem extends EventTarget {
     await deleteDoc(doc(this.firestore, "sharedNotes", id));
   }
 
+  async createSharedMindMap(map, inviteEmails = [], accessMode = "link") {
+    if (!this.user?.email) throw new Error("Sign in before sharing a mind map.");
+    const mode = accessMode === "custom" ? "custom" : "link";
+    const memberEmails = mode === "custom"
+      ? [...new Set(inviteEmails.map((email) => String(email).trim().toLowerCase()).filter(Boolean))]
+      : [];
+    if (mode === "custom" && !memberEmails.length) throw new Error("Add at least one email address.");
+    const now = new Date().toISOString();
+    const clean = {
+      version: 1,
+      title: String(map.title || "Shared mind map").slice(0, 120),
+      focusNoteId: String(map.focusNoteId || ""),
+      notes: Array.isArray(map.notes) ? map.notes.slice(0, 60) : [],
+      folders: Array.isArray(map.folders) ? map.folders.slice(0, 60) : [],
+      ownerUid: this.user.uid,
+      memberEmails,
+      accessMode: mode,
+      createdAt: now,
+      updatedAt: now,
+    };
+    if (!clean.notes.length) throw new Error("This mind map has no notes to share.");
+    if (utf8.encode(JSON.stringify(clean)).byteLength > 900000) throw new Error("This map is too large to share at once. Share a folder or a note map instead.");
+    return addDoc(collection(this.firestore, "sharedMindMaps"), clean);
+  }
+
+  async getSharedMindMap(id) {
+    const safeId = String(id || "").trim();
+    if (!safeId || safeId.length > 160) throw new Error("This mind map link is invalid.");
+    const snapshot = await getDoc(doc(this.firestore, "sharedMindMaps", safeId));
+    if (!snapshot.exists()) throw new Error("This shared mind map is no longer available.");
+    return { id: snapshot.id, ...snapshot.data() };
+  }
+
   async activateAccount(uid) {
     await this.writeQueue;
     this.config.accountUid = uid;

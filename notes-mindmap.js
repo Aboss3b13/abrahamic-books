@@ -378,6 +378,7 @@ export function renderNotesMindMap(container, options) {
         <button type="button" data-map-zoom="out" aria-label="Make map smaller" title="Make map smaller"><i class="ti ti-minus"></i></button>
         <button type="button" data-map-reset aria-label="Fit map to screen" title="Fit map to screen"><i class="ti ti-focus-centered"></i></button>
         ${expandedRangeIds.size ? `<button type="button" data-map-collapse aria-label="Collapse all expanded passages" title="Collapse expanded passages"><i class="ti ti-fold-down"></i></button>` : ""}
+        ${options.onSave ? `<button type="button" data-map-save aria-label="${options.mapSaved ? "Mind map saved" : "Save mind map and notes"}" title="${options.mapSaved ? "Mind map saved" : "Save mind map and notes"}" ${options.mapSaved ? "disabled" : ""}><i class="ti ti-${options.mapSaved ? "check" : "device-floppy"}"></i></button>` : ""}
         ${options.onShare ? '<button type="button" data-map-share aria-label="Share this mind map" title="Share mind map"><i class="ti ti-share-3"></i></button>' : ""}
         <button type="button" data-map-help aria-label="How to use the mind map" title="How to use the mind map"><i class="ti ti-question-mark"></i></button>
         <button type="button" data-map-zoom="in" aria-label="Make map larger" title="Make map larger"><i class="ti ti-plus"></i></button>
@@ -787,6 +788,7 @@ export function renderNotesMindMap(container, options) {
     renderNotesMindMap(container, options);
   });
   container.querySelectorAll("[data-map-zoom]").forEach((button) => button.addEventListener("click", () => zoom(button.dataset.mapZoom === "in" ? 1.22 : .82)));
+  container.querySelector("[data-map-save]")?.addEventListener("click", options.onSave);
   container.querySelector("[data-map-share]")?.addEventListener("click", options.onShare);
   const helpCard = container.querySelector(".mindmap-help-card");
   container.querySelector("[data-map-help]").addEventListener("click", () => {

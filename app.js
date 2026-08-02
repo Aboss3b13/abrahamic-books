@@ -133,6 +133,9 @@ const state = {
   selectedFolderId: "all",
   mindMapContext: null,
   mindMapReturnState: null,
+  mindMapShareData: null,
+  currentSharedMapNoteKey: "",
+  pendingSharedMapId: "",
   noteFolders: [],
   tagCatalog: {},
   originalWordCache: {},
@@ -379,6 +382,19 @@ const els = {
   collaborateSheet: document.querySelector("#collaborateSheet"),
   collaboratorEmails: document.querySelector("#collaboratorEmails"),
   createCollaborativeNote: document.querySelector("#createCollaborativeNote"),
+  mindMapShareSheet: document.querySelector("#mindMapShareSheet"),
+  shareMindMapLink: document.querySelector("#shareMindMapLink"),
+  shareMindMapCustom: document.querySelector("#shareMindMapCustom"),
+  mindMapCollaborateSheet: document.querySelector("#mindMapCollaborateSheet"),
+  mindMapCollaboratorEmails: document.querySelector("#mindMapCollaboratorEmails"),
+  createPrivateMindMap: document.querySelector("#createPrivateMindMap"),
+  sharedMapNoteSheet: document.querySelector("#sharedMapNoteSheet"),
+  sharedMapNoteTitle: document.querySelector("#sharedMapNoteTitle"),
+  sharedMapNoteSubtitle: document.querySelector("#sharedMapNoteSubtitle"),
+  sharedMapNoteTags: document.querySelector("#sharedMapNoteTags"),
+  sharedMapNoteText: document.querySelector("#sharedMapNoteText"),
+  sharedMapNoteReferences: document.querySelector("#sharedMapNoteReferences"),
+  saveSharedMapNote: document.querySelector("#saveSharedMapNote"),
   appLanguageSelect: document.querySelector("#appLanguageSelect"),
 };
 
@@ -458,7 +474,7 @@ async function setupAppLinks() {
   window.addEventListener("pageshow", restoreOnResume);
   window.addEventListener("popstate", () => openSharedLink());
   const incoming = new URL(location.href);
-  const isSharedNavigation = incoming.searchParams.has("ref") || incoming.searchParams.has("refs") || incoming.searchParams.has("note") || /(?:^|[&#])(note|notes|mindmap)=/.test(incoming.hash);
+  const isSharedNavigation = incoming.searchParams.has("ref") || incoming.searchParams.has("refs") || incoming.searchParams.has("note") || /(?:^|[&#])(note|notes|mindmap|map)=/.test(incoming.hash);
   if (!isSharedNavigation) await restoreOnResume();
   if (!Capacitor.isNativePlatform()) return;
   const openAppUrl = async (url) => {
@@ -695,6 +711,10 @@ function bindEvents() {
   els.shareSnapshot.addEventListener("click", shareSnapshotNote);
   els.shareCollaborative.addEventListener("click", openCollaborativeShare);
   els.createCollaborativeNote.addEventListener("click", createCollaborativeNote);
+  els.shareMindMapLink.addEventListener("click", () => createMindMapShare("link"));
+  els.shareMindMapCustom.addEventListener("click", openCustomMindMapShare);
+  els.createPrivateMindMap.addEventListener("click", () => createMindMapShare("custom"));
+  els.saveSharedMapNote.addEventListener("click", saveCurrentSharedMapNote);
   els.appLanguageSelect.addEventListener("change", () => setAppLanguage(els.appLanguageSelect.value));
   els.runSearch.addEventListener("click", runGlobalSearch);
   els.globalSearch.addEventListener("keydown", (event) => {
@@ -963,7 +983,7 @@ function getReaderAnchorKey() {
 }
 
 function syncUrlState() {
-  if (location.protocol === "file:" || location.hash.includes("note=") || location.hash.includes("notes=") || location.hash.includes("mindmap=")) return;
+  if (location.protocol === "file:" || location.hash.includes("note=") || location.hash.includes("notes=") || location.hash.includes("mindmap=") || location.hash.includes("map=")) return;
   const url = new URL(location.href);
   url.searchParams.set("view", state.currentView);
   if (state.currentView === "readView") {
@@ -2125,11 +2145,13 @@ function renderNotes({ animate = true, hydrateReferences = true } = {}) {
       formatReference: formatReferenceKey,
       parseReference: parseReferenceKey,
       onClose: closeMindMap,
-      onShare: () => shareMindMap(mapEntries, scopedFolders, {
+      onShare: () => openMindMapShare(mapEntries, scopedFolders, {
         title: mapContext?.title || activeFolder?.name || "My notes",
         focusNoteId: mapContext?.focusNoteId || "",
       }),
-      onOpenNote: mapContext?.kind === "shared" ? null : openNote,
+      onSave: mapContext?.kind === "shared" ? saveSharedMindMap : null,
+      mapSaved: Boolean(mapContext?.saved),
+      onOpenNote: mapContext?.kind === "shared" ? openSharedMapNote : openNote,
       onOpenReference: (reference) => {
         setNotesViewMode("flat");
         navigateToReference(reference);
@@ -2735,34 +2757,138 @@ function closeMindMap() {
   setNotesViewMode(state.noteFolders.some((folder) => folder.id === state.selectedFolderId) ? "folders" : "flat");
 }
 
-async function shareMindMap(entries, folders, details = {}) {
+function buildMindMapSnapshot(entries, folders, details = {}) {
   const included = entries.slice(0, 60);
-  const keyIndexes = new Map(included.map(([key], index) => [key, index]));
+  const includedKeys = new Set(included.map(([key]) => key));
   const usedFolderIds = new Set(included.map(([, note]) => note.folderId).filter(Boolean));
-  const includedFolders = folders.filter((folder) => usedFolderIds.has(folder.id));
-  const folderIndexes = new Map(includedFolders.map((folder, index) => [folder.id, index]));
-  const payload = {
-    v: 2,
-    t: String(details.title || "Shared mind map").slice(0, 120),
-    f: keyIndexes.has(details.focusNoteId) ? keyIndexes.get(details.focusNoteId) : -1,
-    n: included.map(([, note]) => [
-      String(note.title || "Untitled note").slice(0, 120),
-      Array.isArray(note.tags) ? note.tags.map(String).slice(0, 12) : [],
-      Array.isArray(note.references) ? note.references.map(String).slice(0, 50) : [],
-      Array.isArray(note.linkedNoteIds) ? note.linkedNoteIds.map((linkedKey) => keyIndexes.get(linkedKey)).filter(Number.isInteger) : [],
-      folderIndexes.has(note.folderId) ? folderIndexes.get(note.folderId) : -1,
-    ]),
-    d: includedFolders.map((folder) => String(folder.name || "Folder").slice(0, 60)),
+  return {
+    title: String(details.title || "Shared mind map").slice(0, 120),
+    focusNoteId: includedKeys.has(details.focusNoteId) ? details.focusNoteId : "",
+    notes: included.map(([key, note]) => ({
+      key,
+      title: String(note.title || "Untitled note").slice(0, 120),
+      text: String(note.text || ""),
+      tags: Array.isArray(note.tags) ? note.tags.map(String).slice(0, 12) : [],
+      references: Array.isArray(note.references) ? note.references.map(String).slice(0, 50) : [],
+      linkedNoteIds: Array.isArray(note.linkedNoteIds) ? note.linkedNoteIds.filter((linkedKey) => includedKeys.has(linkedKey)) : [],
+      folderId: String(note.folderId || ""),
+      standalone: true,
+    })),
+    folders: folders.filter((folder) => usedFolderIds.has(folder.id)).map((folder) => ({
+      id: String(folder.id), name: String(folder.name || "Folder").slice(0, 60), parentId: String(folder.parentId || ""),
+    })),
   };
-  const url = makePublicLink(`mindmap=${encodeBase64Url(JSON.stringify(payload))}`);
+}
+
+function openMindMapShare(entries, folders, details = {}) {
+  state.mindMapShareData = buildMindMapSnapshot(entries, folders, details);
+  openDialog(els.mindMapShareSheet);
+}
+
+function openCustomMindMapShare() {
+  if (!notesSystem?.signedIn) {
+    els.mindMapShareSheet.close();
+    openNotesSyncSettings();
+    setStatus("Sign in before sharing a private mind map.");
+    return;
+  }
+  els.mindMapShareSheet.close();
+  els.mindMapCollaboratorEmails.value = "";
+  openDialog(els.mindMapCollaborateSheet);
+}
+
+async function shareUrlOnly(url) {
   try {
     if (Capacitor.isNativePlatform()) await Share.share({ url });
     else if (navigator.share) await navigator.share({ url });
     else if (!(await copyShareLink(url))) window.prompt("Copy mind map link:", url);
-    if (entries.length > included.length) setStatus(`Shared the first ${included.length} connected notes so the link stays reliable.`);
-    else setStatus("Mind map link ready to share.");
   } catch (error) {
     if (error?.name !== "AbortError" && !(await copyShareLink(url))) window.prompt("Copy mind map link:", url);
+  }
+}
+
+async function createMindMapShare(accessMode) {
+  if (!state.mindMapShareData) return;
+  if (!notesSystem?.signedIn) {
+    els.mindMapShareSheet.close();
+    openNotesSyncSettings();
+    setStatus("Sign in once to create a short Firebase mind-map link.");
+    return;
+  }
+  const custom = accessMode === "custom";
+  const emails = custom ? els.mindMapCollaboratorEmails.value.split(/[,;\s]+/).filter(Boolean) : [];
+  const button = custom ? els.createPrivateMindMap : els.shareMindMapLink;
+  button.disabled = true;
+  try {
+    const created = await notesSystem.createSharedMindMap(state.mindMapShareData, emails, custom ? "custom" : "link");
+    const url = makePublicLink(`map=${created.id}`);
+    els.mindMapShareSheet.close();
+    els.mindMapCollaborateSheet.close();
+    await shareUrlOnly(url);
+    setStatus(custom ? `Private mind map shared with ${emails.length} ${emails.length === 1 ? "person" : "people"}.` : "Short mind-map link ready to share.");
+  } catch (error) {
+    setStatus(error.message);
+  } finally {
+    button.disabled = false;
+  }
+}
+
+function openSharedMapNote(key) {
+  const context = state.mindMapContext;
+  const note = context?.entries?.find(([noteKey]) => noteKey === key)?.[1];
+  if (!note) return;
+  state.currentSharedMapNoteKey = key;
+  els.sharedMapNoteTitle.textContent = note.title?.trim() || "Untitled note";
+  els.sharedMapNoteSubtitle.textContent = `${context.title || "Shared mind map"} · read-only source`;
+  els.sharedMapNoteText.textContent = note.text || "No text was added to this note.";
+  els.sharedMapNoteTags.innerHTML = (note.tags || []).map((tag) => `<span>#${escapeHTML(tag)}</span>`).join("");
+  els.sharedMapNoteReferences.innerHTML = (note.references || []).map((reference) => `<button class="reference-link" type="button" data-shared-map-ref="${escapeHTML(reference)}"><i class="ti ti-book-2" aria-hidden="true"></i><span>${escapeHTML(formatReferenceKey(reference))}</span><i class="ti ti-chevron-right" aria-hidden="true"></i></button>`).join("");
+  els.sharedMapNoteReferences.querySelectorAll("[data-shared-map-ref]").forEach((button) => button.addEventListener("click", () => {
+    els.sharedMapNoteSheet.close();
+    navigateToReference(button.dataset.sharedMapRef);
+  }));
+  openDialog(els.sharedMapNoteSheet);
+}
+
+async function saveCurrentSharedMapNote() {
+  const context = state.mindMapContext;
+  const note = context?.entries?.find(([key]) => key === state.currentSharedMapNoteKey)?.[1];
+  if (!note) return;
+  const key = `note:${crypto.randomUUID()}`;
+  state.notes[key] = await notesSystem.save(key, {
+    title: note.title || "Untitled note", text: note.text || "", tags: [...(note.tags || [])],
+    references: [...(note.references || [])], linkedNoteIds: [], folderId: "", standalone: true,
+  });
+  showCopiedState(els.saveSharedMapNote, "Saved");
+  setStatus("Shared note saved to your notes.");
+}
+
+async function saveSharedMindMap() {
+  const context = state.mindMapContext;
+  if (context?.kind !== "shared" || context.saved) return;
+  try {
+    const folderKeyMap = new Map((context.folders || []).map((folder) => [folder.id, `folder:${crypto.randomUUID()}`]));
+    const noteKeyMap = new Map((context.entries || []).map(([key]) => [key, `note:${crypto.randomUUID()}`]));
+    const createdFolders = (context.folders || []).map((folder) => ({
+      id: folderKeyMap.get(folder.id), name: folder.name || "Shared folder",
+      parentId: folderKeyMap.get(folder.parentId) || "", createdAt: new Date().toISOString(),
+    }));
+    state.noteFolders.push(...createdFolders);
+    for (const [sourceKey, note] of context.entries || []) {
+      const key = noteKeyMap.get(sourceKey);
+      state.notes[key] = await notesSystem.save(key, {
+        title: note.title || "Untitled note", text: note.text || "", tags: [...(note.tags || [])],
+        references: [...(note.references || [])],
+        linkedNoteIds: (note.linkedNoteIds || []).map((linkedKey) => noteKeyMap.get(linkedKey)).filter(Boolean),
+        folderId: folderKeyMap.get(note.folderId) || "", standalone: true,
+      });
+    }
+    context.saved = true;
+    saveNotesOrganizer();
+    renderNotes();
+    setStatus(`Saved ${context.entries.length} ${context.entries.length === 1 ? "note" : "notes"} and their mind-map connections.`);
+  } catch (error) {
+    setStatus(`Could not save this mind map: ${error.message}`);
   }
 }
 
@@ -4092,6 +4218,10 @@ async function connectFirebase(createAccount) {
     startAccountLastReadSync();
     els.firebasePassword.value = "";
     updateSyncUI("synced", createAccount ? "Firebase account created and notes synced." : "Signed in and synced with Firebase.");
+    if (state.pendingSharedMapId || new URLSearchParams(location.hash.slice(1)).has("map")) {
+      els.notesSyncSheet.close();
+      await openSharedLink();
+    }
   });
 }
 
@@ -4215,10 +4345,13 @@ async function openSharedLink() {
   const encodedNotes = hashParams.get("notes");
   const encodedNote = hashParams.get("note");
   const encodedMindMap = hashParams.get("mindmap");
-  if (!encodedNote && !encodedNotes && !encodedMindMap) return;
+  const cloudMindMapId = hashParams.get("map");
+  if (!encodedNote && !encodedNotes && !encodedMindMap && !cloudMindMapId) return;
   try {
-    if (encodedMindMap) {
-      const sharedMap = JSON.parse(decodeBase64Url(encodedMindMap));
+    if (cloudMindMapId || encodedMindMap) {
+      const sharedMap = cloudMindMapId
+        ? await notesSystem.getSharedMindMap(cloudMindMapId)
+        : JSON.parse(decodeBase64Url(encodedMindMap));
       let entries = [];
       let sharedFolders = [];
       let sharedTitle = "Shared mind map";
@@ -4257,6 +4390,7 @@ async function openSharedLink() {
       state.mindMapReturnState = { viewMode: state.noteViewMode, selectedFolderId: state.selectedFolderId };
       state.mindMapContext = {
         kind: "shared",
+        sourceId: cloudMindMapId || "",
         title: sharedTitle,
         focusNoteId,
         entries,
@@ -4268,7 +4402,8 @@ async function openSharedLink() {
       delete els.notesMindMap._mindMapView;
       switchView("notesView");
       renderNotes();
-      setStatus("Opened a shared mind map without adding anything to your notes.");
+      state.pendingSharedMapId = "";
+      setStatus("Shared mind map opened. You can read each note or save the complete map.");
       history.replaceState(null, "", `${location.pathname}${location.search}`);
       return;
     }
@@ -4306,8 +4441,12 @@ async function openSharedLink() {
     switchView("notesView");
     openNote(key);
     history.replaceState(null, "", `${location.pathname}${location.search}`);
-  } catch {
-    setStatus("This shared note link is invalid.");
+  } catch (error) {
+    if (cloudMindMapId) {
+      state.pendingSharedMapId = cloudMindMapId;
+      setStatus(notesSystem?.signedIn ? error.message : "This is a private mind map. Sign in with an invited email to open it.");
+      if (!notesSystem?.signedIn) openNotesSyncSettings();
+    } else setStatus("This shared note link is invalid.");
   }
 }
 

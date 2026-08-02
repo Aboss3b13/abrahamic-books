@@ -435,6 +435,32 @@
       </form>
     </dialog>
 
+    <dialog id="mindMapShareSheet" class="sheet share-note-sheet mindmap-share-sheet">
+      <form method="dialog" class="sheet-inner">
+        <div class="sheet-header"><div><h2>Share mind map</h2><p>Full note text stays in Firebase; the link stays short</p></div><button class="icon-button" value="close" aria-label="Close"><i class="ti ti-x" aria-hidden="true"></i></button></div>
+        <button id="shareMindMapLink" class="share-mode" type="button"><span class="share-number"><i class="ti ti-link" aria-hidden="true"></i></span><span><strong>Anyone with the link</strong><small>Share a fixed, read-only map with every note and connection included.</small></span></button>
+        <button id="shareMindMapCustom" class="share-mode" type="button"><span class="share-number"><i class="ti ti-user-lock" aria-hidden="true"></i></span><span><strong>Invite specific people</strong><small>Only signed-in accounts whose email you choose can open the map.</small></span></button>
+        <p class="fine-print">Recipients can explore notes and references, then save the complete map into their own notes.</p>
+      </form>
+    </dialog>
+
+    <dialog id="mindMapCollaborateSheet" class="sheet share-note-sheet mindmap-share-sheet">
+      <form method="dialog" class="sheet-inner">
+        <div class="sheet-header"><div><h2>Private mind map</h2><p>Choose exactly who can open it</p></div><button class="icon-button" value="close" aria-label="Close"><i class="ti ti-x" aria-hidden="true"></i></button></div>
+        <label class="note-field"><span>Invite by email</span><input id="mindMapCollaboratorEmails" type="text" inputmode="email" placeholder="friend@example.com, study@example.com"></label>
+        <p class="fine-print">Invitees must sign in using one of these email addresses.</p>
+        <button id="createPrivateMindMap" class="text-button primary" type="button"><i class="ti ti-share-3" aria-hidden="true"></i><span>Create private link</span></button>
+      </form>
+    </dialog>
+
+    <dialog id="sharedMapNoteSheet" class="sheet shared-map-note-sheet">
+      <form method="dialog" class="sheet-inner">
+        <div class="sheet-header"><div><h2 id="sharedMapNoteTitle">Shared note</h2><p id="sharedMapNoteSubtitle">From a shared mind map</p></div><button class="icon-button" value="close" aria-label="Close"><i class="ti ti-x" aria-hidden="true"></i></button></div>
+        <article class="shared-map-note-content"><div id="sharedMapNoteTags" class="note-tags"></div><p id="sharedMapNoteText"></p><div id="sharedMapNoteReferences" class="note-card-references"></div></article>
+        <div class="sheet-actions"><button id="saveSharedMapNote" class="text-button" type="button"><i class="ti ti-device-floppy" aria-hidden="true"></i><span>Save this note</span></button><button class="text-button primary" value="close"><i class="ti ti-check" aria-hidden="true"></i><span>Done</span></button></div>
+      </form>
+    </dialog>
+
     <dialog id="searchFilterSheet" class="sheet source-filter-sheet">
       <form method="dialog" class="sheet-inner">
         <div class="sheet-header">
