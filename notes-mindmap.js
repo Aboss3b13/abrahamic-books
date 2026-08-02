@@ -108,6 +108,47 @@ function buildGraph({ entries, folders, formatReference, parseReference, expande
   return { nodes: [...nodes.values()], edges: [...edges.values()] };
 }
 
+function filterGraphForSearch(graph, rawQuery) {
+  const query = String(rawQuery || "").trim().toLocaleLowerCase();
+  if (!query) return graph;
+  const visibleIds = new Set(graph.nodes.filter((node) => node.visible !== false).map((node) => node.id));
+  const matchingIds = new Set(graph.nodes
+    .filter((node) => visibleIds.has(node.id) && `${node.label} ${node.searchText || ""}`.toLocaleLowerCase().includes(query))
+    .map((node) => node.id));
+  const includedIds = new Set(matchingIds);
+  graph.edges.forEach((edge) => {
+    if (!edge.visible || !visibleIds.has(edge.source) || !visibleIds.has(edge.target)) return;
+    if (matchingIds.has(edge.source) || matchingIds.has(edge.target)) {
+      includedIds.add(edge.source);
+      includedIds.add(edge.target);
+    }
+  });
+  const nodeById = new Map(graph.nodes.map((node) => [node.id, node]));
+  const matchedTopics = [...matchingIds].filter((id) => nodeById.get(id)?.type === "tag");
+  if (matchedTopics.length) {
+    const topicNotes = new Set();
+    graph.edges.forEach((edge) => {
+      if (!edge.visible || !matchedTopics.includes(edge.source) && !matchedTopics.includes(edge.target)) return;
+      const other = matchedTopics.includes(edge.source) ? edge.target : edge.source;
+      if (nodeById.get(other)?.type === "note") topicNotes.add(other);
+    });
+    graph.edges.forEach((edge) => {
+      if (!edge.visible || !["reference", "collection"].includes(edge.kind)) return;
+      const noteId = topicNotes.has(edge.source) ? edge.source : topicNotes.has(edge.target) ? edge.target : "";
+      if (!noteId) return;
+      const other = edge.source === noteId ? edge.target : edge.source;
+      if (!["reference", "collection"].includes(nodeById.get(other)?.type)) return;
+      includedIds.add(noteId);
+      includedIds.add(other);
+    });
+  }
+  return {
+    nodes: graph.nodes.filter((node) => includedIds.has(node.id)),
+    edges: graph.edges.filter((edge) => edge.visible && includedIds.has(edge.source) && includedIds.has(edge.target)),
+    matchingIds,
+  };
+}
+
 function svgElement(name, attributes = {}) {
   const element = document.createElementNS(SVG_NS, name);
   Object.entries(attributes).forEach(([key, value]) => element.setAttribute(key, value));
@@ -258,12 +299,16 @@ export function renderNotesMindMap(container, options) {
   container._mindMapCleanup?.();
   container._expandedReferenceRanges ||= new Set();
   const expandedRangeIds = container._expandedReferenceRanges;
-  const graph = buildGraph({ ...options, expandedRangeIds });
-  if (!graph.nodes.length) {
+  const fullGraph = buildGraph({ ...options, expandedRangeIds });
+  if (!fullGraph.nodes.length) {
     container.innerHTML = `<button class="mindmap-close mindmap-empty-close" type="button" aria-label="Close mind map"><i class="ti ti-x"></i></button><div class="mindmap-empty"><i class="ti ti-affiliate" aria-hidden="true"></i><h3>No notes to map yet</h3><p>Create a note or clear the current filters to reveal your knowledge map.</p></div>`;
     container.querySelector(".mindmap-close").addEventListener("click", options.onClose);
     return;
   }
+
+  const searchQuery = String(container._mindMapSearchQuery || "");
+  const graph = filterGraphForSearch(fullGraph, searchQuery);
+  const noSearchResults = Boolean(searchQuery.trim() && !graph.nodes.length);
 
   const counts = graph.nodes.reduce((result, node) => ({ ...result, [node.type]: (result[node.type] || 0) + 1 }), {});
   container.classList.remove("has-map-selection", "has-map-search");
@@ -278,9 +323,9 @@ export function renderNotesMindMap(container, options) {
       </div>
       <button class="mindmap-close" type="button" aria-label="Close mind map"><i class="ti ti-x"></i></button>
     </header>
-    <div class="mindmap-guide"><i class="ti ti-pointer" aria-hidden="true"></i><span><strong>Tap anything to reveal its entire connection network.</strong> Tap a passage to reveal or hide its verses.</span></div>
+    <div class="mindmap-guide"><i class="ti ti-pointer" aria-hidden="true"></i><span><strong>Tap anything to show its direct connections.</strong> Topics also reveal the verses connected through their notes.</span></div>
     <div class="mindmap-legend" aria-label="Mind map key"><span data-legend="note"><i></i>Note</span><span data-legend="note-link"><i></i>Linked note</span><span data-legend="tag"><i></i>Topic</span><span data-legend="folder"><i></i>Folder</span><span data-legend="book"><i></i>Scripture</span><span data-legend="collection"><i></i>Passage</span><span data-legend="reference"><i></i>Verse</span></div>
-    <div class="mindmap-stage"><svg role="img" aria-label="Interactive clustered graph of notes, topics, scripture passages, and verses"></svg></div>
+    <div class="mindmap-stage"><svg role="img" aria-label="Interactive clustered graph of notes, topics, scripture passages, and verses"></svg>${noSearchResults ? `<div class="mindmap-no-results"><i class="ti ti-search-off" aria-hidden="true"></i><strong>No connections found</strong><span>Try another note, topic, or verse.</span></div>` : ""}</div>
     <div class="mindmap-hint"><i class="ti ti-zoom-scan"></i> Drag to move · pinch or scroll to zoom · tap empty space to clear focus</div>
     <aside class="mindmap-inspector" hidden></aside>`;
 
@@ -289,6 +334,36 @@ export function renderNotesMindMap(container, options) {
   const inspector = container.querySelector(".mindmap-inspector");
   const searchInput = container.querySelector(".mindmap-search input");
   const searchClear = container.querySelector(".mindmap-search button");
+  searchInput.value = searchQuery;
+  searchClear.hidden = !searchQuery;
+  container.classList.toggle("has-map-search", Boolean(searchQuery));
+  if (noSearchResults) {
+    let searchTimer = 0;
+    const updateSearch = () => {
+      clearTimeout(searchTimer);
+      searchTimer = window.setTimeout(() => {
+        container._mindMapSearchQuery = searchInput.value.trim();
+        container._mindMapRestoreSearchFocus = true;
+        delete container._mindMapView;
+        renderNotesMindMap(container, options);
+      }, 140);
+    };
+    searchInput.addEventListener("input", updateSearch);
+    searchClear.addEventListener("click", () => {
+      clearTimeout(searchTimer);
+      container._mindMapSearchQuery = "";
+      container._mindMapRestoreSearchFocus = true;
+      delete container._mindMapView;
+      renderNotesMindMap(container, options);
+    });
+    container.querySelector(".mindmap-close").addEventListener("click", options.onClose);
+    if (container._mindMapRestoreSearchFocus) {
+      delete container._mindMapRestoreSearchFocus;
+      requestAnimationFrame(() => { searchInput.focus(); searchInput.setSelectionRange(searchInput.value.length, searchInput.value.length); });
+    }
+    container._mindMapCleanup = () => clearTimeout(searchTimer);
+    return;
+  }
   const stageRect = stage.getBoundingClientRect();
   const viewportWidth = 1200;
   const viewportHeight = Math.max(620, viewportWidth * (stageRect.height || 700) / Math.max(stageRect.width || 1000, 1));
@@ -352,7 +427,7 @@ export function renderNotesMindMap(container, options) {
   });
 
   visibleNodes.forEach((node, nodeIndex) => {
-    const nodeClass = `mindmap-node node-${node.type}${node.expanded ? " is-expanded" : ""}${node.rangeChild ? " is-range-child" : ""}${node.externalScope ? " is-external-note" : ""}${node.visible === false ? " is-map-hidden" : ""}`;
+    const nodeClass = `mindmap-node node-${node.type}${node.expanded ? " is-expanded" : ""}${node.rangeChild ? " is-range-child" : ""}${node.externalScope ? " is-external-note" : ""}${node.visible === false ? " is-map-hidden" : ""}${graph.matchingIds?.has(node.id) ? " is-search-match" : ""}`;
     const group = svgElement("g", {
       class: nodeClass,
       transform: `translate(${node.x} ${node.y})`,
@@ -385,7 +460,6 @@ export function renderNotesMindMap(container, options) {
   });
 
   const noteZone = zones.find((zone) => zone.type === "note");
-  const largeMap = graph.nodes.length > 90;
   const fitPadding = portrait ? 22 : 34;
   const fitScale = clamp(Math.min((viewportWidth - fitPadding * 2) / width, (viewportHeight - fitPadding * 2) / height), MIN_MAP_SCALE, 4);
   const startScale = portrait ? clamp((viewportWidth - 28) / width, MIN_MAP_SCALE, 4) : fitScale;
@@ -468,19 +542,24 @@ export function renderNotesMindMap(container, options) {
     selected = node.id;
     const connected = new Set([node.id]);
     const connectedEdges = new Set();
-    const queue = [node.id];
-    // Walk the complete visible component. A note can reach another note via
-    // a topic, folder, scripture book, passage, verse, or direct note link;
-    // stopping after one edge made those real relationships appear missing.
-    while (queue.length) {
-      const currentId = queue.shift();
-      (adjacency.get(currentId) || []).forEach((edge) => {
-        if (!visibleEdge(edge)) return;
-        connectedEdges.add(edge.id);
-        const other = edge.source === currentId ? edge.target : edge.source;
-        if (connected.has(other)) return;
-        connected.add(other);
-        queue.push(other);
+    (adjacency.get(node.id) || []).forEach((edge) => {
+      if (!visibleEdge(edge)) return;
+      connectedEdges.add(edge.id);
+      connected.add(edge.source === node.id ? edge.target : edge.source);
+    });
+    // A topic connects directly to notes, but its useful scripture context is
+    // one edge beyond those notes. Include only passage/verse edges here—not
+    // folders, books, other topics, or further notes.
+    if (node.type === "tag") {
+      [...connected].forEach((connectedId) => {
+        if (byId.get(connectedId)?.type !== "note") return;
+        (adjacency.get(connectedId) || []).forEach((edge) => {
+          if (!visibleEdge(edge) || !["reference", "collection"].includes(edge.kind)) return;
+          const other = edge.source === connectedId ? edge.target : edge.source;
+          if (!["reference", "collection"].includes(byId.get(other)?.type)) return;
+          connected.add(other);
+          connectedEdges.add(edge.id);
+        });
       });
     }
     container.classList.add("has-map-selection");
@@ -518,25 +597,25 @@ export function renderNotesMindMap(container, options) {
     activateNode(group);
   });
 
+  let searchTimer = 0;
   const runSearch = () => {
-    const query = searchInput.value.trim().toLocaleLowerCase();
-    if (query && selected) clearSelection();
-    searchClear.hidden = !query;
-    container.classList.toggle("has-map-search", Boolean(query));
-    let firstMatch = null;
-    nodeLayer.querySelectorAll(".mindmap-node").forEach((group) => {
-      const node = byId.get(group.dataset.nodeId);
-      const matches = !query || `${node.label} ${node.searchText || ""}`.toLocaleLowerCase().includes(query);
-      group.classList.toggle("is-search-match", Boolean(query && matches));
-      if (query && matches && !group.classList.contains("is-map-hidden") && !firstMatch) firstMatch = node;
-    });
-    if (query.length >= 2 && firstMatch) {
-      const nextScale = Math.max(scale, largeMap ? 4.2 : 2.2);
-      animateView(nextScale, viewportWidth / 2 - firstMatch.x * nextScale, viewportHeight / 2 - firstMatch.y * nextScale);
-    }
+    searchClear.hidden = !searchInput.value.trim();
+    clearTimeout(searchTimer);
+    searchTimer = window.setTimeout(() => {
+      container._mindMapSearchQuery = searchInput.value.trim();
+      container._mindMapRestoreSearchFocus = true;
+      delete container._mindMapView;
+      renderNotesMindMap(container, options);
+    }, 140);
   };
   searchInput.addEventListener("input", runSearch);
-  searchClear.addEventListener("click", () => { searchInput.value = ""; runSearch(); searchInput.focus(); });
+  searchClear.addEventListener("click", () => {
+    clearTimeout(searchTimer);
+    container._mindMapSearchQuery = "";
+    container._mindMapRestoreSearchFocus = true;
+    delete container._mindMapView;
+    renderNotesMindMap(container, options);
+  });
 
   svg.addEventListener("wheel", (event) => { event.preventDefault(); zoom(Math.exp(-event.deltaY * .0015), event.clientX, event.clientY); }, { passive: false });
   const pointers = new Map();
@@ -611,5 +690,9 @@ export function renderNotesMindMap(container, options) {
     delete container._mindMapPendingSelection;
     selectNode(byId.get(pendingSelection));
   }
-  container._mindMapCleanup = () => { cancelAnimationFrame(transformFrame); cancelAnimationFrame(cameraFrame); clearTimeout(resizeTimer); resizeObserver.disconnect(); };
+  if (container._mindMapRestoreSearchFocus) {
+    delete container._mindMapRestoreSearchFocus;
+    requestAnimationFrame(() => { searchInput.focus(); searchInput.setSelectionRange(searchInput.value.length, searchInput.value.length); });
+  }
+  container._mindMapCleanup = () => { cancelAnimationFrame(transformFrame); cancelAnimationFrame(cameraFrame); clearTimeout(searchTimer); clearTimeout(resizeTimer); resizeObserver.disconnect(); };
 }

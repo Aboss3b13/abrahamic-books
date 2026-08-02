@@ -54,7 +54,8 @@ if (!(await page.locator("#notesMindMap.has-map-selection").count())) throw new 
 await page.waitForTimeout(300);
 if (!(await page.locator(".mindmap-inspector:not([hidden])").count())) throw new Error("The selected item inspector closed itself.");
 const connectedTypes = await page.locator(".mindmap-node.is-connected").evaluateAll((items) => items.map((item) => item.dataset.nodeType));
-if (!["tag", "note", "folder", "book", "collection"].every((type) => connectedTypes.includes(type))) throw new Error(`Topic focus did not reveal the full connection network: ${JSON.stringify(connectedTypes)}`);
+if (!connectedTypes.includes("tag") || !connectedTypes.includes("note") || !connectedTypes.includes("collection")) throw new Error(`Topic focus did not include its notes and passages: ${JSON.stringify(connectedTypes)}`);
+if (connectedTypes.some((type) => ["folder", "book"].includes(type))) throw new Error(`Topic focus leaked into indirect connections: ${JSON.stringify(connectedTypes)}`);
 const focusOpacity = await page.evaluate(() => {
   const connected = document.querySelector(".mindmap-node.is-connected");
   const unrelated = document.querySelector(".mindmap-node:not(.is-connected):not(.is-map-hidden)");
@@ -77,8 +78,12 @@ if (expansion.expandedVerses < 2 || expansion.collectionEdges < expansion.expand
 await page.locator(".mindmap-node.is-range-child:not(.is-map-hidden)").first().evaluate((node) => node.dispatchEvent(new KeyboardEvent("keydown", { key: "Enter", bubbles: true })));
 if (!(await page.locator(".mindmap-node.node-note.is-connected").count())) throw new Error("Selecting a verse did not reveal its connected note.");
 await page.locator(".mindmap-search input").fill("Study note 119");
-if (!(await page.locator(".mindmap-node.is-search-match").count())) throw new Error("Large-map search did not find a note.");
-await page.waitForTimeout(450);
+await page.waitForFunction(() => document.querySelector(".mindmap-search input")?.value === "Study note 119" && document.querySelectorAll(".mindmap-node").length < 20);
+if (await page.locator(".mindmap-node.is-search-match").count() !== 1) throw new Error("Large-map search did not isolate the matching note.");
+const filteredTypes = await page.locator(".mindmap-node").evaluateAll((items) => items.map((item) => item.dataset.nodeType));
+if (!["note", "tag", "folder", "collection"].every((type) => filteredTypes.includes(type))) throw new Error(`Search omitted direct context: ${JSON.stringify(filteredTypes)}`);
+if (filteredTypes.length >= mapStats.nodes) throw new Error("Search did not re-layout a smaller graph.");
+await page.waitForTimeout(250);
 await page.screenshot({ path: "/tmp/abrahamic-mindmap-130-notes.png", fullPage: true });
 console.log(`Large landscape map rendered in ${Math.round(renderTime)}ms; testing phone gestures.`);
 

@@ -6465,6 +6465,7 @@ dialog::backdrop { animation-duration: 180ms; }
 
 .mindmap-search input,
 .note-link-search input { width: 100%; min-width: 0; border: 0; color: var(--ink); background: transparent; outline: 0; }
+.mindmap-search input::-webkit-search-cancel-button { appearance: none; }
 .mindmap-search button { display: grid; width: 30px; min-height: 30px; flex: 0 0 30px; place-items: center; padding: 0; border: 0; border-radius: 9px; color: var(--muted); background: transparent; }
 .mindmap-search button[hidden] { display: none; }
 
@@ -6544,10 +6545,27 @@ dialog::backdrop { animation-duration: 180ms; }
 .mindmap-node.is-connected { opacity: 1 !important; }
 .mindmap-node.is-connected rect { stroke-width: 2.8; filter: drop-shadow(0 0 13px color-mix(in srgb, var(--green-2) 34%, transparent)); }
 .mindmap-edge.is-connected { opacity: 1 !important; stroke-width: 3; filter: drop-shadow(0 0 3px color-mix(in srgb, currentColor 38%, transparent)); }
-.notes-mindmap.has-map-search .mindmap-node:not(.is-search-match) { opacity: .07 !important; }
-.notes-mindmap.has-map-search .mindmap-edge { opacity: .035 !important; }
+.notes-mindmap.has-map-search .mindmap-node:not(.is-search-match) { opacity: .72 !important; }
+.notes-mindmap.has-map-search .mindmap-edge { opacity: .58 !important; }
 .mindmap-node.is-search-match { opacity: 1 !important; }
 .mindmap-node.is-search-match rect { stroke-width: 3; filter: drop-shadow(0 0 12px color-mix(in srgb, var(--gold) 38%, transparent)); }
+
+.mindmap-no-results {
+  position: absolute;
+  inset: 0;
+  z-index: 3;
+  display: grid;
+  place-content: center;
+  justify-items: center;
+  gap: 7px;
+  padding: 24px;
+  color: var(--muted);
+  text-align: center;
+  pointer-events: none;
+}
+.mindmap-no-results i { color: var(--green); font-size: 2.2rem; }
+.mindmap-no-results strong { color: var(--ink); font-size: 1rem; }
+.mindmap-no-results span { font-size: .78rem; }
 
 /* Direct note links in the editor. */
 .note-link-panel { display: grid; gap: 11px; }
