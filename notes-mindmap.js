@@ -142,6 +142,33 @@ function filterGraphForSearch(graph, rawQuery) {
       includedIds.add(other);
     });
   }
+
+  // Keep an expanded passage's summary node in the filtered graph whenever
+  // one of its verses is visible. Without the parent, expanding a passage
+  // during search removed the only control that could collapse it again.
+  // Repeat until stable so the passage's scripture book can remain connected
+  // too, making filtered results easier to understand.
+  let addedContext = true;
+  while (addedContext) {
+    addedContext = false;
+    graph.nodes.forEach((node) => {
+      if (!includedIds.has(node.id) || !node.rangeParentId || includedIds.has(node.rangeParentId)) return;
+      includedIds.add(node.rangeParentId);
+      addedContext = true;
+    });
+    graph.edges.forEach((edge) => {
+      if (!edge.visible) return;
+      const source = nodeById.get(edge.source);
+      const target = nodeById.get(edge.target);
+      const connectsIncludedPassage = includedIds.has(edge.source) && source?.type === "collection"
+        || includedIds.has(edge.target) && target?.type === "collection";
+      if (!connectsIncludedPassage) return;
+      const other = includedIds.has(edge.source) ? edge.target : edge.source;
+      if (nodeById.get(other)?.type !== "book" || includedIds.has(other)) return;
+      includedIds.add(other);
+      addedContext = true;
+    });
+  }
   return {
     nodes: graph.nodes.filter((node) => includedIds.has(node.id)),
     edges: graph.edges.filter((edge) => edge.visible && includedIds.has(edge.source) && includedIds.has(edge.target)),
@@ -319,6 +346,7 @@ export function renderNotesMindMap(container, options) {
       <div class="mindmap-actions" role="group" aria-label="Mind map controls">
         <button type="button" data-map-zoom="out" aria-label="Zoom out"><i class="ti ti-minus"></i></button>
         <button type="button" data-map-reset aria-label="Fit entire map"><i class="ti ti-focus-centered"></i><span>Fit</span></button>
+        ${expandedRangeIds.size ? `<button type="button" data-map-collapse aria-label="Collapse all expanded passages"><i class="ti ti-fold-down"></i><span>Collapse passages</span></button>` : ""}
         <button type="button" data-map-zoom="in" aria-label="Zoom in"><i class="ti ti-plus"></i></button>
       </div>
       <button class="mindmap-close" type="button" aria-label="Close mind map"><i class="ti ti-x"></i></button>
@@ -683,6 +711,11 @@ export function renderNotesMindMap(container, options) {
   svg.addEventListener("pointerup", endPointer);
   svg.addEventListener("pointercancel", (event) => { gestureMoved = true; endPointer(event); });
   container.querySelector("[data-map-reset]").addEventListener("click", fit);
+  container.querySelector("[data-map-collapse]")?.addEventListener("click", () => {
+    expandedRangeIds.clear();
+    delete container._mindMapView;
+    renderNotesMindMap(container, options);
+  });
   container.querySelectorAll("[data-map-zoom]").forEach((button) => button.addEventListener("click", () => zoom(button.dataset.mapZoom === "in" ? 1.22 : .82)));
   container.querySelector(".mindmap-close").addEventListener("click", options.onClose);
   const pendingSelection = container._mindMapPendingSelection;
@@ -696,3 +729,5 @@ export function renderNotesMindMap(container, options) {
   }
   container._mindMapCleanup = () => { cancelAnimationFrame(transformFrame); cancelAnimationFrame(cameraFrame); clearTimeout(searchTimer); clearTimeout(resizeTimer); resizeObserver.disconnect(); };
 }
+
+export { filterGraphForSearch };

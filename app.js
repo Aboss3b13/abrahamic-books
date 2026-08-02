@@ -907,11 +907,15 @@ let controlsMotion = null;
 let controlsMotionToolbar = null;
 let toolbarTouchActive = false;
 
+function keepsExpandedTabletControls() {
+  return matchMedia("(min-width: 600px) and (max-width: 959px)").matches;
+}
+
 window.addEventListener("touchstart", () => { toolbarTouchActive = true; }, { passive: true });
 window.addEventListener("touchend", () => {
   toolbarTouchActive = false;
   setTimeout(() => {
-    if (isLandscapeWorkspace() || window.scrollY <= 220 || document.body.classList.contains("controls-manually-expanded")) return;
+    if (keepsExpandedTabletControls() || isLandscapeWorkspace() || window.scrollY <= 220 || document.body.classList.contains("controls-manually-expanded")) return;
     setControlsCollapsed(true, true);
   }, 90);
 }, { passive: true });
@@ -987,7 +991,7 @@ function restoreAppPosition() {
   const apply = () => {
     if (token !== resumeRestoreToken) return;
     viewSwitchingUntil = performance.now() + 360;
-    document.body.classList.toggle("controls-collapsed", Boolean(position.controlsCollapsed));
+    document.body.classList.toggle("controls-collapsed", !keepsExpandedTabletControls() && Boolean(position.controlsCollapsed));
     document.body.classList.toggle("workspace-tool-collapsed", Boolean(position.workspaceToolCollapsed));
     window.scrollTo({ top: Math.max(0, Number(position.windowTop) || 0), behavior: "auto" });
     document.querySelector("#workspaceLeft")?.scrollTo({ top: Math.max(0, Number(position.workspaceTop) || 0), behavior: "auto" });
@@ -1006,6 +1010,12 @@ function handleToolbarScroll() {
   toolbarScrollFrame = true;
   requestAnimationFrame(() => {
     const y = window.scrollY;
+    if (keepsExpandedTabletControls()) {
+      document.body.classList.remove("controls-collapsed", "controls-manually-expanded");
+      previousToolbarScrollY = y;
+      toolbarScrollFrame = false;
+      return;
+    }
     if (performance.now() < viewSwitchingUntil) {
       previousToolbarScrollY = y;
       toolbarScrollFrame = false;
@@ -1075,7 +1085,7 @@ function getActiveToolbar() {
 }
 
 function setControlsCollapsed(collapsed, compensateScroll = true) {
-  if (isLandscapeWorkspace()) {
+  if (isLandscapeWorkspace() || keepsExpandedTabletControls()) {
     document.body.classList.remove("controls-collapsed", "controls-manually-expanded");
     return;
   }
