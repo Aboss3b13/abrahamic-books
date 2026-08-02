@@ -371,15 +371,19 @@ export class NotesSystem extends EventTarget {
         { description: String(details?.description || "").slice(0, 240) },
       ]))
       : {};
+    const key = `organizer:${this.currentOwnerUid()}`;
+    const existing = (await this.getMeta(key)) || {};
+    const contentUnchanged = JSON.stringify(existing.folders || []) === JSON.stringify(folders)
+      && JSON.stringify(existing.tagCatalog || {}) === JSON.stringify(tagCatalog);
+    const hasLegacySyncedUi = "viewMode" in existing || "selectedFolderId" in existing;
     const clean = {
-      viewMode: ["folders", "mindmap"].includes(organizer.viewMode) ? organizer.viewMode : "flat",
-      selectedFolderId: typeof organizer.selectedFolderId === "string" ? organizer.selectedFolderId : "all",
       folders,
       tagCatalog,
-      updatedAt: new Date().toISOString(),
-      deviceId: this.config.deviceId,
+      updatedAt: contentUnchanged && !hasLegacySyncedUi ? existing.updatedAt || "1970-01-01T00:00:00.000Z" : new Date().toISOString(),
+      deviceId: contentUnchanged && !hasLegacySyncedUi ? existing.deviceId || this.config.deviceId : this.config.deviceId,
     };
-    await this.setMeta(`organizer:${this.currentOwnerUid()}`, clean);
+    if (contentUnchanged && !hasLegacySyncedUi) return clean;
+    await this.setMeta(key, clean);
     this.scheduleSync(250);
     return clean;
   }

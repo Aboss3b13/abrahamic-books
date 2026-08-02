@@ -131,6 +131,8 @@ const state = {
   notesDateFilter: "any",
   noteViewMode: "flat",
   selectedFolderId: "all",
+  mindMapContext: null,
+  mindMapReturnState: null,
   noteFolders: [],
   tagCatalog: {},
   originalWordCache: {},
@@ -280,6 +282,7 @@ const els = {
   noteTitle: document.querySelector("#noteTitle"),
   noteSubtitle: document.querySelector("#noteSubtitle"),
   noteEditor: document.querySelector("#noteEditor"),
+  openNoteMindMap: document.querySelector("#openNoteMindMap"),
   shareNote: document.querySelector("#shareNote"),
   openReferences: document.querySelector("#openReferences"),
   deleteNote: document.querySelector("#deleteNote"),
@@ -455,7 +458,7 @@ async function setupAppLinks() {
   window.addEventListener("pageshow", restoreOnResume);
   window.addEventListener("popstate", () => openSharedLink());
   const incoming = new URL(location.href);
-  const isSharedNavigation = incoming.searchParams.has("ref") || incoming.searchParams.has("refs") || incoming.searchParams.has("note") || /(?:^|[&#])(note|notes)=/.test(incoming.hash);
+  const isSharedNavigation = incoming.searchParams.has("ref") || incoming.searchParams.has("refs") || incoming.searchParams.has("note") || /(?:^|[&#])(note|notes|mindmap)=/.test(incoming.hash);
   if (!isSharedNavigation) await restoreOnResume();
   if (!Capacitor.isNativePlatform()) return;
   const openAppUrl = async (url) => {
@@ -623,6 +626,7 @@ function bindEvents() {
     }
   });
   els.deleteNote.addEventListener("click", deleteCurrentNote);
+  els.openNoteMindMap.addEventListener("click", () => openNoteMindMap(state.currentNoteKey));
   els.shareNote.addEventListener("click", shareCurrentNote);
   els.openReferences.addEventListener("click", showReferenceOverview);
   els.continueReading.addEventListener("click", continueReadingFromFocus);
@@ -959,7 +963,7 @@ function getReaderAnchorKey() {
 }
 
 function syncUrlState() {
-  if (location.protocol === "file:" || location.hash.includes("note=") || location.hash.includes("notes=")) return;
+  if (location.protocol === "file:" || location.hash.includes("note=") || location.hash.includes("notes=") || location.hash.includes("mindmap=")) return;
   const url = new URL(location.href);
   url.searchParams.set("view", state.currentView);
   if (state.currentView === "readView") {
@@ -2094,8 +2098,9 @@ function renderNotes({ animate = true, hydrateReferences = true } = {}) {
   renderTagFilters();
 
   if (mindMapMode && !locked) {
-    let mapEntries = entries;
-    if (state.notesSection === "private" && !["", "all"].includes(state.selectedFolderId)) {
+    const mapContext = state.mindMapContext;
+    let mapEntries = mapContext?.entries || entries;
+    if (!mapContext && state.notesSection === "private" && !["", "all"].includes(state.selectedFolderId)) {
       const scopedKeys = new Set(entries.map(([key]) => key));
       const visibleKeys = new Set(scopedKeys);
       entries.forEach(([, note]) => (note.linkedNoteIds || []).forEach((linkedKey) => visibleKeys.add(linkedKey)));
@@ -2104,21 +2109,27 @@ function renderNotes({ animate = true, hydrateReferences = true } = {}) {
         .map((key) => [key, { ...state.notes[key], mindMapExternal: !scopedKeys.has(key) }]);
     }
     const mapFolderIds = new Set(mapEntries.map(([, note]) => note.folderId).filter(Boolean));
-    const scopedFolders = folderScope
+    const scopedFolders = mapContext?.folders ? [...mapContext.folders] : folderScope
       ? state.noteFolders.filter((folder) => folderScope.has(folder.id) && folder.id !== state.selectedFolderId)
-      : state.noteFolders;
+      : [...state.noteFolders];
     state.noteFolders.filter((folder) => mapFolderIds.has(folder.id) && !scopedFolders.some((item) => item.id === folder.id)).forEach((folder) => scopedFolders.push(folder));
     const activeFolder = state.noteFolders.find((folder) => folder.id === state.selectedFolderId);
     renderNotesMindMap(els.notesMindMap, {
       entries: mapEntries,
       folders: scopedFolders,
-      rootLabel: activeFolder?.name || "My notes",
-      rootType: activeFolder ? "folder" : "root",
-      focusFolderId: activeFolder?.id || "",
+      rootLabel: mapContext?.title || activeFolder?.name || "My notes",
+      rootType: mapContext ? "note" : activeFolder ? "folder" : "root",
+      focusFolderId: mapContext ? "" : activeFolder?.id || "",
+      focusNoteId: mapContext?.focusNoteId || "",
+      sharedMap: mapContext?.kind === "shared",
       formatReference: formatReferenceKey,
       parseReference: parseReferenceKey,
-      onClose: () => setNotesViewMode(activeFolder ? "folders" : "flat"),
-      onOpenNote: openNote,
+      onClose: closeMindMap,
+      onShare: () => shareMindMap(mapEntries, scopedFolders, {
+        title: mapContext?.title || activeFolder?.name || "My notes",
+        focusNoteId: mapContext?.focusNoteId || "",
+      }),
+      onOpenNote: mapContext?.kind === "shared" ? null : openNote,
       onOpenReference: (reference) => {
         setNotesViewMode("flat");
         navigateToReference(reference);
@@ -2154,7 +2165,7 @@ function renderNotes({ animate = true, hydrateReferences = true } = {}) {
             ${tags.length ? `<div class="note-tags">${tags.map((tag) => `<button type="button" data-filter-tag="${escapeHTML(tag)}" aria-label="Show notes and verses tagged ${escapeHTML(tag)}">#${escapeHTML(tag)}</button>`).join("")}</div>` : ""}
             <div class="note-card-footer">
               <div class="note-card-references">${visibleRefs.map((group) => `<button class="reference-link" type="button" data-ref="${escapeHTML(group.references[0])}" title="${escapeHTML(group.references.length > 1 ? `${group.references.length} verses` : formatReferenceKey(group.references[0]))}"><i class="ti ti-book-2" aria-hidden="true"></i><span>${escapeHTML(formatReferenceRange(group, { separator: "." }))}</span><i class="ti ti-chevron-right reference-link-arrow" aria-hidden="true"></i></button>`).join("")}${referenceGroups.length > 4 ? `<button class="reference-expand-button" type="button" data-expand-references="${escapeHTML(key)}" aria-expanded="${referencesExpanded}"><i class="ti ti-${referencesExpanded ? "chevron-up" : "chevron-down"}" aria-hidden="true"></i><span>${referencesExpanded ? "Show fewer" : `Show all ${referenceGroups.length}`}</span></button>` : ""}</div>
-              <span class="note-visibility"><i class="ti ti-${state.notesSection === "shared" ? "users" : "lock"}" aria-hidden="true"></i>${visibility}</span>
+              <div class="note-card-secondary-actions"><button class="note-map-button" type="button" data-note-map="${escapeHTML(key)}" aria-label="View connections for ${escapeHTML(note.title?.trim() || "this note")}"><i class="ti ti-affiliate" aria-hidden="true"></i><span>Connections</span></button><span class="note-visibility"><i class="ti ti-${state.notesSection === "shared" ? "users" : "lock"}" aria-hidden="true"></i>${visibility}</span></div>
             </div>
           </article>
         `;
@@ -2170,6 +2181,9 @@ function renderNotes({ animate = true, hydrateReferences = true } = {}) {
   });
   els.notesList.querySelectorAll("button[data-ref]").forEach((button) => {
     button.addEventListener("click", () => navigateToReference(button.dataset.ref));
+  });
+  els.notesList.querySelectorAll("button[data-note-map]").forEach((button) => {
+    button.addEventListener("click", () => openNoteMindMap(button.dataset.noteMap));
   });
   els.notesList.querySelectorAll("button[data-filter-tag]").forEach((button) => {
     button.addEventListener("click", () => {
@@ -2641,11 +2655,108 @@ function renderNoteFolderOptions(selectedId = els.noteFolderSelect?.value || "")
 }
 
 function setNotesViewMode(mode) {
+  state.mindMapContext = null;
+  state.mindMapReturnState = null;
   state.noteViewMode = ["folders", "mindmap"].includes(mode) ? mode : "flat";
   if (state.noteViewMode === "flat") state.selectedFolderId = "all";
   else if (state.selectedFolderId === "all") state.selectedFolderId = "";
   saveNotesOrganizer();
   renderNotes();
+}
+
+function getConnectedNoteEntries(key) {
+  const source = state.notes[key];
+  if (!source) {
+    const shared = state.sharedNotes.find((note) => `shared:${note.id}` === key);
+    return shared ? [[key, shared]] : [];
+  }
+  const adjacency = new Map(Object.keys(state.notes).map((noteKey) => [noteKey, new Set()]));
+  Object.entries(state.notes).forEach(([noteKey, note]) => {
+    (note.linkedNoteIds || []).forEach((linkedKey) => {
+      if (!state.notes[linkedKey] || linkedKey === noteKey) return;
+      adjacency.get(noteKey)?.add(linkedKey);
+      adjacency.get(linkedKey)?.add(noteKey);
+    });
+  });
+  const connected = new Set([key]);
+  const queue = [key];
+  while (queue.length) {
+    adjacency.get(queue.shift())?.forEach((linkedKey) => {
+      if (connected.has(linkedKey)) return;
+      connected.add(linkedKey);
+      queue.push(linkedKey);
+    });
+  }
+  return [...connected].map((noteKey) => [noteKey, state.notes[noteKey]]).filter(([, note]) => note);
+}
+
+function openNoteMindMap(key) {
+  if (!key) return;
+  if (state.currentNoteKey === key && els.noteSheet.open) saveCurrentNote();
+  const entries = getConnectedNoteEntries(key);
+  if (!entries.length) return;
+  const note = entries.find(([noteKey]) => noteKey === key)?.[1] || entries[0][1];
+  const folderIds = new Set(entries.map(([, item]) => item.folderId).filter(Boolean));
+  state.mindMapReturnState = { viewMode: state.noteViewMode, selectedFolderId: state.selectedFolderId };
+  state.mindMapContext = {
+    kind: "note",
+    title: note.title?.trim() || "Untitled note",
+    focusNoteId: key,
+    entries,
+    folders: state.noteFolders.filter((folder) => folderIds.has(folder.id)),
+  };
+  state.noteViewMode = "mindmap";
+  state.selectedFolderId = "";
+  if (els.noteSheet.open) els.noteSheet.close();
+  if (state.currentView !== "notesView") switchView("notesView");
+  renderNotes();
+}
+
+function closeMindMap() {
+  if (state.mindMapContext) {
+    const previous = state.mindMapReturnState || { viewMode: "flat", selectedFolderId: "all" };
+    state.mindMapContext = null;
+    state.mindMapReturnState = null;
+    state.noteViewMode = ["folders", "mindmap"].includes(previous.viewMode) ? previous.viewMode : "flat";
+    state.selectedFolderId = previous.selectedFolderId || (state.noteViewMode === "flat" ? "all" : "");
+    if (state.noteViewMode === "mindmap") state.noteViewMode = "flat";
+    saveNotesOrganizer();
+    renderNotes();
+    return;
+  }
+  setNotesViewMode(state.noteFolders.some((folder) => folder.id === state.selectedFolderId) ? "folders" : "flat");
+}
+
+async function shareMindMap(entries, folders, details = {}) {
+  const included = entries.slice(0, 60);
+  const includedKeys = new Set(included.map(([key]) => key));
+  const payload = {
+    version: 1,
+    title: String(details.title || "Shared mind map").slice(0, 120),
+    focusNoteId: includedKeys.has(details.focusNoteId) ? details.focusNoteId : "",
+    notes: included.map(([key, note]) => ({
+      key,
+      title: String(note.title || "Untitled note").slice(0, 120),
+      text: String(note.text || "").slice(0, 240),
+      tags: Array.isArray(note.tags) ? note.tags.map(String).slice(0, 12) : [],
+      references: Array.isArray(note.references) ? note.references.map(String).slice(0, 50) : [],
+      linkedNoteIds: Array.isArray(note.linkedNoteIds) ? note.linkedNoteIds.filter((linkedKey) => includedKeys.has(linkedKey)) : [],
+      folderId: String(note.folderId || ""),
+      standalone: true,
+    })),
+    folders: folders.filter((folder) => included.some(([, note]) => note.folderId === folder.id)).map((folder) => ({ id: folder.id, name: folder.name, parentId: folder.parentId || "" })),
+  };
+  const url = makePublicLink(`mindmap=${encodeBase64Url(JSON.stringify(payload))}`);
+  const title = `${payload.title} · Abrahamic Books mind map`;
+  try {
+    if (Capacitor.isNativePlatform()) await Share.share({ title, text: "Explore these connected notes, topics, and scripture references.", url, dialogTitle: "Share mind map" });
+    else if (navigator.share) await navigator.share({ title, text: "Explore these connected notes, topics, and scripture references.", url });
+    else if (!(await copyShareLink(url))) window.prompt("Copy mind map link:", url);
+    if (entries.length > included.length) setStatus(`Shared the first ${included.length} connected notes so the link stays reliable.`);
+    else setStatus("Mind map link ready to share.");
+  } catch (error) {
+    if (error?.name !== "AbortError" && !(await copyShareLink(url))) window.prompt("Copy mind map link:", url);
+  }
 }
 
 function syncMindMapFullscreen() {
@@ -2731,13 +2842,18 @@ function saveNotesOrganizer() {
   };
   localStorage.setItem(STORE.notesOrganizer, JSON.stringify(organizer));
   notesSystem?.saveOrganizer(organizer).then((saved) => {
-    localStorage.setItem(STORE.notesOrganizer, JSON.stringify(saved));
+    localStorage.setItem(STORE.notesOrganizer, JSON.stringify({
+      ...saved,
+      viewMode: state.noteViewMode,
+      selectedFolderId: state.selectedFolderId,
+    }));
   }).catch(() => {});
 }
 
 function applyNotesOrganizer(organizer = {}) {
-  state.noteViewMode = ["folders", "mindmap"].includes(organizer.viewMode) ? organizer.viewMode : "flat";
-  state.selectedFolderId = typeof organizer.selectedFolderId === "string" ? organizer.selectedFolderId : "all";
+  // Folders and tag descriptions belong to the notes library and may sync.
+  // The active view and open folder are device-local UI state: applying them
+  // from Firestore made a phone navigate when a tablet changed tabs.
   state.noteFolders = Array.isArray(organizer.folders)
     ? organizer.folders.filter((folder) => folder && typeof folder.id === "string" && typeof folder.name === "string").map((folder) => ({ ...folder, parentId: typeof folder.parentId === "string" ? folder.parentId : "" }))
     : [];
@@ -2746,7 +2862,13 @@ function applyNotesOrganizer(organizer = {}) {
     state.selectedFolderId = state.noteViewMode === "folders" ? "" : "all";
   }
   if (state.noteViewMode === "folders" && state.selectedFolderId === "all") state.selectedFolderId = "";
-  localStorage.setItem(STORE.notesOrganizer, JSON.stringify({ ...organizer, folders: state.noteFolders, tagCatalog: state.tagCatalog }));
+  localStorage.setItem(STORE.notesOrganizer, JSON.stringify({
+    ...organizer,
+    viewMode: state.noteViewMode,
+    selectedFolderId: state.selectedFolderId,
+    folders: state.noteFolders,
+    tagCatalog: state.tagCatalog,
+  }));
   renderNoteFolderOptions();
   renderNotes();
 }
@@ -4085,8 +4207,39 @@ async function openSharedLink() {
   }
   const encodedNotes = hashParams.get("notes");
   const encodedNote = hashParams.get("note");
-  if (!encodedNote && !encodedNotes) return;
+  const encodedMindMap = hashParams.get("mindmap");
+  if (!encodedNote && !encodedNotes && !encodedMindMap) return;
   try {
+    if (encodedMindMap) {
+      const sharedMap = JSON.parse(decodeBase64Url(encodedMindMap));
+      const items = Array.isArray(sharedMap?.notes) ? sharedMap.notes.slice(0, 60) : [];
+      if (!items.length) throw new Error("Empty mind map");
+      const entries = items.map((item, index) => {
+        const key = String(item.key || `shared-map:${index}`);
+        return [key, {
+          title: String(item.title || "Untitled note"), text: String(item.text || ""),
+          tags: Array.isArray(item.tags) ? item.tags.map(String).slice(0, 12) : [],
+          references: Array.isArray(item.references) ? item.references.map(String).slice(0, 50) : [],
+          linkedNoteIds: Array.isArray(item.linkedNoteIds) ? item.linkedNoteIds.map(String) : [],
+          folderId: String(item.folderId || ""), standalone: true,
+        }];
+      });
+      state.mindMapReturnState = { viewMode: state.noteViewMode, selectedFolderId: state.selectedFolderId };
+      state.mindMapContext = {
+        kind: "shared",
+        title: String(sharedMap.title || "Shared mind map").slice(0, 120),
+        focusNoteId: entries.some(([key]) => key === sharedMap.focusNoteId) ? sharedMap.focusNoteId : "",
+        entries,
+        folders: Array.isArray(sharedMap.folders) ? sharedMap.folders.slice(0, 60) : [],
+      };
+      state.noteViewMode = "mindmap";
+      state.selectedFolderId = "";
+      switchView("notesView");
+      renderNotes();
+      setStatus("Opened a shared mind map without adding anything to your notes.");
+      history.replaceState(null, "", `${location.pathname}${location.search}`);
+      return;
+    }
     if (encodedNotes) {
       const sharedCollection = JSON.parse(decodeBase64Url(encodedNotes));
       const items = Array.isArray(sharedCollection?.notes) ? sharedCollection.notes : [];

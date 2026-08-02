@@ -1,4 +1,5 @@
 import assert from "node:assert/strict";
+import { readFileSync } from "node:fs";
 import { filterGraphForSearch, wrapNodeText } from "../notes-mindmap.js";
 
 const graph = {
@@ -26,5 +27,15 @@ assert(visibleIds.has("book:quran"), "the passage should retain its scripture co
 const wrapped = wrapNodeText("An extraordinarilylongunbrokenword followed by a note title that keeps going", 14, 4);
 assert(wrapped.length <= 4, "mindmap labels must stay within their maximum line count");
 assert(wrapped.every((line) => line.length <= 14), "every mindmap label line must fit its node width");
+
+const mindMapSource = readFileSync(new URL("../notes-mindmap.js", import.meta.url), "utf8");
+const liveSearchBlock = mindMapSource.slice(mindMapSource.indexOf("const runSearch ="), mindMapSource.indexOf('searchInput.addEventListener("input", runSearch)'));
+assert(!liveSearchBlock.includes("renderNotesMindMap("), "typing in map search must not replace the focused input");
+assert(liveSearchBlock.includes("is-search-filtered"), "map search should update the existing graph in place");
+
+const notesSystemSource = readFileSync(new URL("../notes-system.js", import.meta.url), "utf8");
+const organizerSaveBlock = notesSystemSource.slice(notesSystemSource.indexOf("async saveOrganizer"), notesSystemSource.indexOf("startRealtimeSync"));
+assert(!/\n\s+viewMode:/.test(organizerSaveBlock), "the active notes view must never be written to synced organizer data");
+assert(!/\n\s+selectedFolderId:/.test(organizerSaveBlock), "the open folder must remain local to each device");
 
 console.log("Mindmap search and text containment checks passed.");

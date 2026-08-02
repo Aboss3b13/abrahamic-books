@@ -360,26 +360,32 @@ export function renderNotesMindMap(container, options) {
   }
 
   const searchQuery = String(container._mindMapSearchQuery || "");
-  const graph = filterGraphForSearch(fullGraph, searchQuery);
-  const noSearchResults = Boolean(searchQuery.trim() && !graph.nodes.length);
+  const graph = fullGraph;
+  const initialSearchGraph = filterGraphForSearch(fullGraph, searchQuery);
+  const initialMatchingIds = initialSearchGraph.matchingIds || new Set();
+  const noSearchResults = Boolean(searchQuery.trim() && !initialSearchGraph.nodes.length);
 
-  const counts = graph.nodes.reduce((result, node) => ({ ...result, [node.type]: (result[node.type] || 0) + 1 }), {});
+  const countNodes = searchQuery.trim() ? initialSearchGraph.nodes : graph.nodes;
+  const counts = countNodes.reduce((result, node) => ({ ...result, [node.type]: (result[node.type] || 0) + 1 }), {});
+  const mapTitle = options.focusNoteId || options.focusFolderId ? `${escapeHTML(options.rootLabel)} connections` : options.sharedMap ? escapeHTML(options.rootLabel) : "Notes and connections";
+  const mapKicker = options.sharedMap ? "A shared map to explore" : options.focusNoteId ? "Everything connected to this note" : "A clear map of your study";
   container.classList.remove("has-map-selection", "has-map-search");
   container.innerHTML = `
     <header class="mindmap-header">
-      <div><span class="mindmap-kicker">A clear map of your study</span><h3>${options.focusFolderId ? `${escapeHTML(options.rootLabel)} connections` : "Notes and connections"}</h3><p><span data-map-note-count>${counts.note || 0} notes</span> · <span data-map-topic-count>${counts.tag || 0} topics</span> · <span data-map-verse-count>${graph.nodes.filter((node) => node.type === "reference" && (!node.rangeChild || node.visible)).length} visible verses</span></p></div>
+      <div><span class="mindmap-kicker">${mapKicker}</span><h3>${mapTitle}</h3><p><span data-map-note-count>${counts.note || 0} notes</span> · <span data-map-topic-count>${counts.tag || 0} topics</span> · <span data-map-verse-count>${countNodes.filter((node) => node.type === "reference" && (!node.rangeChild || node.visible)).length} visible verses</span></p></div>
       <label class="mindmap-search"><i class="ti ti-search" aria-hidden="true"></i><input type="search" placeholder="Find a note, topic, or verse" aria-label="Find something in the mind map"><button type="button" aria-label="Clear map search" hidden><i class="ti ti-x"></i></button></label>
       <div class="mindmap-actions" role="group" aria-label="Mind map controls">
         <button type="button" data-map-zoom="out" aria-label="Zoom out"><i class="ti ti-minus"></i></button>
         <button type="button" data-map-reset aria-label="Fit entire map"><i class="ti ti-focus-centered"></i><span>Fit</span></button>
         ${expandedRangeIds.size ? `<button type="button" data-map-collapse aria-label="Collapse all expanded passages"><i class="ti ti-fold-down"></i><span>Collapse passages</span></button>` : ""}
+        ${options.onShare ? '<button type="button" data-map-share aria-label="Share this mind map"><i class="ti ti-share-3"></i><span>Share</span></button>' : ""}
         <button type="button" data-map-zoom="in" aria-label="Zoom in"><i class="ti ti-plus"></i></button>
       </div>
       <button class="mindmap-close" type="button" aria-label="Close mind map"><i class="ti ti-x"></i></button>
     </header>
     <div class="mindmap-guide"><i class="ti ti-pointer" aria-hidden="true"></i><span><strong>Tap a box to highlight its connections.</strong> Colors match the sections below; + opens a passage and − closes it.</span></div>
     <div class="mindmap-legend" aria-label="Mind map color key"><span data-legend="note"><i></i>My note</span><span data-legend="note-link"><i></i>Linked note</span><span data-legend="tag"><i></i>Topic</span><span data-legend="folder"><i></i>Folder</span><span data-legend="book"><i></i>Scripture book</span><span data-legend="collection"><i></i>Passage</span><span data-legend="reference"><i></i>Individual verse</span></div>
-    <div class="mindmap-stage"><svg role="img" aria-label="Interactive clustered graph of notes, topics, scripture passages, and verses"></svg>${noSearchResults ? `<div class="mindmap-no-results"><i class="ti ti-search-off" aria-hidden="true"></i><strong>No connections found</strong><span>Try another note, topic, or verse.</span></div>` : ""}</div>
+    <div class="mindmap-stage"><svg role="img" aria-label="Interactive clustered graph of notes, topics, scripture passages, and verses"></svg><div class="mindmap-no-results" ${noSearchResults ? "" : "hidden"}><i class="ti ti-search-off" aria-hidden="true"></i><strong>No connections found</strong><span>Try another note, topic, or verse.</span></div></div>
     <div class="mindmap-hint"><i class="ti ti-zoom-scan"></i> Drag to move · pinch or scroll to zoom · tap empty space to clear focus</div>
     <aside class="mindmap-inspector" hidden></aside>`;
 
@@ -391,33 +397,6 @@ export function renderNotesMindMap(container, options) {
   searchInput.value = searchQuery;
   searchClear.hidden = !searchQuery;
   container.classList.toggle("has-map-search", Boolean(searchQuery));
-  if (noSearchResults) {
-    let searchTimer = 0;
-    const updateSearch = () => {
-      clearTimeout(searchTimer);
-      searchTimer = window.setTimeout(() => {
-        container._mindMapSearchQuery = searchInput.value.trim();
-        container._mindMapRestoreSearchFocus = true;
-        delete container._mindMapView;
-        renderNotesMindMap(container, options);
-      }, 140);
-    };
-    searchInput.addEventListener("input", updateSearch);
-    searchClear.addEventListener("click", () => {
-      clearTimeout(searchTimer);
-      container._mindMapSearchQuery = "";
-      container._mindMapRestoreSearchFocus = true;
-      delete container._mindMapView;
-      renderNotesMindMap(container, options);
-    });
-    container.querySelector(".mindmap-close").addEventListener("click", options.onClose);
-    if (container._mindMapRestoreSearchFocus) {
-      delete container._mindMapRestoreSearchFocus;
-      requestAnimationFrame(() => { searchInput.focus(); searchInput.setSelectionRange(searchInput.value.length, searchInput.value.length); });
-    }
-    container._mindMapCleanup = () => clearTimeout(searchTimer);
-    return;
-  }
   const stageRect = stage.getBoundingClientRect();
   const viewportWidth = 1200;
   const viewportHeight = Math.max(620, viewportWidth * (stageRect.height || 700) / Math.max(stageRect.width || 1000, 1));
@@ -482,7 +461,7 @@ export function renderNotesMindMap(container, options) {
   });
 
   visibleNodes.forEach((node, nodeIndex) => {
-    const nodeClass = `mindmap-node node-${node.type}${node.expanded ? " is-expanded" : ""}${node.rangeChild ? " is-range-child" : ""}${node.externalScope ? " is-external-note" : ""}${node.visible === false ? " is-map-hidden" : ""}${graph.matchingIds?.has(node.id) ? " is-search-match" : ""}`;
+    const nodeClass = `mindmap-node node-${node.type}${node.expanded ? " is-expanded" : ""}${node.rangeChild ? " is-range-child" : ""}${node.externalScope ? " is-external-note" : ""}${node.visible === false ? " is-map-hidden" : ""}${initialMatchingIds.has(node.id) ? " is-search-match" : ""}${options.focusNoteId === node.rawId ? " is-focus-note" : ""}`;
     const group = svgElement("g", {
       class: nodeClass,
       transform: `translate(${node.x} ${node.y})`,
@@ -580,7 +559,7 @@ export function renderNotesMindMap(container, options) {
   const showInspector = (node, connectedIds) => {
     const relatedNotes = [...connectedIds].filter((id) => byId.get(id)?.type === "note").length;
     const relatedVerses = [...connectedIds].filter((id) => byId.get(id)?.type === "reference").length;
-    const action = node.type === "note" ? "Open note" : node.type === "reference" ? "Read verse" : node.type === "tag" ? "Show these notes" : "";
+    const action = node.type === "note" && options.onOpenNote ? "Open note" : node.type === "reference" ? "Read verse" : node.type === "tag" ? "Show these notes" : "";
     inspector.innerHTML = `<button class="mindmap-inspector-close" type="button" aria-label="Clear focus"><i class="ti ti-x"></i></button><span>${escapeHTML(ZONE_META[node.type]?.label || node.type)}</span><strong>${escapeHTML(node.label)}</strong>${node.summary ? `<p>${escapeHTML(shortLabel(node.summary))}</p>` : ""}<small>${relatedNotes} ${relatedNotes === 1 ? "note" : "notes"} · ${relatedVerses} ${relatedVerses === 1 ? "verse" : "verses"} in focus</small>${action ? `<button class="text-button primary" type="button" data-map-action>${escapeHTML(action)}<i class="ti ti-arrow-right"></i></button>` : ""}`;
     inspector.hidden = false;
     inspector.querySelector(".mindmap-inspector-close").addEventListener("click", clearSelection);
@@ -659,24 +638,35 @@ export function renderNotesMindMap(container, options) {
     activateNode(group);
   });
 
-  let searchTimer = 0;
+  let searchFrame = 0;
   const runSearch = () => {
     searchClear.hidden = !searchInput.value.trim();
-    clearTimeout(searchTimer);
-    searchTimer = window.setTimeout(() => {
-      container._mindMapSearchQuery = searchInput.value.trim();
-      container._mindMapRestoreSearchFocus = true;
-      delete container._mindMapView;
-      renderNotesMindMap(container, options);
-    }, 140);
+    container._mindMapSearchQuery = searchInput.value.trim();
+    cancelAnimationFrame(searchFrame);
+    searchFrame = requestAnimationFrame(() => {
+      const query = container._mindMapSearchQuery;
+      const filtered = filterGraphForSearch(fullGraph, query);
+      const includedIds = new Set((query ? filtered.nodes : fullGraph.nodes.filter((node) => node.visible !== false)).map((node) => node.id));
+      const matchingIds = query ? filtered.matchingIds || new Set() : new Set();
+      const includedEdges = new Set((query ? filtered.edges : fullGraph.edges.filter((edge) => edge.visible)).map((edge) => edge.id));
+      container.classList.toggle("has-map-search", Boolean(query));
+      nodeLayer.querySelectorAll(".mindmap-node").forEach((item) => {
+        item.classList.toggle("is-search-match", matchingIds.has(item.dataset.nodeId));
+        item.classList.toggle("is-search-filtered", Boolean(query) && !includedIds.has(item.dataset.nodeId));
+      });
+      edgeLayer.querySelectorAll(".mindmap-edge").forEach((item) => item.classList.toggle("is-search-filtered", Boolean(query) && !includedEdges.has(item.dataset.edgeId)));
+      const resultNodes = query ? filtered.nodes : fullGraph.nodes;
+      container.querySelector(".mindmap-no-results").hidden = !query || resultNodes.length > 0;
+      container.querySelector("[data-map-note-count]").textContent = `${resultNodes.filter((node) => node.type === "note").length} notes`;
+      container.querySelector("[data-map-topic-count]").textContent = `${resultNodes.filter((node) => node.type === "tag").length} topics`;
+      container.querySelector("[data-map-verse-count]").textContent = `${resultNodes.filter((node) => node.type === "reference" && (!node.rangeChild || node.visible)).length} visible verses`;
+    });
   };
   searchInput.addEventListener("input", runSearch);
   searchClear.addEventListener("click", () => {
-    clearTimeout(searchTimer);
-    container._mindMapSearchQuery = "";
-    container._mindMapRestoreSearchFocus = true;
-    delete container._mindMapView;
-    renderNotesMindMap(container, options);
+    searchInput.value = "";
+    runSearch();
+    searchInput.focus({ preventScroll: true });
   });
 
   svg.addEventListener("wheel", (event) => { event.preventDefault(); zoom(Math.exp(-event.deltaY * .0015), event.clientX, event.clientY); }, { passive: false });
@@ -751,17 +741,21 @@ export function renderNotesMindMap(container, options) {
     renderNotesMindMap(container, options);
   });
   container.querySelectorAll("[data-map-zoom]").forEach((button) => button.addEventListener("click", () => zoom(button.dataset.mapZoom === "in" ? 1.22 : .82)));
+  container.querySelector("[data-map-share]")?.addEventListener("click", options.onShare);
   container.querySelector(".mindmap-close").addEventListener("click", options.onClose);
   const pendingSelection = container._mindMapPendingSelection;
   if (pendingSelection && byId.has(pendingSelection)) {
     delete container._mindMapPendingSelection;
     selectNode(byId.get(pendingSelection));
+  } else if (options.focusNoteId && byId.has(`note:${options.focusNoteId}`)) {
+    selectNode(byId.get(`note:${options.focusNoteId}`));
   }
   if (container._mindMapRestoreSearchFocus) {
     delete container._mindMapRestoreSearchFocus;
     requestAnimationFrame(() => { searchInput.focus(); searchInput.setSelectionRange(searchInput.value.length, searchInput.value.length); });
   }
-  container._mindMapCleanup = () => { cancelAnimationFrame(transformFrame); cancelAnimationFrame(cameraFrame); clearTimeout(searchTimer); clearTimeout(resizeTimer); resizeObserver.disconnect(); };
+  if (searchQuery) runSearch();
+  container._mindMapCleanup = () => { cancelAnimationFrame(transformFrame); cancelAnimationFrame(cameraFrame); cancelAnimationFrame(searchFrame); clearTimeout(resizeTimer); resizeObserver.disconnect(); };
 }
 
 export { filterGraphForSearch, wrapNodeText };
