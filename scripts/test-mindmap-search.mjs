@@ -32,6 +32,10 @@ const mindMapSource = readFileSync(new URL("../notes-mindmap.js", import.meta.ur
 const liveSearchBlock = mindMapSource.slice(mindMapSource.indexOf("const runSearch ="), mindMapSource.indexOf('searchInput.addEventListener("input", runSearch)'));
 assert(!liveSearchBlock.includes("renderNotesMindMap("), "typing in map search must not replace the focused input");
 assert(liveSearchBlock.includes("is-search-filtered"), "map search should update the existing graph in place");
+assert(liveSearchBlock.includes("reflowVisibleGraph"), "map search results should be laid out and fitted without large empty gaps");
+
+const stylesSource = readFileSync(new URL("../styles.css", import.meta.url), "utf8");
+assert(stylesSource.includes(".mindmap-no-results[hidden]"), "the empty-search overlay must stay hidden when results exist");
 
 const notesSystemSource = readFileSync(new URL("../notes-system.js", import.meta.url), "utf8");
 const organizerSaveBlock = notesSystemSource.slice(notesSystemSource.indexOf("async saveOrganizer"), notesSystemSource.indexOf("startRealtimeSync"));

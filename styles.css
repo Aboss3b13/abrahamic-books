@@ -7312,3 +7312,103 @@ canvas { max-width: 100%; }
   .note-card-secondary-actions { width: 100%; justify-content: flex-start; }
   .note-map-button { min-height: 38px; }
 }
+
+/* Compact map chrome and in-place search reflow. */
+.mindmap-no-results[hidden],
+.mindmap-help-card[hidden] { display: none; }
+
+.mindmap-zone,
+.mindmap-node,
+.mindmap-edge {
+  transition: transform 300ms cubic-bezier(.16,1,.3,1), opacity 180ms ease, stroke 180ms ease;
+}
+
+.mindmap-zone.is-search-filtered-zone { display: none; }
+
+.mindmap-actions,
+.mindmap-actions:not(:has([data-map-collapse])) {
+  display: flex;
+  width: auto;
+  min-width: 0;
+  flex-wrap: nowrap;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 5px;
+  padding: 4px;
+  overflow: visible;
+}
+
+.mindmap-actions button {
+  width: 40px;
+  min-width: 40px;
+  min-height: 40px;
+  height: 40px;
+  flex: 0 0 40px;
+  padding: 0;
+  border-radius: 11px;
+  font-size: 1rem;
+}
+
+.mindmap-help-card {
+  position: absolute;
+  z-index: 12;
+  top: clamp(112px, 17dvh, 164px);
+  right: max(14px, env(safe-area-inset-right));
+  display: grid;
+  width: min(340px, calc(100% - 28px));
+  grid-template-columns: minmax(0, 1fr) 36px;
+  gap: 5px 12px;
+  padding: 16px;
+  overflow: hidden;
+  border: 1px solid color-mix(in srgb, var(--green-2) 32%, var(--line));
+  border-radius: 18px;
+  color: var(--muted);
+  background: color-mix(in srgb, var(--paper) 96%, transparent);
+  box-shadow: 0 20px 55px color-mix(in srgb, var(--ink) 22%, transparent);
+  backdrop-filter: blur(20px);
+  animation: content-enter 180ms cubic-bezier(.16,1,.3,1) both;
+}
+
+.mindmap-help-card strong { grid-column: 1; color: var(--ink); font-size: .9rem; }
+.mindmap-help-card span { grid-column: 1 / -1; font-size: .76rem; line-height: 1.5; }
+.mindmap-help-card button {
+  grid-column: 2;
+  grid-row: 1;
+  width: 36px;
+  min-height: 36px;
+  padding: 0;
+  border: 0;
+  border-radius: 10px;
+  color: var(--muted);
+  background: color-mix(in srgb, var(--line) 24%, transparent);
+}
+
+.note-map-button {
+  width: 38px;
+  min-width: 38px;
+  min-height: 38px;
+  flex: 0 0 38px;
+  padding: 0;
+}
+
+#notesView .note-map-button { width: 38px; min-width: 38px; padding: 0; }
+
+@media (max-width: 1180px) {
+  .mindmap-actions,
+  .mindmap-actions:not(:has([data-map-collapse])) {
+    display: flex;
+    width: 100%;
+    justify-content: center;
+    overflow-x: auto;
+    scrollbar-width: none;
+  }
+  .mindmap-actions::-webkit-scrollbar { display: none; }
+  .mindmap-help-card { top: clamp(164px, 23dvh, 210px); }
+}
+
+@media (max-width: 520px) {
+  .mindmap-header { gap: 7px; padding-bottom: 8px; }
+  .mindmap-search { min-height: 40px; }
+  .mindmap-actions button { width: 38px; min-width: 38px; min-height: 38px; height: 38px; flex-basis: 38px; }
+  .mindmap-help-card { top: 184px; }
+}

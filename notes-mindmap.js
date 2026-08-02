@@ -375,18 +375,18 @@ export function renderNotesMindMap(container, options) {
       <div><span class="mindmap-kicker">${mapKicker}</span><h3>${mapTitle}</h3><p><span data-map-note-count>${counts.note || 0} notes</span> · <span data-map-topic-count>${counts.tag || 0} topics</span> · <span data-map-verse-count>${countNodes.filter((node) => node.type === "reference" && (!node.rangeChild || node.visible)).length} visible verses</span></p></div>
       <label class="mindmap-search"><i class="ti ti-search" aria-hidden="true"></i><input type="search" placeholder="Find a note, topic, or verse" aria-label="Find something in the mind map"><button type="button" aria-label="Clear map search" hidden><i class="ti ti-x"></i></button></label>
       <div class="mindmap-actions" role="group" aria-label="Mind map controls">
-        <button type="button" data-map-zoom="out" aria-label="Zoom out"><i class="ti ti-minus"></i></button>
-        <button type="button" data-map-reset aria-label="Fit entire map"><i class="ti ti-focus-centered"></i><span>Fit</span></button>
-        ${expandedRangeIds.size ? `<button type="button" data-map-collapse aria-label="Collapse all expanded passages"><i class="ti ti-fold-down"></i><span>Collapse passages</span></button>` : ""}
-        ${options.onShare ? '<button type="button" data-map-share aria-label="Share this mind map"><i class="ti ti-share-3"></i><span>Share</span></button>' : ""}
-        <button type="button" data-map-zoom="in" aria-label="Zoom in"><i class="ti ti-plus"></i></button>
+        <button type="button" data-map-zoom="out" aria-label="Make map smaller" title="Make map smaller"><i class="ti ti-minus"></i></button>
+        <button type="button" data-map-reset aria-label="Fit map to screen" title="Fit map to screen"><i class="ti ti-focus-centered"></i></button>
+        ${expandedRangeIds.size ? `<button type="button" data-map-collapse aria-label="Collapse all expanded passages" title="Collapse expanded passages"><i class="ti ti-fold-down"></i></button>` : ""}
+        ${options.onShare ? '<button type="button" data-map-share aria-label="Share this mind map" title="Share mind map"><i class="ti ti-share-3"></i></button>' : ""}
+        <button type="button" data-map-help aria-label="How to use the mind map" title="How to use the mind map"><i class="ti ti-question-mark"></i></button>
+        <button type="button" data-map-zoom="in" aria-label="Make map larger" title="Make map larger"><i class="ti ti-plus"></i></button>
       </div>
       <button class="mindmap-close" type="button" aria-label="Close mind map"><i class="ti ti-x"></i></button>
     </header>
-    <div class="mindmap-guide"><i class="ti ti-pointer" aria-hidden="true"></i><span><strong>Tap a box to highlight its connections.</strong> Colors match the sections below; + opens a passage and − closes it.</span></div>
+    <aside class="mindmap-help-card" hidden><button type="button" aria-label="Close help"><i class="ti ti-x"></i></button><strong>Using the map</strong><span>Tap a box to highlight its links. Drag to move, pinch to zoom, and use + or − on a passage to show or hide its verses.</span></aside>
     <div class="mindmap-legend" aria-label="Mind map color key"><span data-legend="note"><i></i>My note</span><span data-legend="note-link"><i></i>Linked note</span><span data-legend="tag"><i></i>Topic</span><span data-legend="folder"><i></i>Folder</span><span data-legend="book"><i></i>Scripture book</span><span data-legend="collection"><i></i>Passage</span><span data-legend="reference"><i></i>Individual verse</span></div>
     <div class="mindmap-stage"><svg role="img" aria-label="Interactive clustered graph of notes, topics, scripture passages, and verses"></svg><div class="mindmap-no-results" ${noSearchResults ? "" : "hidden"}><i class="ti ti-search-off" aria-hidden="true"></i><strong>No connections found</strong><span>Try another note, topic, or verse.</span></div></div>
-    <div class="mindmap-hint"><i class="ti ti-zoom-scan"></i> Drag to move · pinch or scroll to zoom · tap empty space to clear focus</div>
     <aside class="mindmap-inspector" hidden></aside>`;
 
   const stage = container.querySelector(".mindmap-stage");
@@ -404,7 +404,11 @@ export function renderNotesMindMap(container, options) {
   const portrait = prefersStackedLayout() || window.innerHeight > window.innerWidth;
   let responsiveBucket = `${portrait ? "stacked" : "wide"}:${Math.round(stageRect.width / 160)}`;
   const visibleNodes = graph.nodes.filter((node) => node.visible !== false);
-  const { width, height, zones, byId } = layOut(visibleNodes, { width: stageRect.width, height: stageRect.height, portrait });
+  const initialLayout = layOut(visibleNodes, { width: stageRect.width, height: stageRect.height, portrait });
+  const { byId } = initialLayout;
+  let currentLayoutWidth = initialLayout.width;
+  let currentLayoutHeight = initialLayout.height;
+  let currentZones = initialLayout.zones;
   let resizeTimer = 0;
   const resizeObserver = new ResizeObserver(() => {
     const nextPortrait = prefersStackedLayout() || window.innerHeight > window.innerWidth;
@@ -416,6 +420,7 @@ export function renderNotesMindMap(container, options) {
   });
   resizeObserver.observe(stage);
   const links = graph.edges.map((edge) => ({ ...edge, a: byId.get(edge.source), b: byId.get(edge.target) })).filter((edge) => edge.a && edge.b && edge.visible);
+  const linkById = new Map(links.map((edge) => [edge.id, edge]));
   const adjacency = new Map();
   links.forEach((edge) => {
     if (!adjacency.has(edge.source)) adjacency.set(edge.source, []);
@@ -432,7 +437,7 @@ export function renderNotesMindMap(container, options) {
   world.append(zoneLayer, edgeLayer, nodeLayer);
   svg.append(world);
 
-  zones.forEach((zone) => {
+  currentZones.forEach((zone) => {
     const meta = ZONE_META[zone.type];
     const group = svgElement("g", { class: `mindmap-zone zone-${zone.type}`, "data-zone": zone.type });
     group.append(svgElement("rect", { x: zone.x, y: zone.y, width: zone.width, height: zone.height, rx: 24 }));
@@ -459,6 +464,7 @@ export function renderNotesMindMap(container, options) {
     path.setAttribute("d", edgePath(edge));
     edgeLayer.append(path);
   });
+  const edgeElementById = new Map([...edgeLayer.querySelectorAll(".mindmap-edge")].map((path) => [path.dataset.edgeId, path]));
 
   visibleNodes.forEach((node, nodeIndex) => {
     const nodeClass = `mindmap-node node-${node.type}${node.expanded ? " is-expanded" : ""}${node.rangeChild ? " is-range-child" : ""}${node.externalScope ? " is-external-note" : ""}${node.visible === false ? " is-map-hidden" : ""}${initialMatchingIds.has(node.id) ? " is-search-match" : ""}${options.focusNoteId === node.rawId ? " is-focus-note" : ""}`;
@@ -499,12 +505,12 @@ export function renderNotesMindMap(container, options) {
     nodeLayer.append(group);
   });
 
-  const noteZone = zones.find((zone) => zone.type === "note");
   const fitPadding = portrait ? 22 : 34;
-  const fitScale = clamp(Math.min((viewportWidth - fitPadding * 2) / width, (viewportHeight - fitPadding * 2) / height), MIN_MAP_SCALE, 4);
-  const startScale = portrait ? clamp((viewportWidth - 28) / width, MIN_MAP_SCALE, 4) : fitScale;
-  const startX = (viewportWidth - width * startScale) / 2;
-  const startY = portrait ? 18 : (viewportHeight - height * startScale) / 2;
+  const fitScaleFor = (layoutWidth, layoutHeight) => clamp(Math.min((viewportWidth - fitPadding * 2) / layoutWidth, (viewportHeight - fitPadding * 2) / layoutHeight), MIN_MAP_SCALE, 4);
+  const initialFitScale = fitScaleFor(currentLayoutWidth, currentLayoutHeight);
+  const startScale = portrait ? clamp((viewportWidth - 28) / currentLayoutWidth, MIN_MAP_SCALE, 4) : initialFitScale;
+  const startX = (viewportWidth - currentLayoutWidth * startScale) / 2;
+  const startY = portrait ? 18 : (viewportHeight - currentLayoutHeight * startScale) / 2;
   const layoutMode = portrait ? "stacked" : "wide";
   const savedView = container._mindMapView?.orientation === layoutMode ? container._mindMapView : null;
   let scale = savedView?.scale || startScale;
@@ -539,7 +545,10 @@ export function renderNotesMindMap(container, options) {
     };
     cameraFrame = requestAnimationFrame(step);
   };
-  const fit = () => animateView(fitScale, (viewportWidth - width * fitScale) / 2, (viewportHeight - height * fitScale) / 2);
+  const fit = () => {
+    const nextScale = fitScaleFor(currentLayoutWidth, currentLayoutHeight);
+    animateView(nextScale, (viewportWidth - currentLayoutWidth * nextScale) / 2, portrait ? 18 : (viewportHeight - currentLayoutHeight * nextScale) / 2);
+  };
   const zoom = (factor, clientX, clientY) => {
     cancelAnimationFrame(cameraFrame);
     const next = clamp(scale * factor, MIN_MAP_SCALE, MAX_MAP_SCALE);
@@ -554,6 +563,41 @@ export function renderNotesMindMap(container, options) {
     applyTransform();
   };
   applyTransform();
+
+  const reflowVisibleGraph = (layoutNodes, includedEdgeIds) => {
+    if (!layoutNodes.length) return;
+    const nextLayout = layOut(layoutNodes, { width: stageRect.width, height: stageRect.height, portrait });
+    currentLayoutWidth = nextLayout.width;
+    currentLayoutHeight = nextLayout.height;
+    currentZones = nextLayout.zones;
+    const zonesByType = new Map(currentZones.map((zone) => [zone.type, zone]));
+    zoneLayer.querySelectorAll(".mindmap-zone").forEach((group) => {
+      const zone = zonesByType.get(group.dataset.zone);
+      group.classList.toggle("is-search-filtered-zone", !zone);
+      if (!zone) return;
+      const meta = ZONE_META[zone.type];
+      const rect = group.querySelector("rect");
+      rect.setAttribute("x", zone.x); rect.setAttribute("y", zone.y);
+      rect.setAttribute("width", zone.width); rect.setAttribute("height", zone.height);
+      const icon = group.querySelector(".mindmap-zone-icon");
+      icon.setAttribute("x", zone.x + 22); icon.setAttribute("y", zone.y + 31);
+      const title = group.querySelector(".mindmap-zone-title");
+      title.setAttribute("x", zone.x + 48); title.setAttribute("y", zone.y + 29);
+      title.textContent = `${meta.label} · ${zone.items.length}`;
+      const description = group.querySelector(".mindmap-zone-description");
+      description.setAttribute("x", zone.x + 22); description.setAttribute("y", zone.y + 54);
+    });
+    nodeLayer.querySelectorAll(".mindmap-node").forEach((item) => {
+      const node = byId.get(item.dataset.nodeId);
+      if (node && layoutNodes.includes(node)) item.setAttribute("transform", `translate(${node.x} ${node.y})`);
+    });
+    includedEdgeIds.forEach((edgeId) => {
+      const path = edgeElementById.get(edgeId);
+      const edge = linkById.get(edgeId);
+      if (path && edge) path.setAttribute("d", edgePath(edge));
+    });
+    fit();
+  };
 
   const visibleEdge = (edge) => edge.visible;
   const showInspector = (node, connectedIds) => {
@@ -626,7 +670,7 @@ export function renderNotesMindMap(container, options) {
   nodeLayer.addEventListener("dblclick", (event) => {
     const group = event.target.closest?.(".mindmap-node");
     const node = byId.get(group?.dataset.nodeId);
-    if (node?.type === "note") options.onOpenNote(node.rawId);
+    if (node?.type === "note" && options.onOpenNote) options.onOpenNote(node.rawId);
     if (node?.type === "reference") options.onOpenReference(node.rawId);
     if (node?.type === "tag") options.onFilterTag(node.rawId);
   });
@@ -646,20 +690,22 @@ export function renderNotesMindMap(container, options) {
     searchFrame = requestAnimationFrame(() => {
       const query = container._mindMapSearchQuery;
       const filtered = filterGraphForSearch(fullGraph, query);
-      const includedIds = new Set((query ? filtered.nodes : fullGraph.nodes.filter((node) => node.visible !== false)).map((node) => node.id));
+      const resultNodes = query ? filtered.nodes : visibleNodes;
+      const includedIds = new Set(resultNodes.map((node) => node.id));
       const matchingIds = query ? filtered.matchingIds || new Set() : new Set();
       const includedEdges = new Set((query ? filtered.edges : fullGraph.edges.filter((edge) => edge.visible)).map((edge) => edge.id));
+      if (selected) clearSelection();
       container.classList.toggle("has-map-search", Boolean(query));
       nodeLayer.querySelectorAll(".mindmap-node").forEach((item) => {
         item.classList.toggle("is-search-match", matchingIds.has(item.dataset.nodeId));
         item.classList.toggle("is-search-filtered", Boolean(query) && !includedIds.has(item.dataset.nodeId));
       });
       edgeLayer.querySelectorAll(".mindmap-edge").forEach((item) => item.classList.toggle("is-search-filtered", Boolean(query) && !includedEdges.has(item.dataset.edgeId)));
-      const resultNodes = query ? filtered.nodes : fullGraph.nodes;
       container.querySelector(".mindmap-no-results").hidden = !query || resultNodes.length > 0;
       container.querySelector("[data-map-note-count]").textContent = `${resultNodes.filter((node) => node.type === "note").length} notes`;
       container.querySelector("[data-map-topic-count]").textContent = `${resultNodes.filter((node) => node.type === "tag").length} topics`;
       container.querySelector("[data-map-verse-count]").textContent = `${resultNodes.filter((node) => node.type === "reference" && (!node.rangeChild || node.visible)).length} visible verses`;
+      reflowVisibleGraph(resultNodes, includedEdges);
     });
   };
   searchInput.addEventListener("input", runSearch);
@@ -742,6 +788,11 @@ export function renderNotesMindMap(container, options) {
   });
   container.querySelectorAll("[data-map-zoom]").forEach((button) => button.addEventListener("click", () => zoom(button.dataset.mapZoom === "in" ? 1.22 : .82)));
   container.querySelector("[data-map-share]")?.addEventListener("click", options.onShare);
+  const helpCard = container.querySelector(".mindmap-help-card");
+  container.querySelector("[data-map-help]").addEventListener("click", () => {
+    helpCard.hidden = !helpCard.hidden;
+  });
+  helpCard.querySelector("button").addEventListener("click", () => { helpCard.hidden = true; });
   container.querySelector(".mindmap-close").addEventListener("click", options.onClose);
   const pendingSelection = container._mindMapPendingSelection;
   if (pendingSelection && byId.has(pendingSelection)) {
