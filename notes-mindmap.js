@@ -2,67 +2,55 @@ import { collectReferenceCollections, formatReferenceRange, rangeIdentity } from
 
 const SVG_NS = "http://www.w3.org/2000/svg";
 const clamp = (value, min, max) => Math.max(min, Math.min(max, value));
-const hash = (value) => [...String(value)].reduce((sum, char) => ((sum << 5) - sum + char.charCodeAt(0)) | 0, 0);
 const titleCase = (value) => String(value || "").replaceAll("_", " ").replace(/\b\w/g, (letter) => letter.toUpperCase());
 const escapeHTML = (value) => String(value ?? "").replace(/[&<>"']/g, (character) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" })[character]);
 
 function scriptureBook(parsed) {
   if (parsed.type === "quran") return { id: "book:quran", label: "Quran", group: "quran" };
-  if (parsed.type === "old") return { id: `book:bible:${parsed.book}`, label: parsed.book, group: "bible" };
-  if (parsed.type === "new") return { id: `book:bible:${parsed.book}`, label: parsed.book, group: "bible" };
+  if (["old", "new"].includes(parsed.type)) return { id: `book:bible:${parsed.book}`, label: parsed.book, group: "bible" };
   if (parsed.type === "hadith") return { id: `book:hadith:${parsed.book}`, label: titleCase(parsed.book), group: "hadith" };
-  return { id: "book:other", label: "References", group: "reference" };
+  return { id: "book:other", label: "Other sources", group: "reference" };
 }
 
-function buildGraph({ entries, folders, formatReference, parseReference, expandedRangeIds = new Set(), rootLabel = "My notes", rootType = "root", focusFolderId = "" }) {
+function buildGraph({ entries, folders, formatReference, parseReference, expandedRangeIds = new Set() }) {
   const nodes = new Map();
   const edges = new Map();
+  const noteKeys = new Set(entries.map(([key]) => key));
   const addNode = (node) => {
     if (!nodes.has(node.id)) nodes.set(node.id, node);
     return nodes.get(node.id);
   };
-  const addEdge = (source, target, kind) => {
-    const id = `${source}|${target}|${kind}`;
-    if (!edges.has(id)) edges.set(id, { id, source, target, kind });
+  const addEdge = (source, target, kind, details = {}) => {
+    const ordered = kind === "note-link" && source > target ? [target, source] : [source, target];
+    const id = `${ordered[0]}|${ordered[1]}|${kind}`;
+    if (!edges.has(id)) edges.set(id, { id, source: ordered[0], target: ordered[1], kind, visible: true, ...details });
   };
 
-  addNode({ id: "root", label: rootLabel, type: "root", scopeType: rootType, weight: Math.max(1, entries.length) });
-  const hubs = [
-    ...(!focusFolderId ? [["hub:folders", "Notes", "folder"]] : []),
-    ["hub:topics", "Topics", "tag"],
-    ["hub:books", "Scripture", "book"],
-  ];
-  hubs.forEach(([id, label, type]) => { addNode({ id, label, type: "hub" }); addEdge("root", id, type); });
-
-  folders.forEach((folder) => {
-    addNode({ id: `folder:${folder.id}`, label: folder.name, type: "folder", rawId: folder.id });
-    const parent = !folder.parentId || folder.parentId === focusFolderId ? (focusFolderId ? "root" : "hub:folders") : `folder:${folder.parentId}`;
-    addEdge(parent, `folder:${folder.id}`, "folder");
-  });
+  folders.forEach((folder) => addNode({ id: `folder:${folder.id}`, label: folder.name, type: "folder", rawId: folder.id }));
 
   entries.forEach(([key, note]) => {
     const noteId = `note:${key}`;
-    addNode({ id: noteId, label: note.title?.trim() || "Untitled note", type: "note", rawId: key, summary: note.text || "", weight: 1 + (note.tags?.length || 0) + (note.references?.length || 0) });
-    const folderSource = focusFolderId && note.folderId === focusFolderId
-      ? "root"
-      : note.folderId ? `folder:${note.folderId}` : "hub:folders";
-    addEdge(folderSource, noteId, "folder");
-
+    addNode({
+      id: noteId,
+      label: note.title?.trim() || "Untitled note",
+      type: "note",
+      rawId: key,
+      summary: note.text || "",
+      searchText: `${note.title || ""} ${note.text || ""} ${(note.tags || []).join(" ")}`,
+    });
+    if (note.folderId && nodes.has(`folder:${note.folderId}`)) addEdge(`folder:${note.folderId}`, noteId, "folder");
     (note.tags || []).forEach((tag) => {
       const tagId = `tag:${tag}`;
       addNode({ id: tagId, label: `#${tag}`, type: "tag", rawId: tag });
-      addEdge("hub:topics", tagId, "tag");
       addEdge(noteId, tagId, "tag");
     });
-
+    (note.linkedNoteIds || []).forEach((linkedKey) => {
+      if (noteKeys.has(linkedKey) && linkedKey !== key) addEdge(noteId, `note:${linkedKey}`, "note-link");
+    });
   });
 
-  // Build shared scripture nodes after every note is known. A verse therefore
-  // appears once globally, even when one note stores it by itself and another
-  // stores it as part of a consecutive passage.
   collectReferenceCollections(entries, parseReference).forEach((collection) => {
-    const book = scriptureBook(collection.parsed);
-    const bookNode = addNode({ ...book, type: "book" });
+    const book = addNode({ ...scriptureBook(collection.parsed), type: "book" });
     const isCollection = collection.references.length > 1;
     const identity = rangeIdentity(collection);
     const referenceId = isCollection ? `collection:${identity}` : `reference:${collection.references[0]}`;
@@ -77,173 +65,44 @@ function buildGraph({ entries, folders, formatReference, parseReference, expande
       isCollection,
       expanded,
       noteCount: collection.noteIds.size,
-      bookGroup: bookNode.group,
+      bookGroup: book.group,
     });
-    addEdge("hub:books", bookNode.id, "book");
-    addEdge(bookNode.id, referenceId, "reference");
-    if (expanded) {
-      collection.references.forEach((reference, verseIndex) => {
-        const verseId = `reference:${reference}`;
-        addNode({
-          id: verseId,
-          label: formatReference(reference),
-          type: "reference",
-          rawId: reference,
-          references: [reference],
-          rangeChild: true,
-          rangeParentId: referenceId,
-          rangeIdentity: identity,
-          verseIndex,
-          bookGroup: bookNode.group,
-        });
-        addEdge(referenceId, verseId, "collection");
-        (collection.referenceNoteIds.get(reference) || []).forEach((noteKey) => addEdge(`note:${noteKey}`, verseId, "reference"));
-      });
-    } else {
+    addEdge(book.id, referenceId, "book");
+
+    if (!isCollection) {
       collection.noteIds.forEach((noteKey) => addEdge(`note:${noteKey}`, referenceId, "reference"));
+      return;
     }
+
+    collection.noteIds.forEach((noteKey) => addEdge(`note:${noteKey}`, referenceId, "reference", {
+      rangeIdentity: identity,
+      rangeSummary: true,
+      visible: !expanded,
+    }));
+    collection.references.forEach((reference, verseIndex) => {
+      const verseId = `reference:${reference}`;
+      addNode({
+        id: verseId,
+        label: formatReference(reference),
+        type: "reference",
+        rawId: reference,
+        references: [reference],
+        rangeChild: true,
+        rangeParentId: referenceId,
+        rangeIdentity: identity,
+        verseIndex,
+        visible: expanded,
+      });
+      addEdge(referenceId, verseId, "collection", { rangeIdentity: identity, rangeDetail: true, visible: expanded });
+      (collection.referenceNoteIds.get(reference) || []).forEach((noteKey) => addEdge(`note:${noteKey}`, verseId, "reference", {
+        rangeIdentity: identity,
+        rangeDetail: true,
+        visible: expanded,
+      }));
+    });
   });
 
   return { nodes: [...nodes.values()], edges: [...edges.values()] };
-}
-
-function layOut(nodes, edges, viewport) {
-  const viewportWidth = Math.max(320, Number(viewport.width) || window.innerWidth || 390);
-  const viewportHeight = Math.max(320, Number(viewport.height) || window.innerHeight || 640);
-  viewport = { width: viewportWidth, height: viewportHeight };
-  const density = Math.max(1, Math.sqrt(nodes.length / 16));
-  let width = Math.max(360, viewport.width) * density;
-  let height = Math.max(480, viewport.height) * density;
-  const center = { x: width / 2, y: height / 2 };
-  const portrait = height > width * 1.08;
-  const point = (x, y) => ({ x: width * x, y: height * y });
-  const anchors = portrait ? {
-    root: point(.5, .42), folder: point(.5, .2), note: point(.48, .43),
-    tag: point(.22, .76), book: point(.77, .78), reference: point(.76, .48), collection: point(.76, .48),
-  } : {
-    root: point(.48, .5), folder: point(.2, .32), note: point(.45, .52),
-    tag: point(.4, .82), book: point(.79, .26), reference: point(.8, .61), collection: point(.8, .61),
-  };
-  const anchorFor = (node) => {
-    if (node.id === "root") return center;
-    if (node.id === "hub:folders") return portrait ? point(.5, .1) : point(.12, .23);
-    if (node.id === "hub:topics") return portrait ? point(.18, .61) : point(.36, .91);
-    if (node.id === "hub:books") return portrait ? point(.82, .63) : point(.88, .14);
-    if (node.rangeChild) {
-      const seed = Math.abs(hash(node.rangeParentId));
-      const side = seed % 2 ? 1 : -1;
-      return portrait ? point(side > 0 ? .82 : .18, .48) : point(.82, side > 0 ? .7 : .52);
-    }
-    return anchors[node.type] || center;
-  };
-  const byId = new Map(nodes.map((node, index) => {
-    const seed = Math.abs(hash(node.id));
-    const anchor = anchorFor(node);
-    node.x = node.id === "root" ? center.x : anchor.x + ((seed % 201) / 200 - .5) * width * .34;
-    node.y = node.id === "root" ? center.y : anchor.y + (((seed >> 8) % 201) / 200 - .5) * height * .22;
-    node.vx = 0; node.vy = 0; node.index = index; node.layoutWidth = nodeWidth(node); node.layoutHeight = nodeHeight(node);
-    return [node.id, node];
-  }));
-  const links = edges.map((edge) => ({ ...edge, a: byId.get(edge.source), b: byId.get(edge.target) })).filter((edge) => edge.a && edge.b);
-  const separateNodes = () => {
-    const cellSize = 310;
-    const grid = new Map();
-    nodes.forEach((node) => {
-      const gx = Math.floor(node.x / cellSize); const gy = Math.floor(node.y / cellSize);
-      for (let x = gx - 1; x <= gx + 1; x += 1) for (let y = gy - 1; y <= gy + 1; y += 1) {
-        (grid.get(`${x}:${y}`) || []).forEach((other) => {
-          let dx = node.x - other.x; let dy = node.y - other.y;
-          if (!dx && !dy) { dx = hash(node.id) % 2 ? 1 : -1; dy = 1; }
-          const overlapX = (node.layoutWidth + other.layoutWidth) / 2 + 20 - Math.abs(dx);
-          const overlapY = (node.layoutHeight + other.layoutHeight) / 2 + 18 - Math.abs(dy);
-          if (overlapX <= 0 || overlapY <= 0) return;
-          const fixedNode = node.id === "root"; const fixedOther = other.id === "root";
-          const nodeShare = fixedNode ? 0 : fixedOther ? 1 : .5;
-          if (overlapX < overlapY) {
-            const direction = Math.sign(dx) || (hash(node.id) % 2 ? 1 : -1);
-            const shift = direction * overlapX;
-            node.x += shift * nodeShare; other.x -= shift * (1 - nodeShare);
-          } else {
-            const direction = Math.sign(dy) || (hash(node.id) % 2 ? -1 : 1);
-            const shift = direction * overlapY;
-            node.y += shift * nodeShare; other.y -= shift * (1 - nodeShare);
-          }
-        });
-      }
-      const key = `${gx}:${gy}`; if (!grid.has(key)) grid.set(key, []); grid.get(key).push(node);
-    });
-  };
-  for (let step = 0; step < 92; step += 1) {
-    const heat = 1 - step / 110;
-    nodes.forEach((node) => {
-      const anchor = anchorFor(node);
-      node.vx += (anchor.x - node.x) * .0024;
-      node.vy += (anchor.y - node.y) * .0024;
-    });
-    links.forEach(({ a, b, kind }) => {
-      const dx = b.x - a.x; const dy = b.y - a.y;
-      const distance = Math.max(1, Math.hypot(dx, dy));
-      const desired = (a.layoutWidth + b.layoutWidth) * .28 + (kind === "tag" ? 115 : kind === "collection" ? 58 : 88);
-      const pull = (distance - desired) * .006;
-      a.vx += dx / distance * pull; a.vy += dy / distance * pull;
-      b.vx -= dx / distance * pull; b.vy -= dy / distance * pull;
-    });
-    nodes.forEach((node) => {
-      if (node.id === "root") { node.x = center.x; node.y = center.y; return; }
-      node.vx *= .72; node.vy *= .72;
-      const horizontalPadding = node.layoutWidth / 2 + 18;
-      const verticalPadding = node.layoutHeight / 2 + 18;
-      node.x = clamp(node.x + node.vx * heat, horizontalPadding, width - horizontalPadding);
-      node.y = clamp(node.y + node.vy * heat, verticalPadding, height - verticalPadding);
-    });
-    separateNodes();
-  }
-  for (let pass = 0; pass < 12; pass += 1) separateNodes();
-
-  // Lock nodes one at a time, moving only the occasional residual collision
-  // to the nearest free point. Unlike a force-only pass, this makes overlap
-  // impossible even when a phone has a dense graph with long labels.
-  const placed = [];
-  const overlapsPlaced = (node, x, y) => placed.some((other) => (
-    Math.abs(x - other.x) < (node.layoutWidth + other.layoutWidth) / 2 + 22
-    && Math.abs(y - other.y) < (node.layoutHeight + other.layoutHeight) / 2 + 20
-  ));
-  nodes.forEach((node) => {
-    const origin = { x: node.x, y: node.y };
-    if (overlapsPlaced(node, node.x, node.y)) {
-      let found = false;
-      for (let ring = 1; ring < 120 && !found; ring += 1) {
-        for (let offset = -ring; offset <= ring && !found; offset += 1) {
-          const candidates = [
-            [origin.x + offset * 34, origin.y - ring * 28],
-            [origin.x + offset * 34, origin.y + ring * 28],
-            [origin.x - ring * 34, origin.y + offset * 28],
-            [origin.x + ring * 34, origin.y + offset * 28],
-          ];
-          const free = candidates.find(([x, y]) => !overlapsPlaced(node, x, y));
-          if (free) { [node.x, node.y] = free; found = true; }
-        }
-      }
-    }
-    placed.push(node);
-  });
-
-  const margin = 34;
-  const minX = Math.min(...nodes.map((node) => node.x - node.layoutWidth / 2)) - margin;
-  const maxX = Math.max(...nodes.map((node) => node.x + node.layoutWidth / 2)) + margin;
-  const minY = Math.min(...nodes.map((node) => node.y - node.layoutHeight / 2)) - margin;
-  const maxY = Math.max(...nodes.map((node) => node.y + node.layoutHeight / 2)) + margin;
-  const contentWidth = maxX - minX; const contentHeight = maxY - minY;
-  const viewportRatio = viewport.width / viewport.height;
-  if (contentWidth / contentHeight > viewportRatio) { width = contentWidth; height = width / viewportRatio; }
-  else { height = contentHeight; width = height * viewportRatio; }
-  const offsetX = (width - contentWidth) / 2 - minX;
-  const offsetY = (height - contentHeight) / 2 - minY;
-  nodes.forEach((node) => { node.x += offsetX; node.y += offsetY; });
-  // The SVG viewBox already fits the complete graph to the stage. Starting at
-  // a second scale clips the outer nodes on phones and hides the relationships
-  // the map is meant to explain.
-  return { width, height, byId, links, openingScale: 1 };
 }
 
 function svgElement(name, attributes = {}) {
@@ -252,27 +111,20 @@ function svgElement(name, attributes = {}) {
   return element;
 }
 
+function labelValue(node) {
+  return String(node.type === "tag" ? node.label.replace(/^#/, "") : node.label || "Untitled").trim();
+}
+
 function nodeWidth(node) {
-  const value = String(node.type === "tag" ? node.label.replace(/^#/, "") : node.label || "");
+  const value = labelValue(node);
   const longestWord = value.split(/\s+/).reduce((longest, word) => Math.max(longest, word.length), 0);
-  if (node.type === "hub") return clamp(118 + value.length * 5, 150, 220);
-  return clamp(112 + Math.min(value.length, 44) * 5.4 + longestWord * 2.2, node.type === "root" ? 190 : 176, node.type === "note" ? 380 : 330);
-}
-
-function nodeHeight(node) {
-  const lines = getNodeLabelLines(node, node.layoutWidth || nodeWidth(node));
-  return Math.max(node.type === "hub" ? 58 : 68, 32 + lines.length * 18 + (["root", "hub"].includes(node.type) ? 0 : 19));
-}
-
-function shortLabel(value, limit = 25) {
-  return value.length > limit ? `${value.slice(0, limit - 1)}…` : value;
+  const maximum = node.type === "note" ? 300 : node.type === "reference" ? 240 : 260;
+  return clamp(104 + Math.min(value.length, 36) * 4.6 + longestWord * 1.8, 164, maximum);
 }
 
 function getNodeLabelLines(node, width) {
-  const value = String(node.type === "tag" ? node.label.replace(/^#/, "") : node.label || "Untitled").trim();
-  // SVG text does not participate in normal CSS wrapping. Use a conservative
-  // character width so labels always remain inside their node at every zoom.
-  const maxCharacters = Math.max(10, Math.floor((width - (node.type === "hub" ? 28 : 64)) / 10.2));
+  const value = labelValue(node);
+  const maxCharacters = Math.max(9, Math.floor((width - 62) / 8.3));
   const words = value.split(/\s+/).flatMap((word) => word.length > maxCharacters
     ? word.match(new RegExp(`.{1,${maxCharacters}}`, "g")) || [word]
     : [word]);
@@ -285,160 +137,241 @@ function getNodeLabelLines(node, width) {
   return lines.length ? lines : ["Untitled"];
 }
 
+function nodeHeight(node) {
+  return Math.max(64, 32 + getNodeLabelLines(node, node.layoutWidth || nodeWidth(node)).length * 16 + 18);
+}
+
+const ZONE_META = {
+  folder: { label: "Folders", description: "Where notes are kept", icon: "▰", columns: 1 },
+  note: { label: "Notes", description: "Your ideas and reflections", icon: "✎", columns: 4 },
+  tag: { label: "Topics", description: "Hashtags shared by notes", icon: "#", columns: 2 },
+  book: { label: "Scripture", description: "Books and collections", icon: "▤", columns: 1 },
+  collection: { label: "Passages", description: "Tap a passage to reveal its verses", icon: "＋", columns: 2 },
+  reference: { label: "Verses", description: "Individual scripture references", icon: "↗", columns: 3 },
+};
+
+function layOut(nodes) {
+  const order = ["folder", "note", "tag", "book", "collection", "reference"];
+  const zoneGap = 34;
+  const panelPadding = 26;
+  const headerHeight = 78;
+  const cellGapX = 18;
+  const cellGapY = 18;
+  const rowHeight = 104;
+  const zones = [];
+  let cursorX = 24;
+
+  order.forEach((type) => {
+    const items = nodes.filter((node) => node.type === type).sort((left, right) => left.label.localeCompare(right.label));
+    if (!items.length) return;
+    const desiredColumns = ZONE_META[type].columns;
+    const columns = Math.max(1, Math.min(desiredColumns, items.length));
+    const cellWidth = Math.max(...items.map((node) => nodeWidth(node))) + cellGapX;
+    const rows = Math.ceil(items.length / columns);
+    const width = panelPadding * 2 + columns * cellWidth;
+    const height = headerHeight + panelPadding + rows * rowHeight;
+    const zone = { type, items, columns, cellWidth, x: cursorX, y: 24, width, height };
+    items.forEach((node, index) => {
+      node.layoutWidth = nodeWidth(node);
+      node.layoutHeight = nodeHeight(node);
+      node.x = zone.x + panelPadding + cellWidth * (index % columns) + cellWidth / 2;
+      node.y = zone.y + headerHeight + rowHeight * Math.floor(index / columns) + rowHeight / 2;
+    });
+    zones.push(zone);
+    cursorX += width + zoneGap;
+  });
+
+  const height = Math.max(520, ...zones.map((zone) => zone.height + 48));
+  zones.forEach((zone) => { zone.height = height - 48; });
+  const width = Math.max(720, cursorX - zoneGap + 24);
+  const byId = new Map(nodes.map((node) => [node.id, node]));
+  return { width, height, zones, byId };
+}
+
+function edgePath(edge) {
+  const dx = edge.b.x - edge.a.x;
+  const direction = Math.sign(dx) || 1;
+  const startX = edge.a.x + direction * edge.a.layoutWidth / 2;
+  const endX = edge.b.x - direction * edge.b.layoutWidth / 2;
+  const bend = Math.max(48, Math.abs(endX - startX) * .42);
+  return `M ${startX} ${edge.a.y} C ${startX + direction * bend} ${edge.a.y}, ${endX - direction * bend} ${edge.b.y}, ${endX} ${edge.b.y}`;
+}
+
+function shortLabel(value, limit = 160) {
+  const text = String(value || "");
+  return text.length > limit ? `${text.slice(0, limit - 1)}…` : text;
+}
+
 export function renderNotesMindMap(container, options) {
   container._mindMapCleanup?.();
-  container._mindMapCleanup = null;
-  container.classList.remove("has-map-selection");
-  const closeMap = () => {
-    container._mindMapCleanup?.();
-    container._mindMapCleanup = null;
-    options.onClose();
-  };
   container._expandedReferenceRanges ||= new Set();
-  options.expandedRangeIds = container._expandedReferenceRanges;
-  const graph = buildGraph(options);
-  const counts = graph.nodes.reduce((result, node) => ({ ...result, [node.type]: (result[node.type] || 0) + 1 }), {});
-  if (!options.entries.length && !options.folders.length) {
+  const expandedRangeIds = container._expandedReferenceRanges;
+  const graph = buildGraph({ ...options, expandedRangeIds });
+  if (!graph.nodes.length) {
     container.innerHTML = `<button class="mindmap-close mindmap-empty-close" type="button" aria-label="Close mind map"><i class="ti ti-x"></i></button><div class="mindmap-empty"><i class="ti ti-affiliate" aria-hidden="true"></i><h3>No notes to map yet</h3><p>Create a note or clear the current filters to reveal your knowledge map.</p></div>`;
-    container.querySelector(".mindmap-close").addEventListener("click", closeMap);
+    container.querySelector(".mindmap-close").addEventListener("click", options.onClose);
     return;
   }
 
+  const counts = graph.nodes.reduce((result, node) => ({ ...result, [node.type]: (result[node.type] || 0) + 1 }), {});
+  container.classList.remove("has-map-selection", "has-map-search");
   container.innerHTML = `
     <header class="mindmap-header">
-      <div><span class="mindmap-kicker">Your notes, clearly connected</span><h3>${options.focusFolderId ? `${escapeHTML(options.rootLabel)} connections` : "Notes and their scripture"}</h3><p>${counts.note || 0} ${(counts.note || 0) === 1 ? "note" : "notes"} · ${counts.collection || 0} ${(counts.collection || 0) === 1 ? "collection" : "collections"} · ${counts.reference || 0} individual ${(counts.reference || 0) === 1 ? "verse" : "verses"}</p></div>
+      <div><span class="mindmap-kicker">A clear map of your study</span><h3>${options.focusFolderId ? `${escapeHTML(options.rootLabel)} connections` : "Notes and connections"}</h3><p><span data-map-note-count>${counts.note || 0} notes</span> · <span data-map-topic-count>${counts.tag || 0} topics</span> · <span data-map-verse-count>${graph.nodes.filter((node) => node.type === "reference" && (!node.rangeChild || node.visible)).length} visible verses</span></p></div>
+      <label class="mindmap-search"><i class="ti ti-search" aria-hidden="true"></i><input type="search" placeholder="Find a note, topic, or verse" aria-label="Find something in the mind map"><button type="button" aria-label="Clear map search" hidden><i class="ti ti-x"></i></button></label>
       <div class="mindmap-actions" role="group" aria-label="Mind map controls">
         <button type="button" data-map-zoom="out" aria-label="Zoom out"><i class="ti ti-minus"></i></button>
-        <button type="button" data-map-reset aria-label="Fit map"><i class="ti ti-focus-centered"></i><span>Fit</span></button>
+        <button type="button" data-map-reset aria-label="Fit entire map"><i class="ti ti-focus-centered"></i><span>Fit</span></button>
         <button type="button" data-map-zoom="in" aria-label="Zoom in"><i class="ti ti-plus"></i></button>
       </div>
       <button class="mindmap-close" type="button" aria-label="Close mind map"><i class="ti ti-x"></i></button>
     </header>
-    <div class="mindmap-guide"><i class="ti ti-bulb" aria-hidden="true"></i><span><strong>Explore every connection.</strong> Tap a collection to unfold its verses directly in the map; tap it again to collapse.</span></div>
-    <div class="mindmap-legend" aria-label="Mind map key"><span data-legend="note"><i></i>Note</span><span data-legend="collection"><i></i>Verse collection</span><span data-legend="reference"><i></i>Single verse</span><span data-legend="tag"><i></i>Topic</span><span data-legend="folder"><i></i>Folder</span><span data-legend="book"><i></i>Scripture</span></div>
-    <div class="mindmap-stage"><svg role="img" aria-label="Interactive graph connecting notes, folders, hashtags, books and scripture references"></svg></div>
-    <div class="mindmap-hint"><i class="ti ti-zoom-scan"></i> Drag to move · pinch or scroll to zoom · double-tap a verse to read</div>
+    <div class="mindmap-guide"><i class="ti ti-pointer" aria-hidden="true"></i><span><strong>Tap anything to isolate its connections.</strong> Passages contain several verses; tap one to unfold those verses in the Verses area.</span></div>
+    <div class="mindmap-legend" aria-label="Mind map key"><span data-legend="note"><i></i>Note</span><span data-legend="note-link"><i></i>Linked note</span><span data-legend="tag"><i></i>Topic</span><span data-legend="folder"><i></i>Folder</span><span data-legend="book"><i></i>Scripture</span><span data-legend="collection"><i></i>Passage</span><span data-legend="reference"><i></i>Verse</span></div>
+    <div class="mindmap-stage"><svg role="img" aria-label="Interactive clustered graph of notes, topics, scripture passages, and verses"></svg></div>
+    <div class="mindmap-hint"><i class="ti ti-zoom-scan"></i> Drag to move · pinch or scroll to zoom · tap empty space to clear focus</div>
     <aside class="mindmap-inspector" hidden></aside>`;
 
   const stage = container.querySelector(".mindmap-stage");
   const svg = stage.querySelector("svg");
   const inspector = container.querySelector(".mindmap-inspector");
-  const { width, height, byId, links, openingScale } = layOut(graph.nodes, graph.edges, { width: stage.clientWidth, height: stage.clientHeight });
+  const searchInput = container.querySelector(".mindmap-search input");
+  const searchClear = container.querySelector(".mindmap-search button");
+  const { width, height, zones, byId } = layOut(graph.nodes);
+  const links = graph.edges.map((edge) => ({ ...edge, a: byId.get(edge.source), b: byId.get(edge.target) })).filter((edge) => edge.a && edge.b);
+  const linkById = new Map(links.map((edge) => [edge.id, edge]));
+  const adjacency = new Map();
+  links.forEach((edge) => {
+    if (!adjacency.has(edge.source)) adjacency.set(edge.source, []);
+    if (!adjacency.has(edge.target)) adjacency.set(edge.target, []);
+    adjacency.get(edge.source).push(edge);
+    adjacency.get(edge.target).push(edge);
+  });
   svg.setAttribute("viewBox", `0 0 ${width} ${height}`);
   const world = svgElement("g", { class: "mindmap-world" });
+  const zoneLayer = svgElement("g", { class: "mindmap-zones" });
   const edgeLayer = svgElement("g", { class: "mindmap-edges" });
   const nodeLayer = svgElement("g", { class: "mindmap-nodes" });
-  world.append(edgeLayer, nodeLayer); svg.append(world);
+  world.append(zoneLayer, edgeLayer, nodeLayer);
+  svg.append(world);
+
+  zones.forEach((zone) => {
+    const meta = ZONE_META[zone.type];
+    const group = svgElement("g", { class: `mindmap-zone zone-${zone.type}`, "data-zone": zone.type });
+    group.append(svgElement("rect", { x: zone.x, y: zone.y, width: zone.width, height: zone.height, rx: 24 }));
+    const icon = svgElement("text", { class: "mindmap-zone-icon", x: zone.x + 22, y: zone.y + 31 });
+    icon.textContent = meta.icon;
+    const title = svgElement("text", { class: "mindmap-zone-title", x: zone.x + 48, y: zone.y + 29 });
+    title.textContent = `${meta.label} · ${zone.items.length}`;
+    const description = svgElement("text", { class: "mindmap-zone-description", x: zone.x + 22, y: zone.y + 54 });
+    description.textContent = meta.description;
+    group.append(icon, title, description);
+    zoneLayer.append(group);
+  });
 
   links.forEach((edge) => {
-    const path = svgElement("path", { class: `mindmap-edge edge-${edge.kind}`, "data-edge-id": edge.id, "data-source": edge.source, "data-target": edge.target });
-    const dx = edge.b.x - edge.a.x;
-    const bend = Math.min(48, Math.abs(dx) * .1) * (hash(edge.id) % 2 ? 1 : -1);
-    const c1x = edge.a.x + dx * .42;
-    const c2x = edge.a.x + dx * .58;
-    path.setAttribute("d", `M ${edge.a.x} ${edge.a.y} C ${c1x} ${edge.a.y + bend}, ${c2x} ${edge.b.y + bend}, ${edge.b.x} ${edge.b.y}`);
+    const path = svgElement("path", {
+      class: `mindmap-edge edge-${edge.kind}${edge.visible ? "" : " is-map-hidden"}`,
+      "data-edge-id": edge.id,
+      "data-source": edge.source,
+      "data-target": edge.target,
+      ...(edge.rangeIdentity ? { "data-range-identity": edge.rangeIdentity } : {}),
+      ...(edge.rangeSummary ? { "data-range-summary": "true" } : {}),
+      ...(edge.rangeDetail ? { "data-range-detail": "true" } : {}),
+    });
+    path.setAttribute("d", edgePath(edge));
     edgeLayer.append(path);
   });
 
   graph.nodes.forEach((node, nodeIndex) => {
-    const width = nodeWidth(node); const height = nodeHeight(node);
-    const group = svgElement("g", { class: `mindmap-node node-${node.type}${node.scopeType ? ` scope-${node.scopeType}` : ""}${node.expanded ? " is-expanded" : ""}${node.rangeChild ? " is-range-child" : ""}`, transform: `translate(${node.x} ${node.y})`, tabindex: "0", role: "button", "aria-label": node.isCollection ? `Verse collection ${node.label}. ${node.expanded ? "Expanded. Activate to collapse." : "Collapsed. Activate to expand."}` : `${node.scopeType || node.type}: ${node.label}`, "data-node-id": node.id, style: `--node-order:${Math.min(nodeIndex, 16)}` });
-    const fullLabel = svgElement("title");
-    fullLabel.textContent = node.label;
-    group.append(fullLabel);
-    group.append(svgElement("rect", { x: -width / 2, y: -height / 2, width, height, rx: height / 2 }));
-    const icon = svgElement("text", { class: "node-icon", x: -width / 2 + 23, y: 1, "aria-hidden": "true" });
-    icon.textContent = node.isCollection ? (node.expanded ? "−" : "+") : ({ root: "✦", hub: "•", note: "✎", folder: "▰", tag: "#", book: "▤", reference: "↗" })[node.type] || "•";
-    const hasTypeLabel = !["root", "hub"].includes(node.type);
-    const lines = getNodeLabelLines(node, width);
-    const lineHeight = 18;
-    const labelCenter = hasTypeLabel ? -8 : 0;
-    const labelStartY = labelCenter - (lines.length - 1) * lineHeight / 2;
-    const label = svgElement("text", { class: "node-label", x: node.type === "hub" ? 0 : -width / 2 + 43, y: labelStartY, "text-anchor": node.type === "hub" ? "middle" : "start" });
+    const nodeClass = `mindmap-node node-${node.type}${node.expanded ? " is-expanded" : ""}${node.rangeChild ? " is-range-child" : ""}${node.visible === false ? " is-map-hidden" : ""}`;
+    const group = svgElement("g", {
+      class: nodeClass,
+      transform: `translate(${node.x} ${node.y})`,
+      tabindex: node.visible === false ? "-1" : "0",
+      role: "button",
+      "aria-label": node.isCollection ? `Passage ${node.label}. ${node.expanded ? "Expanded; activate to collapse." : "Collapsed; activate to show its verses."}` : `${ZONE_META[node.type]?.label || node.type}: ${node.label}`,
+      "data-node-id": node.id,
+      "data-node-type": node.type,
+      ...(node.rangeIdentity ? { "data-range-identity": node.rangeIdentity } : {}),
+      style: `--node-order:${Math.min(nodeIndex, 12)}`,
+    });
+    const title = svgElement("title");
+    title.textContent = node.label;
+    group.append(title, svgElement("rect", { x: -node.layoutWidth / 2, y: -node.layoutHeight / 2, width: node.layoutWidth, height: node.layoutHeight, rx: 14 }));
+    const icon = svgElement("text", { class: "node-icon", x: -node.layoutWidth / 2 + 19, y: -5, "aria-hidden": "true" });
+    icon.textContent = node.isCollection ? (node.expanded ? "−" : "+") : ({ note: "✎", folder: "▰", tag: "#", book: "▤", reference: "↗" })[node.type] || "•";
+    const lines = getNodeLabelLines(node, node.layoutWidth);
+    const label = svgElement("text", { class: "node-label", x: -node.layoutWidth / 2 + 38, y: -7 - (lines.length - 1) * 8 });
     lines.forEach((line, index) => {
-      const span = svgElement("tspan", { x: node.type === "hub" ? 0 : -width / 2 + 43, dy: index ? lineHeight : 0 });
+      const span = svgElement("tspan", { x: -node.layoutWidth / 2 + 38, dy: index ? 16 : 0 });
       span.textContent = index < lines.length - 1 ? `${line} ` : line;
       label.append(span);
     });
-    group.append(icon, label);
-    if (hasTypeLabel) {
-      const typeLabel = svgElement("text", { class: "node-type-label", x: -width / 2 + 43, y: labelStartY + lines.length * lineHeight + 2 });
-      typeLabel.textContent = node.isCollection ? `${node.references.length} VERSES · ${node.noteCount} ${node.noteCount === 1 ? "NOTE" : "NOTES"} · ${node.expanded ? "COLLAPSE" : "EXPAND"}` : ({ note: "NOTE", folder: "FOLDER", tag: "TOPIC", book: "SCRIPTURE", reference: node.rangeChild ? "VERSE IN COLLECTION" : "SINGLE VERSE" })[node.type] || node.type.toUpperCase();
-      group.append(typeLabel);
-    }
+    const typeLabel = svgElement("text", { class: "node-type-label", x: -node.layoutWidth / 2 + 38, y: 13 + (lines.length - 1) * 8 });
+    typeLabel.textContent = node.isCollection
+      ? `${node.references.length} VERSES · ${node.expanded ? "SHOWN" : "TAP TO SHOW"}`
+      : node.rangeChild ? "VERSE FROM PASSAGE" : ({ note: "NOTE", folder: "FOLDER", tag: "TOPIC", book: "SCRIPTURE", reference: "VERSE" })[node.type];
+    group.append(icon, label, typeLabel);
     nodeLayer.append(group);
   });
 
-  const savedView = container._mindMapView;
-  let scale = savedView?.scale || openingScale;
-  let tx = savedView ? width / 2 - savedView.centerX * width * scale : width / 2 - width / 2 * scale;
-  let ty = savedView ? height / 2 - savedView.centerY * height * scale : height / 2 - height / 2 * scale;
-  let selected = "";
+  const noteZone = zones.find((zone) => zone.type === "note");
+  const largeMap = graph.nodes.length > 90;
+  let scale = container._mindMapView?.scale || (largeMap ? 1.85 : 1);
+  let tx = container._mindMapView?.tx ?? (largeMap && noteZone ? width / 2 - (noteZone.x + noteZone.width / 2) * scale : 0);
+  let ty = container._mindMapView?.ty ?? 0;
   let transformFrame = 0;
+  let cameraFrame = 0;
+  let selected = "";
   const applyTransform = () => {
     if (transformFrame) return;
     transformFrame = requestAnimationFrame(() => {
       transformFrame = 0;
       world.setAttribute("transform", `translate(${tx} ${ty}) scale(${scale})`);
-      container._mindMapView = {
-        scale,
-        centerX: (width / 2 - tx) / scale / width,
-        centerY: (height / 2 - ty) / scale / height,
-      };
+      container._mindMapView = { scale, tx, ty };
     });
   };
-  const fit = () => { scale = 1; tx = 0; ty = 0; applyTransform(); };
+  const animateView = (nextScale, nextTx, nextTy) => {
+    cancelAnimationFrame(cameraFrame);
+    if (matchMedia("(prefers-reduced-motion: reduce)").matches) {
+      scale = nextScale; tx = nextTx; ty = nextTy; applyTransform(); return;
+    }
+    const startScale = scale; const startX = tx; const startY = ty; const started = performance.now();
+    const step = (now) => {
+      const progress = clamp((now - started) / 320, 0, 1);
+      const eased = 1 - (1 - progress) ** 3;
+      scale = startScale + (nextScale - startScale) * eased;
+      tx = startX + (nextTx - startX) * eased;
+      ty = startY + (nextTy - startY) * eased;
+      world.setAttribute("transform", `translate(${tx} ${ty}) scale(${scale})`);
+      container._mindMapView = { scale, tx, ty };
+      if (progress < 1) cameraFrame = requestAnimationFrame(step);
+    };
+    cameraFrame = requestAnimationFrame(step);
+  };
+  const fit = () => animateView(1, 0, 0);
   const zoom = (factor, clientX = stage.clientWidth / 2, clientY = stage.clientHeight / 2) => {
-    const next = clamp(scale * factor, .45, 3.2);
+    cancelAnimationFrame(cameraFrame);
+    const next = clamp(scale * factor, .55, 5);
     const rect = svg.getBoundingClientRect();
     const x = (clientX - rect.left) / rect.width * width;
     const y = (clientY - rect.top) / rect.height * height;
-    tx = x - (x - tx) * next / scale; ty = y - (y - ty) * next / scale; scale = next; applyTransform();
+    tx = x - (x - tx) * next / scale;
+    ty = y - (y - ty) * next / scale;
+    scale = next;
+    applyTransform();
   };
   applyTransform();
-  if (container._mindMapWasUpdated && !matchMedia("(prefers-reduced-motion: reduce)").matches) {
-    stage.animate(
-      [{ opacity: .72, transform: "scale(.992)" }, { opacity: 1, transform: "none" }],
-      { duration: 280, easing: "cubic-bezier(.16,1,.3,1)" },
-    );
-  }
-  container._mindMapWasUpdated = false;
-  const selectNode = (node) => {
-    selected = selected === node.id ? "" : node.id;
-    const neighbors = new Set([selected]);
-    const connectedEdgeIds = new Set();
-    links.forEach((edge) => {
-      if (edge.source === selected) { neighbors.add(edge.target); connectedEdgeIds.add(edge.id); }
-      if (edge.target === selected) { neighbors.add(edge.source); connectedEdgeIds.add(edge.id); }
-    });
-    // A topic is most useful when it reveals both the tagged notes and every
-    // scripture passage attached to those notes. Include that second hop in
-    // the highlighted selection instead of making users inspect each note.
-    if (node.type === "tag" && selected) {
-      const taggedNoteIds = new Set([...neighbors].filter((id) => byId.get(id)?.type === "note"));
-      links.forEach((edge) => {
-        const noteId = taggedNoteIds.has(edge.source) ? edge.source : taggedNoteIds.has(edge.target) ? edge.target : "";
-        if (!noteId) return;
-        const relatedId = edge.source === noteId ? edge.target : edge.source;
-        if (!["reference", "collection"].includes(byId.get(relatedId)?.type)) return;
-        neighbors.add(relatedId);
-        connectedEdgeIds.add(edge.id);
-      });
-    }
-    container.classList.toggle("has-map-selection", Boolean(selected));
-    nodeLayer.querySelectorAll(".mindmap-node").forEach((item) => item.classList.toggle("is-connected", neighbors.has(item.dataset.nodeId)));
-    edgeLayer.querySelectorAll(".mindmap-edge").forEach((item) => item.classList.toggle("is-connected", connectedEdgeIds.has(item.dataset.edgeId)));
-    if (!selected) { inspector.hidden = true; return; }
-    const related = Math.max(0, neighbors.size - 1);
-    const relatedNotes = [...neighbors].filter((id) => byId.get(id)?.type === "note").length;
-    const relatedReferences = [...neighbors].filter((id) => ["reference", "collection"].includes(byId.get(id)?.type)).length;
-    const relationSummary = node.type === "tag"
-      ? `${relatedNotes} ${relatedNotes === 1 ? "note" : "notes"} · ${relatedReferences} ${relatedReferences === 1 ? "passage" : "passages"}`
-      : `${related} direct ${related === 1 ? "connection" : "connections"}`;
-    const action = node.type === "note" ? "Open note" : node.type === "reference" ? "Read verse" : node.type === "tag" ? "Show related notes" : "";
-    inspector.innerHTML = `<button class="mindmap-inspector-close" type="button" aria-label="Close details"><i class="ti ti-x"></i></button><span>${escapeHTML(node.type)}</span><strong>${escapeHTML(node.label)}</strong>${node.summary ? `<p>${escapeHTML(shortLabel(node.summary, 150))}</p>` : ""}<small>${escapeHTML(relationSummary)}</small>${action ? `<button class="text-button primary" type="button" data-map-action>${escapeHTML(action)}<i class="ti ti-arrow-right"></i></button>` : ""}`;
+
+  const visibleEdge = (edge) => edge.visible;
+  const showInspector = (node, connectedIds) => {
+    const relatedNotes = [...connectedIds].filter((id) => byId.get(id)?.type === "note").length;
+    const relatedVerses = [...connectedIds].filter((id) => byId.get(id)?.type === "reference").length;
+    const action = node.type === "note" ? "Open note" : node.type === "reference" ? "Read verse" : node.type === "tag" ? "Show these notes" : "";
+    inspector.innerHTML = `<button class="mindmap-inspector-close" type="button" aria-label="Clear focus"><i class="ti ti-x"></i></button><span>${escapeHTML(ZONE_META[node.type]?.label || node.type)}</span><strong>${escapeHTML(node.label)}</strong>${node.summary ? `<p>${escapeHTML(shortLabel(node.summary))}</p>` : ""}<small>${relatedNotes} ${relatedNotes === 1 ? "note" : "notes"} · ${relatedVerses} ${relatedVerses === 1 ? "verse" : "verses"} in focus</small>${action ? `<button class="text-button primary" type="button" data-map-action>${escapeHTML(action)}<i class="ti ti-arrow-right"></i></button>` : ""}`;
     inspector.hidden = false;
-    inspector.querySelector(".mindmap-inspector-close").addEventListener("click", () => selectNode(node));
+    inspector.querySelector(".mindmap-inspector-close").addEventListener("click", clearSelection);
     inspector.querySelector("[data-map-action]")?.addEventListener("click", () => {
       if (node.type === "note") options.onOpenNote(node.rawId);
       if (node.type === "reference") options.onOpenReference(node.rawId);
@@ -446,63 +379,154 @@ export function renderNotesMindMap(container, options) {
     });
   };
 
-  let suppressClickUntil = 0;
-  nodeLayer.querySelectorAll(".mindmap-node").forEach((group) => {
+  function clearSelection() {
+    selected = "";
+    container.classList.remove("has-map-selection");
+    nodeLayer.querySelectorAll(".mindmap-node").forEach((item) => item.classList.remove("is-connected"));
+    edgeLayer.querySelectorAll(".mindmap-edge").forEach((item) => item.classList.remove("is-connected"));
+    inspector.hidden = true;
+  }
+
+  function selectNode(node) {
+    if (selected === node.id) { clearSelection(); return; }
+    selected = node.id;
+    const connected = new Set([node.id]);
+    const connectedEdges = new Set();
+    const firstHopNotes = new Set();
+    (adjacency.get(node.id) || []).forEach((edge) => {
+      if (!visibleEdge(edge)) return;
+      const other = edge.source === node.id ? edge.target : edge.source;
+      connected.add(other);
+      connectedEdges.add(edge.id);
+      if (byId.get(other)?.type === "note") firstHopNotes.add(other);
+    });
+    if (node.type === "note") firstHopNotes.add(node.id);
+    if (["tag", "folder", "reference", "collection", "note"].includes(node.type)) {
+      firstHopNotes.forEach((noteId) => (adjacency.get(noteId) || []).forEach((edge) => {
+        if (!visibleEdge(edge)) return;
+        const other = edge.source === noteId ? edge.target : edge.source;
+        if (byId.get(other)?.type === "book") return;
+        connected.add(other);
+        connectedEdges.add(edge.id);
+      }));
+    }
+    if (node.type === "collection") {
+      const verseIds = [...connected].filter((id) => byId.get(id)?.rangeParentId === node.id);
+      verseIds.forEach((verseId) => (adjacency.get(verseId) || []).forEach((edge) => {
+        if (!visibleEdge(edge)) return;
+        connected.add(edge.source === verseId ? edge.target : edge.source);
+        connectedEdges.add(edge.id);
+      }));
+    }
+    container.classList.add("has-map-selection");
+    nodeLayer.querySelectorAll(".mindmap-node").forEach((item) => item.classList.toggle("is-connected", connected.has(item.dataset.nodeId)));
+    edgeLayer.querySelectorAll(".mindmap-edge").forEach((item) => item.classList.toggle("is-connected", connectedEdges.has(item.dataset.edgeId)));
+    showInspector(node, connected);
+  }
+
+  const nodesForRange = (identity) => [...nodeLayer.querySelectorAll(".is-range-child")].filter((item) => item.dataset.rangeIdentity === identity);
+  const edgesForRange = (identity, detail) => [...edgeLayer.querySelectorAll(detail ? "[data-range-detail]" : "[data-range-summary]")].filter((item) => item.dataset.rangeIdentity === identity);
+  const updateVisibleVerseCount = () => {
+    const visible = [...nodeLayer.querySelectorAll(".node-reference:not(.is-map-hidden)")].length;
+    container.querySelector("[data-map-verse-count]").textContent = `${visible} visible ${visible === 1 ? "verse" : "verses"}`;
+  };
+  const toggleCollection = (node, group) => {
+    const expanding = !expandedRangeIds.has(node.rangeIdentity);
+    if (expanding) expandedRangeIds.add(node.rangeIdentity);
+    else expandedRangeIds.delete(node.rangeIdentity);
+    node.expanded = expanding;
+    group.classList.toggle("is-expanded", expanding);
+    group.setAttribute("aria-label", `Passage ${node.label}. ${expanding ? "Expanded; activate to collapse." : "Collapsed; activate to show its verses."}`);
+    group.querySelector(".node-icon").textContent = expanding ? "−" : "+";
+    group.querySelector(".node-type-label").textContent = `${node.references.length} VERSES · ${expanding ? "SHOWN" : "TAP TO SHOW"}`;
+    edgesForRange(node.rangeIdentity, false).forEach((edge) => {
+      edge.classList.toggle("is-map-hidden", expanding);
+      linkById.get(edge.dataset.edgeId).visible = !expanding;
+    });
+    const verseNodes = nodesForRange(node.rangeIdentity);
+    const detailEdges = edgesForRange(node.rangeIdentity, true);
+    verseNodes.forEach((verse, index) => {
+      verse.classList.toggle("is-map-hidden", !expanding);
+      verse.setAttribute("tabindex", expanding ? "0" : "-1");
+      if (expanding && !matchMedia("(prefers-reduced-motion: reduce)").matches) verse.animate(
+        [{ opacity: 0, filter: "blur(4px)" }, { opacity: 1, filter: "none" }],
+        { duration: 320, delay: Math.min(index, 12) * 32, easing: "cubic-bezier(.16,1,.3,1)" },
+      );
+    });
+    detailEdges.forEach((edge, index) => {
+      edge.classList.toggle("is-map-hidden", !expanding);
+      linkById.get(edge.dataset.edgeId).visible = expanding;
+      if (expanding && !matchMedia("(prefers-reduced-motion: reduce)").matches) edge.animate(
+        [{ opacity: 0, strokeDashoffset: 22 }, { opacity: 1, strokeDashoffset: 0 }],
+        { duration: 420, delay: Math.min(index, 18) * 18, easing: "ease-out" },
+      );
+    });
+    if (!matchMedia("(prefers-reduced-motion: reduce)").matches) group.querySelector("rect").animate(
+      [{ filter: "brightness(1)" }, { filter: "brightness(1.18)" }, { filter: "brightness(1)" }],
+      { duration: 420, easing: "cubic-bezier(.16,1,.3,1)" },
+    );
+    updateVisibleVerseCount();
+    selectNode(node);
+  };
+
+  nodeLayer.addEventListener("click", (event) => {
+    const group = event.target.closest?.(".mindmap-node");
+    if (!group || group.classList.contains("is-map-hidden")) return;
+    event.stopPropagation();
     const node = byId.get(group.dataset.nodeId);
-    const toggleRangeNode = () => {
-      const collapsing = container._expandedReferenceRanges.has(node.rangeIdentity);
-      const complete = () => {
-        if (collapsing) container._expandedReferenceRanges.delete(node.rangeIdentity);
-        else container._expandedReferenceRanges.add(node.rangeIdentity);
-        // Expansion changes the graph bounds and topology. Fit the new graph so
-        // every newly revealed verse is visible instead of inheriting a pan
-        // position calculated for the smaller collapsed graph.
-        container._mindMapView = null;
-        container._mindMapWasUpdated = true;
-        renderNotesMindMap(container, options);
-      };
-      if (!matchMedia("(prefers-reduced-motion: reduce)").matches) {
-        group.querySelector("rect").animate(
-          collapsing
-            ? [{ transform: "scale(1)" }, { transform: "scale(.94)" }]
-            : [{ transform: "scale(1)" }, { transform: "scale(1.06)" }],
-          { duration: 150, easing: "cubic-bezier(.4,0,.2,1)" },
-        ).finished.then(complete).catch(complete);
-      } else complete();
-    };
-    group.addEventListener("click", (event) => {
-      event.stopPropagation();
-      if (node.isCollection) return toggleRangeNode();
-      if (performance.now() < suppressClickUntil) return;
-      selectNode(node);
-    });
-    group.addEventListener("dblclick", () => {
-      if (node.type === "note") options.onOpenNote(node.rawId);
-      if (node.type === "reference") options.onOpenReference(node.rawId);
-      if (node.type === "tag") options.onFilterTag(node.rawId);
-    });
-    group.addEventListener("keydown", (event) => { if (["Enter", " "].includes(event.key)) { event.preventDefault(); group.dispatchEvent(new MouseEvent("click", { bubbles: true })); } });
+    if (node.isCollection) toggleCollection(node, group);
+    else selectNode(node);
   });
-  svg.addEventListener("click", () => { if (selected) selectNode(byId.get(selected)); });
-  svg.addEventListener("wheel", (event) => { event.preventDefault(); zoom(event.deltaY < 0 ? 1.12 : .89, event.clientX, event.clientY); }, { passive: false });
+  nodeLayer.addEventListener("dblclick", (event) => {
+    const group = event.target.closest?.(".mindmap-node");
+    const node = byId.get(group?.dataset.nodeId);
+    if (node?.type === "note") options.onOpenNote(node.rawId);
+    if (node?.type === "reference") options.onOpenReference(node.rawId);
+    if (node?.type === "tag") options.onFilterTag(node.rawId);
+  });
+  nodeLayer.addEventListener("keydown", (event) => {
+    if (!["Enter", " "].includes(event.key)) return;
+    const group = event.target.closest?.(".mindmap-node");
+    if (!group) return;
+    event.preventDefault();
+    group.dispatchEvent(new MouseEvent("click", { bubbles: true }));
+  });
+  svg.addEventListener("click", (event) => { if (!event.target.closest?.(".mindmap-node")) clearSelection(); });
+
+  const runSearch = () => {
+    const query = searchInput.value.trim().toLocaleLowerCase();
+    if (query && selected) clearSelection();
+    searchClear.hidden = !query;
+    container.classList.toggle("has-map-search", Boolean(query));
+    let firstMatch = null;
+    nodeLayer.querySelectorAll(".mindmap-node").forEach((group) => {
+      const node = byId.get(group.dataset.nodeId);
+      const matches = !query || `${node.label} ${node.searchText || ""}`.toLocaleLowerCase().includes(query);
+      group.classList.toggle("is-search-match", Boolean(query && matches));
+      if (query && matches && !group.classList.contains("is-map-hidden") && !firstMatch) firstMatch = node;
+    });
+    if (query.length >= 2 && firstMatch) {
+      const nextScale = Math.max(scale, largeMap ? 4.2 : 2.2);
+      animateView(nextScale, width / 2 - firstMatch.x * nextScale, height / 2 - firstMatch.y * nextScale);
+    }
+  };
+  searchInput.addEventListener("input", runSearch);
+  searchClear.addEventListener("click", () => { searchInput.value = ""; runSearch(); searchInput.focus(); });
+
+  svg.addEventListener("wheel", (event) => { event.preventDefault(); zoom(event.deltaY < 0 ? 1.14 : .88, event.clientX, event.clientY); }, { passive: false });
   const pointers = new Map();
   let gesture = null;
   const mapPoint = (point) => { const rect = svg.getBoundingClientRect(); return { x: (point.x - rect.left) / rect.width * width, y: (point.y - rect.top) / rect.height * height }; };
-  const pointerPair = () => [...pointers.values()].slice(0, 2);
   const beginGesture = () => {
-    const points = pointerPair();
+    const points = [...pointers.values()].slice(0, 2);
     if (points.length === 2) {
       const a = mapPoint(points[0]); const b = mapPoint(points[1]);
-      gesture = { type: "pinch", distance: Math.max(1, Math.hypot(b.x - a.x, b.y - a.y)), midpoint: { x: (a.x + b.x) / 2, y: (a.y + b.y) / 2 }, scale, tx, ty, moved: false };
-    } else if (points.length === 1) {
-      const point = mapPoint(points[0]);
-      gesture = { type: "pan", point, tx, ty, moved: false };
-    }
+      gesture = { type: "pinch", distance: Math.max(1, Math.hypot(b.x - a.x, b.y - a.y)), midpoint: { x: (a.x + b.x) / 2, y: (a.y + b.y) / 2 }, scale, tx, ty };
+    } else if (points.length === 1) gesture = { type: "pan", point: mapPoint(points[0]), tx, ty };
   };
   svg.addEventListener("pointerdown", (event) => {
-    // Keep taps on nodes as taps. Pointer capture is only needed for panning
-    // the empty canvas and otherwise retargets the eventual click to the SVG.
     if (event.target.closest?.(".mindmap-node")) return;
+    cancelAnimationFrame(cameraFrame);
     pointers.set(event.pointerId, { x: event.clientX, y: event.clientY });
     svg.setPointerCapture(event.pointerId);
     beginGesture();
@@ -511,54 +535,32 @@ export function renderNotesMindMap(container, options) {
   svg.addEventListener("pointermove", (event) => {
     if (!pointers.has(event.pointerId)) return;
     pointers.set(event.pointerId, { x: event.clientX, y: event.clientY });
-    const points = pointerPair();
+    const points = [...pointers.values()].slice(0, 2);
     if (points.length === 2 && gesture?.type !== "pinch") beginGesture();
     if (gesture?.type === "pinch" && points.length === 2) {
       const a = mapPoint(points[0]); const b = mapPoint(points[1]);
       const distance = Math.max(1, Math.hypot(b.x - a.x, b.y - a.y));
       const midpoint = { x: (a.x + b.x) / 2, y: (a.y + b.y) / 2 };
-      const next = clamp(gesture.scale * distance / gesture.distance, .55, 4.5);
+      const next = clamp(gesture.scale * distance / gesture.distance, .55, 5);
       tx = midpoint.x - (gesture.midpoint.x - gesture.tx) * next / gesture.scale;
       ty = midpoint.y - (gesture.midpoint.y - gesture.ty) * next / gesture.scale;
-      scale = next; gesture.moved = true; suppressClickUntil = performance.now() + 280; applyTransform();
+      scale = next;
     } else if (gesture?.type === "pan" && points.length === 1) {
       const point = mapPoint(points[0]);
-      const dx = point.x - gesture.point.x; const dy = point.y - gesture.point.y;
-      if (Math.hypot(dx, dy) > 4) { gesture.moved = true; suppressClickUntil = performance.now() + 220; }
-      tx = gesture.tx + dx; ty = gesture.ty + dy; applyTransform();
+      tx = gesture.tx + point.x - gesture.point.x;
+      ty = gesture.ty + point.y - gesture.point.y;
     }
+    applyTransform();
   });
   const endPointer = (event) => {
     pointers.delete(event.pointerId);
     if (pointers.size) beginGesture();
     else { gesture = null; stage.classList.remove("is-panning"); }
   };
-  svg.addEventListener("pointerup", endPointer); svg.addEventListener("pointercancel", endPointer);
+  svg.addEventListener("pointerup", endPointer);
+  svg.addEventListener("pointercancel", endPointer);
   container.querySelector("[data-map-reset]").addEventListener("click", fit);
-  container.querySelectorAll("[data-map-zoom]").forEach((button) => button.addEventListener("click", () => zoom(button.dataset.mapZoom === "in" ? 1.2 : .82)));
-  container.querySelector(".mindmap-close").addEventListener("click", closeMap);
-
-  container._mindMapCleanup = () => cancelAnimationFrame(transformFrame);
-
-  if ("ResizeObserver" in window) {
-    const initial = {
-      width: container.clientWidth || window.innerWidth,
-      height: container.clientHeight || window.innerHeight,
-    };
-    const initialOrientation = initial.width >= initial.height ? "landscape" : "portrait";
-    let resizeFrame = 0;
-    const observer = new ResizeObserver(([entry]) => {
-      const { width: nextWidth, height: nextHeight } = entry.contentRect;
-      // Mobile rotation can briefly report a zero-sized box while browser UI
-      // and safe-area insets settle. Keep the current stable map for that frame.
-      if (nextWidth < 200 || nextHeight < 200) return;
-      const nextOrientation = nextWidth >= nextHeight ? "landscape" : "portrait";
-      const widthChanged = Math.abs(nextWidth - initial.width) > Math.max(48, initial.width * .12);
-      if (nextOrientation === initialOrientation && !widthChanged) return;
-      cancelAnimationFrame(resizeFrame);
-      resizeFrame = requestAnimationFrame(() => renderNotesMindMap(container, options));
-    });
-    observer.observe(container);
-    container._mindMapCleanup = () => { cancelAnimationFrame(transformFrame); cancelAnimationFrame(resizeFrame); observer.disconnect(); };
-  }
+  container.querySelectorAll("[data-map-zoom]").forEach((button) => button.addEventListener("click", () => zoom(button.dataset.mapZoom === "in" ? 1.22 : .82)));
+  container.querySelector(".mindmap-close").addEventListener("click", options.onClose);
+  container._mindMapCleanup = () => { cancelAnimationFrame(transformFrame); cancelAnimationFrame(cameraFrame); };
 }

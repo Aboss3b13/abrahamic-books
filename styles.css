@@ -6435,3 +6435,162 @@ dialog::backdrop { animation-duration: 180ms; }
 @media (prefers-reduced-motion: reduce) {
   .mindmap-node.is-range-child { animation: none; }
 }
+
+/* Stable clustered mind map: each kind of item owns one permanent lane. */
+.mindmap-header {
+  grid-template-columns: minmax(230px, 1fr) minmax(220px, 360px) auto auto;
+  gap: 12px;
+}
+
+.mindmap-search,
+.note-link-search {
+  display: flex;
+  min-width: 0;
+  min-height: 44px;
+  align-items: center;
+  gap: 8px;
+  padding: 0 10px 0 13px;
+  border: 1px solid color-mix(in srgb, var(--green-2) 24%, var(--line));
+  border-radius: 13px;
+  color: var(--green);
+  background: color-mix(in srgb, var(--paper) 92%, transparent);
+  box-shadow: inset 0 1px 0 color-mix(in srgb, white 22%, transparent);
+}
+
+.mindmap-search:focus-within,
+.note-link-search:focus-within {
+  border-color: var(--green-2);
+  box-shadow: 0 0 0 4px color-mix(in srgb, var(--green-2) 13%, transparent);
+}
+
+.mindmap-search input,
+.note-link-search input { width: 100%; min-width: 0; border: 0; color: var(--ink); background: transparent; outline: 0; }
+.mindmap-search button { display: grid; width: 30px; min-height: 30px; flex: 0 0 30px; place-items: center; padding: 0; border: 0; border-radius: 9px; color: var(--muted); background: transparent; }
+.mindmap-search button[hidden] { display: none; }
+
+.mindmap-stage {
+  isolation: isolate;
+  background:
+    radial-gradient(circle at 52% 32%, color-mix(in srgb, var(--green-2) 7%, transparent), transparent 36%),
+    linear-gradient(color-mix(in srgb, var(--line) 18%, transparent) 1px, transparent 1px),
+    linear-gradient(90deg, color-mix(in srgb, var(--line) 18%, transparent) 1px, transparent 1px),
+    color-mix(in srgb, var(--paper) 92%, var(--panel));
+  background-size: auto, 32px 32px, 32px 32px, auto;
+}
+
+.mindmap-zone rect {
+  fill: color-mix(in srgb, var(--panel) 84%, transparent);
+  stroke: color-mix(in srgb, var(--line) 78%, transparent);
+  stroke-width: 1.2;
+  vector-effect: non-scaling-stroke;
+}
+.mindmap-zone-title { fill: var(--ink); font-size: 14px; font-weight: 900; letter-spacing: .05em; text-transform: uppercase; }
+.mindmap-zone-description { fill: var(--muted); font-size: 10px; font-weight: 650; }
+.mindmap-zone-icon { font-size: 20px; font-weight: 900; }
+.mindmap-zone.zone-folder rect { fill: color-mix(in srgb, #f59e0b 6%, var(--panel)); stroke: color-mix(in srgb, #d97706 28%, var(--line)); }
+.mindmap-zone.zone-note rect { fill: color-mix(in srgb, #3b82f6 5%, var(--panel)); stroke: color-mix(in srgb, #2563eb 25%, var(--line)); }
+.mindmap-zone.zone-tag rect { fill: color-mix(in srgb, #8b5cf6 6%, var(--panel)); stroke: color-mix(in srgb, #7c3aed 28%, var(--line)); }
+.mindmap-zone.zone-book rect { fill: color-mix(in srgb, #10b981 6%, var(--panel)); stroke: color-mix(in srgb, #059669 28%, var(--line)); }
+.mindmap-zone.zone-collection rect { fill: color-mix(in srgb, #f97316 6%, var(--panel)); stroke: color-mix(in srgb, #e0523e 30%, var(--line)); }
+.mindmap-zone.zone-reference rect { fill: color-mix(in srgb, #06b6d4 6%, var(--panel)); stroke: color-mix(in srgb, #0891b2 30%, var(--line)); }
+.zone-folder .mindmap-zone-icon { fill: #d97706; }
+.zone-note .mindmap-zone-icon { fill: #2563eb; }
+.zone-tag .mindmap-zone-icon { fill: #7c3aed; }
+.zone-book .mindmap-zone-icon { fill: #059669; }
+.zone-collection .mindmap-zone-icon { fill: #e0523e; }
+.zone-reference .mindmap-zone-icon { fill: #0891b2; }
+
+.mindmap-node { animation-duration: 240ms; animation-fill-mode: backwards; }
+.mindmap-node.is-map-hidden,
+.mindmap-edge.is-map-hidden { display: none; }
+.mindmap-node rect { rx: 14px; filter: drop-shadow(0 3px 6px color-mix(in srgb, var(--ink) 9%, transparent)); }
+.mindmap-node.node-note rect { fill: color-mix(in srgb, #3b82f6 11%, var(--paper)); stroke: color-mix(in srgb, #2563eb 64%, var(--line)); }
+.mindmap-node.node-note .node-icon { fill: #2563eb; }
+.mindmap-node.node-folder rect { fill: color-mix(in srgb, #f59e0b 13%, var(--paper)); stroke: color-mix(in srgb, #d97706 64%, var(--line)); }
+.mindmap-node.node-folder .node-icon { fill: #d97706; }
+.mindmap-node.node-tag rect { fill: color-mix(in srgb, #8b5cf6 12%, var(--paper)); stroke: color-mix(in srgb, #7c3aed 64%, var(--line)); }
+.mindmap-node.node-tag .node-icon { fill: #7c3aed; }
+.mindmap-node.node-book rect { fill: color-mix(in srgb, #10b981 11%, var(--paper)); stroke: color-mix(in srgb, #059669 64%, var(--line)); }
+.mindmap-node.node-book .node-icon { fill: #059669; }
+.mindmap-node.node-collection rect,
+.mindmap-node.node-collection.is-expanded rect { fill: color-mix(in srgb, #f97316 13%, var(--paper)); stroke: color-mix(in srgb, #e0523e 72%, var(--line)); }
+.mindmap-node.node-collection .node-icon { fill: #e0523e; }
+.mindmap-node.node-reference rect,
+.mindmap-node.is-range-child rect { fill: color-mix(in srgb, #06b6d4 10%, var(--paper)); stroke: color-mix(in srgb, #0891b2 66%, var(--line)); }
+.mindmap-node.node-reference .node-icon,
+.mindmap-node.is-range-child .node-icon { fill: #0891b2; }
+.mindmap-node .node-label { font-size: 14px; font-weight: 850; }
+.mindmap-node.node-note .node-label { font-size: 14px; }
+.mindmap-node .node-type-label { font-size: 8px; letter-spacing: .9px; }
+.mindmap-node:hover rect,
+.mindmap-node:focus-visible rect { stroke-width: 2.5; filter: drop-shadow(0 8px 15px color-mix(in srgb, var(--ink) 18%, transparent)); }
+
+.mindmap-edge { opacity: .2; stroke-width: 1.35; transition: opacity 180ms ease, stroke 180ms ease, stroke-width 180ms ease; }
+.mindmap-edge.edge-folder { stroke: #d97706; }
+.mindmap-edge.edge-tag { stroke: #7c3aed; stroke-dasharray: 5 5; }
+.mindmap-edge.edge-book { stroke: #059669; }
+.mindmap-edge.edge-reference { stroke: #0891b2; }
+.mindmap-edge.edge-collection { stroke: #e0523e; stroke-dasharray: 7 5; }
+.mindmap-edge.edge-note-link { stroke: #db2777; stroke-width: 2; stroke-dasharray: 3 4; }
+.mindmap-legend [data-legend="note-link"] { color: #db2777; }
+
+.notes-mindmap.has-map-selection .mindmap-node:not(.is-connected),
+.notes-mindmap.has-map-selection .mindmap-edge:not(.is-connected) { opacity: .055 !important; }
+.notes-mindmap.has-map-selection .mindmap-zone { opacity: .34; }
+.mindmap-node.is-connected { opacity: 1 !important; }
+.mindmap-node.is-connected rect { stroke-width: 2.8; filter: drop-shadow(0 0 13px color-mix(in srgb, var(--green-2) 34%, transparent)); }
+.mindmap-edge.is-connected { opacity: 1 !important; stroke-width: 3; filter: drop-shadow(0 0 3px color-mix(in srgb, currentColor 38%, transparent)); }
+.notes-mindmap.has-map-search .mindmap-node:not(.is-search-match) { opacity: .07 !important; }
+.notes-mindmap.has-map-search .mindmap-edge { opacity: .035 !important; }
+.mindmap-node.is-search-match { opacity: 1 !important; }
+.mindmap-node.is-search-match rect { stroke-width: 3; filter: drop-shadow(0 0 12px color-mix(in srgb, var(--gold) 38%, transparent)); }
+
+/* Direct note links in the editor. */
+.note-link-panel { display: grid; gap: 11px; }
+.note-link-panel[hidden] { display: none; }
+.note-link-icon { background: linear-gradient(135deg, #2563eb, #7c3aed); }
+.note-link-results,
+.note-links { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 8px; }
+.note-link-results { max-height: 230px; overflow-y: auto; overscroll-behavior: contain; }
+.note-link-results > button,
+.note-link-chip {
+  display: grid;
+  min-width: 0;
+  min-height: 58px;
+  grid-template-columns: 34px minmax(0, 1fr) 28px;
+  align-items: center;
+  gap: 9px;
+  padding: 8px 9px;
+  border: 1px solid color-mix(in srgb, #2563eb 24%, var(--line));
+  border-radius: 13px;
+  color: var(--ink);
+  background: color-mix(in srgb, #3b82f6 6%, var(--paper));
+  text-align: left;
+}
+.note-link-results > button:hover,
+.note-link-results > button:focus-visible { border-color: #2563eb; background: color-mix(in srgb, #3b82f6 11%, var(--paper)); transform: translateY(-2px); box-shadow: 0 8px 18px color-mix(in srgb, #2563eb 12%, transparent); }
+.note-link-result-icon,
+.note-link-chip-icon { display: grid; width: 34px; height: 34px; place-items: center; border-radius: 10px; color: #2563eb; background: color-mix(in srgb, #3b82f6 12%, var(--panel)); }
+.note-link-results > button > span:nth-child(2),
+.note-link-chip > span:nth-child(2) { display: grid; min-width: 0; gap: 3px; }
+.note-link-results strong,
+.note-link-chip strong { overflow-wrap: anywhere; font-size: .78rem; line-height: 1.25; }
+.note-link-results small,
+.note-link-chip small { display: -webkit-box; overflow: hidden; color: var(--muted); font-size: .66rem; line-height: 1.35; -webkit-box-orient: vertical; -webkit-line-clamp: 2; }
+.note-link-chip { border-color: color-mix(in srgb, #7c3aed 32%, var(--line)); background: color-mix(in srgb, #8b5cf6 7%, var(--paper)); }
+.note-link-chip > button { display: grid; width: 28px; min-height: 28px; place-items: center; padding: 0; border: 0; border-radius: 8px; color: var(--rose); background: transparent; }
+.note-link-empty { grid-column: 1 / -1; margin: 0; padding: 11px; border: 1px dashed var(--line); border-radius: 12px; color: var(--muted); font-size: .72rem; line-height: 1.45; text-align: center; }
+
+@media (max-width: 860px) {
+  .mindmap-header { grid-template-columns: minmax(0, 1fr) auto; }
+  .mindmap-header > div:first-child { grid-column: 1; grid-row: 1; }
+  .mindmap-header > .mindmap-close { grid-column: 2; grid-row: 1; }
+  .mindmap-search { grid-column: 1 / -1; grid-row: 2; width: 100%; }
+  .mindmap-actions { grid-column: 1 / -1; grid-row: 3; justify-self: center; }
+}
+
+@media (max-width: 560px) {
+  .note-link-results,
+  .note-links { grid-template-columns: 1fr; }
+  .mindmap-guide { align-items: flex-start; }
+}

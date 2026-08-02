@@ -137,6 +137,7 @@ export class NotesSystem extends EventTarget {
     return {
       id: note.id || uuid(), key: resolvedKey, title: String(note.title || ""), text: String(note.text || ""),
       tags: Array.isArray(note.tags) ? note.tags.map(String) : [], references: Array.isArray(note.references) ? note.references.map(String) : [],
+      linkedNoteIds: Array.isArray(note.linkedNoteIds) ? [...new Set(note.linkedNoteIds.map(String))].filter((linkedKey) => linkedKey && linkedKey !== resolvedKey) : [],
       folderId: String(note.folderId || ""),
       standalone: note.standalone ?? resolvedKey.startsWith("note:"), revision: Number(note.revision) || 1,
       createdAt: note.createdAt || note.updatedAt || now, updatedAt: note.updatedAt || now,

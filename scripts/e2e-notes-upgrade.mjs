@@ -25,6 +25,17 @@ const longTitle = "A complete mind map title that must remain visible inside its
 await createNote(longTitle, "inclusive-search-marker mercy and patience", "alpha");
 await createNote("Second topic note", "inclusive-search-marker wisdom", "beta");
 
+await page.locator('.note-card:has-text("Second topic note") .note-card-main').click();
+await page.locator("#noteLinkSearch").fill("complete mind map title");
+await page.locator('#noteLinkResults [data-link-note]:has-text("A complete mind map title")').click();
+await page.waitForSelector('#noteLinks .note-link-chip:has-text("A complete mind map title")');
+await page.locator('#noteSheet button[value="close"]').last().click();
+await page.waitForTimeout(300);
+await page.locator(`.note-card:has-text("${longTitle}") .note-card-main`).click();
+if (!(await page.locator('#noteLinks .note-link-chip:has-text("Second topic note")').count())) throw new Error("A note link was not reciprocal in the other note.");
+await page.screenshot({ path: "/tmp/abrahamic-note-links-editor.png", fullPage: true });
+await page.locator('#noteSheet button[value="close"]').last().click();
+
 await page.locator('[data-tag="alpha"]').click();
 await page.locator('[data-tag="beta"]').click();
 if (await page.locator("#notesList .note-card").count() !== 2) throw new Error("Multiple hashtags did not use inclusive OR matching.");
@@ -39,6 +50,7 @@ await page.locator('[data-tag="alpha"]').click();
 await page.locator('[data-tag="beta"]').click();
 await page.locator("#notesMindMapMode").click();
 await page.waitForSelector("#notesMindMap:not([hidden]) .mindmap-node");
+if (!(await page.locator(".mindmap-edge.edge-note-link").count())) throw new Error("Linked notes were not connected in the mind map.");
 const completeMapTitle = await page.locator(".mindmap-node.node-note .node-label").allTextContents();
 if (!completeMapTitle.includes(longTitle)) throw new Error("The mind map truncated a note title.");
 await page.screenshot({ path: "/tmp/abrahamic-mindmap-light.png", fullPage: true });

@@ -124,6 +124,7 @@ const state = {
   selectedNotes: new Set(),
   expandedNoteReferences: new Set(),
   currentNoteReferences: [],
+  currentNoteLinks: [],
   noteTagFilters: new Set(),
   notesSearchScope: "all",
   notesContentFilter: "all",
@@ -241,6 +242,11 @@ const els = {
   referenceSearch: document.querySelector("#referenceSearch"),
   referenceResults: document.querySelector("#referenceResults"),
   noteReferences: document.querySelector("#noteReferences"),
+  noteLinkPanel: document.querySelector("#noteLinkPanel"),
+  noteLinkSearch: document.querySelector("#noteLinkSearch"),
+  noteLinkResults: document.querySelector("#noteLinkResults"),
+  noteLinks: document.querySelector("#noteLinks"),
+  noteLinkCount: document.querySelector("#noteLinkCount"),
   toggleVerseRangePicker: document.querySelector("#toggleVerseRangePicker"),
   verseRangePicker: document.querySelector("#verseRangePicker"),
   verseRangeSource: document.querySelector("#verseRangeSource"),
@@ -603,6 +609,7 @@ function bindEvents() {
   els.noteFolderSelect.addEventListener("change", saveCurrentNote);
   els.createFolderFromEditor.addEventListener("click", () => createNoteFolder(true));
   els.referenceSearch.addEventListener("input", renderReferenceResults);
+  els.noteLinkSearch.addEventListener("input", renderNoteLinks);
   els.toggleVerseRangePicker.addEventListener("click", toggleVerseRangePicker);
   els.verseRangeSource.addEventListener("change", renderVerseRangeBookOptions);
   els.verseRangeBook.addEventListener("change", renderVerseRangeChapterOptions);
@@ -1718,6 +1725,9 @@ function openNote(key) {
   if (parsed.type !== "note" && !references.includes(key)) references.unshift(key);
   state.currentNoteKey = key;
   state.currentNoteReferences = references;
+  const outgoingLinks = Array.isArray(existing.linkedNoteIds) ? existing.linkedNoteIds : [];
+  const incomingLinks = sharedNote ? [] : Object.entries(state.notes).filter(([otherKey, note]) => otherKey !== key && (note.linkedNoteIds || []).includes(key)).map(([otherKey]) => otherKey);
+  state.currentNoteLinks = [...new Set([...outgoingLinks, ...incomingLinks])].filter((linkedKey) => linkedKey !== key && state.notes[linkedKey]);
   state.expandedEditorReferenceRanges.clear();
   els.noteTitle.textContent = existing.title?.trim() || "Edit note";
   els.noteSubtitle.textContent = sharedNote ? `Shared by ${sharedNote.ownerEmail || "a collaborator"} · live editing` : parsed.type === "note" ? "All fields can be changed" : `${chapter?.name_simple || parsed.label || "Verse"} · reference saved below`;
@@ -1730,6 +1740,9 @@ function openNote(key) {
   renderNoteFolderOptions(existing.folderId || "");
   renderNoteTagPicker();
   els.referenceSearch.value = "";
+  els.noteLinkSearch.value = "";
+  els.noteLinkPanel.hidden = Boolean(sharedNote);
+  renderNoteLinks();
   closeVerseRangePicker();
   renderNoteReferences();
   renderReferenceResults();
@@ -1741,7 +1754,7 @@ function openNote(key) {
 function createStandaloneNote() {
   const key = `note:${crypto.randomUUID()}`;
   const folderId = state.noteViewMode === "folders" && state.selectedFolderId !== "all" ? state.selectedFolderId : "";
-  state.notes[key] = { title: "", text: "", tags: [], references: [], folderId, updatedAt: new Date().toISOString(), standalone: true };
+  state.notes[key] = { title: "", text: "", tags: [], references: [], linkedNoteIds: [], folderId, updatedAt: new Date().toISOString(), standalone: true };
   saveNotes();
   renderNotes();
   openNote(key);
@@ -1774,6 +1787,7 @@ function saveCurrentNote() {
       tags,
       folderId,
       references: [...state.currentNoteReferences],
+      linkedNoteIds: [...state.currentNoteLinks],
       updatedAt: new Date().toISOString(),
       standalone: key.startsWith("note:"),
     };
@@ -1793,6 +1807,7 @@ function queueLocalNoteSave(key, note, delay = 240) {
     ...note,
     tags: [...(note.tags || [])],
     references: [...(note.references || [])],
+    linkedNoteIds: [...(note.linkedNoteIds || [])],
   };
   pendingNoteDrafts.set(key, snapshot);
   clearTimeout(pendingNoteSaveTimers.get(key));
@@ -1839,6 +1854,12 @@ async function deleteCurrentNote() {
   pendingNoteSaveTimers.delete(deletedKey);
   await notesSystem?.remove(deletedKey);
   delete state.notes[deletedKey];
+  Object.entries(state.notes).forEach(([otherKey, note]) => {
+    if (!(note.linkedNoteIds || []).includes(deletedKey)) return;
+    note.linkedNoteIds = note.linkedNoteIds.filter((linkedKey) => linkedKey !== deletedKey);
+    note.updatedAt = new Date().toISOString();
+    queueLocalNoteSave(otherKey, note);
+  });
   refreshVerse(deletedKey);
   renderNotes();
   els.noteEditor.value = "";
@@ -1848,6 +1869,7 @@ async function deleteCurrentNote() {
   renderNoteTagPicker();
   els.referenceSearch.value = "";
   state.currentNoteReferences = [];
+  state.currentNoteLinks = [];
   state.currentNoteKey = null;
   els.noteSheet.close();
 }
@@ -2015,9 +2037,10 @@ function renderNotes({ animate = true, hydrateReferences = true } = {}) {
       const folderName = state.noteFolders.find((folder) => folder.id === note.folderId)?.name || "";
       const tagDescriptions = tags.map((tag) => state.tagCatalog[tag]?.description || "").join(" ");
       const referenceText = (note.references || []).map((reference) => noteReferenceTextCache.get(reference) || "").join(" ");
+      const linkedNoteText = (note.linkedNoteIds || []).map((linkedKey) => state.notes[linkedKey]?.title || "").join(" ");
       const searchFields = {
         title: note.title || "",
-        body: note.text || "",
+        body: `${note.text || ""} ${linkedNoteText}`,
         references: `${key} ${formatReferenceKey(key)} ${(note.references || []).map(formatReferenceKey).join(" ")} ${referenceText}`,
         tags: `${tags.join(" ")} ${tagDescriptions}`,
         folders: folderName,
@@ -2361,10 +2384,17 @@ function selectAllNotes() {
 }
 async function deleteSelectedNotes() {
   if (!state.selectedNotes.size || !window.confirm(`Delete ${state.selectedNotes.size} selected notes?`)) return;
+  const deletedKeys = new Set([...state.selectedNotes].filter((key) => !key.startsWith("shared:")));
   for (const key of state.selectedNotes) {
     if (key.startsWith("shared:")) await notesSystem.deleteSharedNote(key.slice(7));
     else { await notesSystem.remove(key); delete state.notes[key]; }
   }
+  Object.entries(state.notes).forEach(([key, note]) => {
+    if (!(note.linkedNoteIds || []).some((linkedKey) => deletedKeys.has(linkedKey))) return;
+    note.linkedNoteIds = note.linkedNoteIds.filter((linkedKey) => !deletedKeys.has(linkedKey));
+    note.updatedAt = new Date().toISOString();
+    queueLocalNoteSave(key, note);
+  });
   toggleNoteSelection(false);
 }
 async function shareSelectedNotes() {
@@ -3042,6 +3072,57 @@ function addSelectedVerseRange() {
   saveCurrentNote();
   setStatus(`${verseRangeLabel(start)}${end > start ? `-${end}` : ""} added to the note.`);
   clearVerseRangeSelection();
+}
+
+function noteLinkLabel(key) {
+  const note = state.notes[key];
+  if (!note) return "Missing note";
+  return note.title?.trim() || formatReferenceKey(key) || "Untitled note";
+}
+
+function toggleNoteLink(targetKey) {
+  const currentKey = state.currentNoteKey;
+  if (!currentKey || currentKey.startsWith("shared:") || !state.notes[targetKey] || targetKey === currentKey) return;
+  const linked = state.currentNoteLinks.includes(targetKey);
+  state.currentNoteLinks = linked
+    ? state.currentNoteLinks.filter((key) => key !== targetKey)
+    : [...state.currentNoteLinks, targetKey];
+  const target = state.notes[targetKey];
+  const reciprocal = new Set(target.linkedNoteIds || []);
+  if (linked) reciprocal.delete(currentKey);
+  else reciprocal.add(currentKey);
+  target.linkedNoteIds = [...reciprocal];
+  target.updatedAt = new Date().toISOString();
+  queueLocalNoteSave(targetKey, target);
+  saveCurrentNote();
+  renderNoteLinks();
+  setStatus(linked ? `Link to “${noteLinkLabel(targetKey)}” removed.` : `Linked with “${noteLinkLabel(targetKey)}”.`);
+}
+
+function renderNoteLinks() {
+  if (!els.noteLinks || !state.currentNoteKey) return;
+  const query = els.noteLinkSearch.value.trim().toLocaleLowerCase();
+  const candidates = Object.entries(state.notes)
+    .filter(([key]) => key !== state.currentNoteKey)
+    .sort(([, left], [, right]) => Date.parse(right.updatedAt || 0) - Date.parse(left.updatedAt || 0));
+  const linkedKeys = state.currentNoteLinks.filter((key) => state.notes[key]);
+  els.noteLinkCount.textContent = `${linkedKeys.length} linked`;
+  els.noteLinks.innerHTML = linkedKeys.length
+    ? linkedKeys.map((key) => {
+      const note = state.notes[key];
+      return `<div class="note-link-chip"><span class="note-link-chip-icon"><i class="ti ti-notes" aria-hidden="true"></i></span><span><strong>${escapeHTML(noteLinkLabel(key))}</strong><small>${escapeHTML((note.text || "No text yet").slice(0, 100))}</small></span><button type="button" data-unlink-note="${escapeHTML(key)}" aria-label="Unlink ${escapeHTML(noteLinkLabel(key))}"><i class="ti ti-unlink"></i></button></div>`;
+    }).join("")
+    : '<p class="note-link-empty">No linked notes yet. Choose one below to create a direct connection.</p>';
+  const matches = candidates.filter(([key, note]) => {
+    if (linkedKeys.includes(key)) return false;
+    if (!query) return true;
+    return `${noteLinkLabel(key)} ${note.text || ""} ${(note.tags || []).join(" ")}`.toLocaleLowerCase().includes(query);
+  }).slice(0, query ? 20 : 8);
+  els.noteLinkResults.innerHTML = matches.length
+    ? matches.map(([key, note]) => `<button type="button" data-link-note="${escapeHTML(key)}"><span class="note-link-result-icon"><i class="ti ti-link-plus" aria-hidden="true"></i></span><span><strong>${escapeHTML(noteLinkLabel(key))}</strong><small>${escapeHTML((note.text || (note.tags || []).map((tag) => `#${tag}`).join(" ") || "No preview").slice(0, 110))}</small></span><i class="ti ti-plus" aria-hidden="true"></i></button>`).join("")
+    : `<p class="note-link-empty">${query ? "No other notes match this search." : "There are no other notes to link yet."}</p>`;
+  els.noteLinkResults.querySelectorAll("[data-link-note]").forEach((button) => button.addEventListener("click", () => toggleNoteLink(button.dataset.linkNote)));
+  els.noteLinks.querySelectorAll("[data-unlink-note]").forEach((button) => button.addEventListener("click", () => toggleNoteLink(button.dataset.unlinkNote)));
 }
 
 function renderNoteReferences() {
