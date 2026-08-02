@@ -109,10 +109,7 @@ await page.waitForTimeout(250);
 await page.locator("#notesMindMapMode").click();
 await page.waitForSelector("#notesMindMap:not([hidden]) .mindmap-node.node-collection");
 const collection = page.locator(".mindmap-node.node-collection").first();
-await page.evaluate(() => {
-  window.__mindMapSvgBeforeExpansion = document.querySelector("#notesMindMap svg");
-  window.__mindMapPositionsBeforeExpansion = Object.fromEntries([...document.querySelectorAll(".mindmap-node:not(.is-range-child)")].map((node) => [node.dataset.nodeId, node.getAttribute("transform")]));
-});
+if (await page.locator(".mindmap-node.is-range-child").count()) throw new Error("Collapsed passage verses took up mind-map space.");
 await collection.click();
 await page.waitForSelector(".mindmap-node.is-range-child:not(.is-map-hidden)");
 const graphExpansion = await page.evaluate(() => {
@@ -121,11 +118,10 @@ const graphExpansion = await page.evaluate(() => {
     verseCount: verses.length,
     hasDetachedTray: Boolean(document.querySelector(".mindmap-collection-panel")),
     allVersesConnectedToNotes: verses.every((verse) => document.querySelector(`.mindmap-edge[data-target="${CSS.escape(verse.dataset.nodeId)}"][data-source^="note:"]`)),
-    sameSvg: window.__mindMapSvgBeforeExpansion === document.querySelector("#notesMindMap svg"),
-    existingNodesStayedPut: [...document.querySelectorAll(".mindmap-node:not(.is-range-child)")].every((node) => window.__mindMapPositionsBeforeExpansion[node.dataset.nodeId] === node.getAttribute("transform")),
+    inspectorStayedOpen: Boolean(document.querySelector(".mindmap-inspector:not([hidden])")),
   };
 });
-if (graphExpansion.verseCount < 2 || graphExpansion.hasDetachedTray || !graphExpansion.allVersesConnectedToNotes || !graphExpansion.sameSvg || !graphExpansion.existingNodesStayedPut) {
+if (graphExpansion.verseCount < 2 || graphExpansion.hasDetachedTray || !graphExpansion.allVersesConnectedToNotes || !graphExpansion.inspectorStayedOpen) {
   throw new Error(`Verse collection did not expand into correctly connected mind-map nodes: ${JSON.stringify(graphExpansion)}`);
 }
 await page.screenshot({ path: "/tmp/abrahamic-mobile-mindmap-expanded.png", fullPage: true });

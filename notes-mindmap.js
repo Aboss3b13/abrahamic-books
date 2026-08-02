@@ -155,7 +155,7 @@ const ZONE_META = {
 
 function layOut(nodes, viewport) {
   const order = ["folder", "note", "tag", "book", "collection", "reference"];
-  const portrait = viewport.height > viewport.width * 1.08;
+  const portrait = viewport.portrait;
   const zoneGap = 34;
   const panelPadding = 26;
   const headerHeight = 78;
@@ -166,31 +166,68 @@ function layOut(nodes, viewport) {
   let cursorX = 24;
   let cursorY = 24;
 
-  order.forEach((type) => {
-    const items = nodes.filter((node) => node.type === type).sort((left, right) => left.label.localeCompare(right.label));
-    if (!items.length) return;
-    const desiredColumns = portrait ? (type === "folder" || type === "book" ? 1 : 2) : ZONE_META[type].columns;
-    const columns = Math.max(1, Math.min(desiredColumns, items.length));
+  const placeZone = (type, items, columns, x, y, forcedWidth = 0) => {
     const cellWidth = Math.max(...items.map((node) => nodeWidth(node))) + cellGapX;
     const rows = Math.ceil(items.length / columns);
-    const width = panelPadding * 2 + columns * cellWidth;
+    const width = Math.max(forcedWidth, panelPadding * 2 + columns * cellWidth);
     const height = headerHeight + panelPadding + rows * rowHeight;
-    const zoneWidth = portrait ? Math.max(620, width) : width;
-    const zone = { type, items, columns, cellWidth, x: portrait ? 24 : cursorX, y: portrait ? cursorY : 24, width: zoneWidth, height };
+    const zone = { type, items, columns, cellWidth, x, y, width, height };
+    const contentWidth = columns * cellWidth;
+    const contentX = x + (width - contentWidth) / 2;
     items.forEach((node, index) => {
       node.layoutWidth = nodeWidth(node);
       node.layoutHeight = nodeHeight(node);
-      node.x = zone.x + panelPadding + cellWidth * (index % columns) + cellWidth / 2;
-      node.y = zone.y + headerHeight + rowHeight * Math.floor(index / columns) + rowHeight / 2;
+      node.x = contentX + cellWidth * (index % columns) + cellWidth / 2;
+      node.y = y + headerHeight + rowHeight * Math.floor(index / columns) + rowHeight / 2;
     });
+    return zone;
+  };
+
+  const itemsByType = new Map(order.map((type) => [type, nodes.filter((node) => node.type === type).sort((left, right) => left.label.localeCompare(right.label))]));
+
+  if (portrait) {
+    const fullWidth = 1240;
+    const halfWidth = (fullWidth - zoneGap) / 2;
+    const compactTypes = ["folder", "book", "tag", "collection"].filter((type) => itemsByType.get(type).length);
+    const compactRows = Array.from({ length: Math.ceil(compactTypes.length / 2) }, (_, index) => compactTypes.slice(index * 2, index * 2 + 2));
+    const rows = [compactRows[0], ["note"], ...compactRows.slice(1), ["reference"]].filter(Boolean);
+    rows.forEach((rowTypes) => {
+      const present = rowTypes.filter((type) => itemsByType.get(type).length);
+      if (!present.length) return;
+      const rowZones = present.map((type, index) => {
+        const items = itemsByType.get(type);
+        const fullRow = present.length === 1;
+        const maximumColumns = fullRow ? (type === "note" ? 5 : type === "reference" ? 4 : 3) : 2;
+        const desiredColumns = fullRow
+          ? Math.max(2, Math.ceil(Math.sqrt(items.length * 1.35)))
+          : (type === "folder" || type === "book" ? 1 : 2);
+        const columns = Math.max(1, Math.min(maximumColumns, desiredColumns, items.length));
+        const zoneWidth = fullRow ? fullWidth : halfWidth;
+        const zoneX = 24 + (fullRow ? 0 : index * (halfWidth + zoneGap));
+        return placeZone(type, items, columns, zoneX, cursorY, zoneWidth);
+      });
+      const rowHeight = Math.max(...rowZones.map((zone) => zone.height));
+      rowZones.forEach((zone) => { zone.height = rowHeight; zones.push(zone); });
+      cursorY += rowHeight + zoneGap;
+    });
+    const height = Math.max(760, cursorY - zoneGap + 24);
+    const byId = new Map(nodes.map((node) => [node.id, node]));
+    return { width: fullWidth + 48, height, zones, byId, portrait };
+  }
+
+  order.forEach((type) => {
+    const items = itemsByType.get(type);
+    if (!items.length) return;
+    const desiredColumns = ZONE_META[type].columns;
+    const columns = Math.max(1, Math.min(desiredColumns, items.length));
+    const zone = placeZone(type, items, columns, cursorX, 24);
     zones.push(zone);
-    if (portrait) cursorY += height + zoneGap;
-    else cursorX += width + zoneGap;
+    cursorX += zone.width + zoneGap;
   });
 
-  const height = portrait ? Math.max(760, cursorY - zoneGap + 24) : Math.max(520, ...zones.map((zone) => zone.height + 48));
-  if (!portrait) zones.forEach((zone) => { zone.height = height - 48; });
-  const width = portrait ? Math.max(668, ...zones.map((zone) => zone.width + 48)) : Math.max(720, cursorX - zoneGap + 24);
+  const height = Math.max(520, ...zones.map((zone) => zone.height + 48));
+  zones.forEach((zone) => { zone.height = height - 48; });
+  const width = Math.max(720, cursorX - zoneGap + 24);
   const byId = new Map(nodes.map((node) => [node.id, node]));
   return { width, height, zones, byId, portrait };
 }
@@ -241,7 +278,7 @@ export function renderNotesMindMap(container, options) {
       </div>
       <button class="mindmap-close" type="button" aria-label="Close mind map"><i class="ti ti-x"></i></button>
     </header>
-    <div class="mindmap-guide"><i class="ti ti-pointer" aria-hidden="true"></i><span><strong>Tap anything to isolate its connections.</strong> Passages contain several verses; tap one to unfold those verses in the Verses area.</span></div>
+    <div class="mindmap-guide"><i class="ti ti-pointer" aria-hidden="true"></i><span><strong>Tap anything to show only its direct connections.</strong> Tap a passage to reveal or hide its verses.</span></div>
     <div class="mindmap-legend" aria-label="Mind map key"><span data-legend="note"><i></i>Note</span><span data-legend="note-link"><i></i>Linked note</span><span data-legend="tag"><i></i>Topic</span><span data-legend="folder"><i></i>Folder</span><span data-legend="book"><i></i>Scripture</span><span data-legend="collection"><i></i>Passage</span><span data-legend="reference"><i></i>Verse</span></div>
     <div class="mindmap-stage"><svg role="img" aria-label="Interactive clustered graph of notes, topics, scripture passages, and verses"></svg></div>
     <div class="mindmap-hint"><i class="ti ti-zoom-scan"></i> Drag to move · pinch or scroll to zoom · tap empty space to clear focus</div>
@@ -255,19 +292,18 @@ export function renderNotesMindMap(container, options) {
   const stageRect = stage.getBoundingClientRect();
   const viewportWidth = 1200;
   const viewportHeight = Math.max(620, viewportWidth * (stageRect.height || 700) / Math.max(stageRect.width || 1000, 1));
-  const { width, height, zones, byId, portrait } = layOut(graph.nodes, { width: stageRect.width, height: stageRect.height });
+  const portrait = window.innerHeight > window.innerWidth;
+  const visibleNodes = graph.nodes.filter((node) => node.visible !== false);
+  const { width, height, zones, byId } = layOut(visibleNodes, { width: stageRect.width, height: stageRect.height, portrait });
   let resizeTimer = 0;
-  const resizeObserver = new ResizeObserver((records) => {
-    const rect = records.at(-1)?.contentRect;
-    if (!rect) return;
-    const nextPortrait = rect.height > rect.width * 1.08;
+  const resizeObserver = new ResizeObserver(() => {
+    const nextPortrait = window.innerHeight > window.innerWidth;
     if (nextPortrait === portrait) return;
     clearTimeout(resizeTimer);
     resizeTimer = window.setTimeout(() => renderNotesMindMap(container, options), 180);
   });
   resizeObserver.observe(stage);
-  const links = graph.edges.map((edge) => ({ ...edge, a: byId.get(edge.source), b: byId.get(edge.target) })).filter((edge) => edge.a && edge.b);
-  const linkById = new Map(links.map((edge) => [edge.id, edge]));
+  const links = graph.edges.map((edge) => ({ ...edge, a: byId.get(edge.source), b: byId.get(edge.target) })).filter((edge) => edge.a && edge.b && edge.visible);
   const adjacency = new Map();
   links.forEach((edge) => {
     if (!adjacency.has(edge.source)) adjacency.set(edge.source, []);
@@ -312,7 +348,7 @@ export function renderNotesMindMap(container, options) {
     edgeLayer.append(path);
   });
 
-  graph.nodes.forEach((node, nodeIndex) => {
+  visibleNodes.forEach((node, nodeIndex) => {
     const nodeClass = `mindmap-node node-${node.type}${node.expanded ? " is-expanded" : ""}${node.rangeChild ? " is-range-child" : ""}${node.externalScope ? " is-external-note" : ""}${node.visible === false ? " is-map-hidden" : ""}`;
     const group = svgElement("g", {
       class: nodeClass,
@@ -429,81 +465,24 @@ export function renderNotesMindMap(container, options) {
     selected = node.id;
     const connected = new Set([node.id]);
     const connectedEdges = new Set();
-    const firstHopNotes = new Set();
     (adjacency.get(node.id) || []).forEach((edge) => {
       if (!visibleEdge(edge)) return;
       const other = edge.source === node.id ? edge.target : edge.source;
       connected.add(other);
       connectedEdges.add(edge.id);
-      if (byId.get(other)?.type === "note") firstHopNotes.add(other);
     });
-    if (node.type === "note") firstHopNotes.add(node.id);
-    if (["tag", "folder", "reference", "collection", "note"].includes(node.type)) {
-      firstHopNotes.forEach((noteId) => (adjacency.get(noteId) || []).forEach((edge) => {
-        if (!visibleEdge(edge)) return;
-        const other = edge.source === noteId ? edge.target : edge.source;
-        if (byId.get(other)?.type === "book") return;
-        connected.add(other);
-        connectedEdges.add(edge.id);
-      }));
-    }
-    if (node.type === "collection") {
-      const verseIds = [...connected].filter((id) => byId.get(id)?.rangeParentId === node.id);
-      verseIds.forEach((verseId) => (adjacency.get(verseId) || []).forEach((edge) => {
-        if (!visibleEdge(edge)) return;
-        connected.add(edge.source === verseId ? edge.target : edge.source);
-        connectedEdges.add(edge.id);
-      }));
-    }
     container.classList.add("has-map-selection");
     nodeLayer.querySelectorAll(".mindmap-node").forEach((item) => item.classList.toggle("is-connected", connected.has(item.dataset.nodeId)));
     edgeLayer.querySelectorAll(".mindmap-edge").forEach((item) => item.classList.toggle("is-connected", connectedEdges.has(item.dataset.edgeId)));
     showInspector(node, connected);
   }
 
-  const nodesForRange = (identity) => [...nodeLayer.querySelectorAll(".is-range-child")].filter((item) => item.dataset.rangeIdentity === identity);
-  const edgesForRange = (identity, detail) => [...edgeLayer.querySelectorAll(detail ? "[data-range-detail]" : "[data-range-summary]")].filter((item) => item.dataset.rangeIdentity === identity);
-  const updateVisibleVerseCount = () => {
-    const visible = [...nodeLayer.querySelectorAll(".node-reference:not(.is-map-hidden)")].length;
-    container.querySelector("[data-map-verse-count]").textContent = `${visible} visible ${visible === 1 ? "verse" : "verses"}`;
-  };
   const toggleCollection = (node, group) => {
     const expanding = !expandedRangeIds.has(node.rangeIdentity);
     if (expanding) expandedRangeIds.add(node.rangeIdentity);
     else expandedRangeIds.delete(node.rangeIdentity);
-    node.expanded = expanding;
-    group.classList.toggle("is-expanded", expanding);
-    group.setAttribute("aria-label", `Passage ${node.label}. ${expanding ? "Expanded; activate to collapse." : "Collapsed; activate to show its verses."}`);
-    group.querySelector(".node-icon").textContent = expanding ? "−" : "+";
-    group.querySelector(".node-type-label").textContent = `${node.references.length} VERSES · ${node.noteCount} NOTES · ${expanding ? "SHOWN" : "TAP TO SHOW"}`;
-    edgesForRange(node.rangeIdentity, false).forEach((edge) => {
-      edge.classList.toggle("is-map-hidden", expanding);
-      linkById.get(edge.dataset.edgeId).visible = !expanding;
-    });
-    const verseNodes = nodesForRange(node.rangeIdentity);
-    const detailEdges = edgesForRange(node.rangeIdentity, true);
-    verseNodes.forEach((verse, index) => {
-      verse.classList.toggle("is-map-hidden", !expanding);
-      verse.setAttribute("tabindex", expanding ? "0" : "-1");
-      if (expanding && !matchMedia("(prefers-reduced-motion: reduce)").matches) verse.animate(
-        [{ opacity: 0, filter: "blur(4px)" }, { opacity: 1, filter: "none" }],
-        { duration: 320, delay: Math.min(index, 12) * 32, easing: "cubic-bezier(.16,1,.3,1)" },
-      );
-    });
-    detailEdges.forEach((edge, index) => {
-      edge.classList.toggle("is-map-hidden", !expanding);
-      linkById.get(edge.dataset.edgeId).visible = expanding;
-      if (expanding && !matchMedia("(prefers-reduced-motion: reduce)").matches) edge.animate(
-        [{ opacity: 0, strokeDashoffset: 22 }, { opacity: 1, strokeDashoffset: 0 }],
-        { duration: 420, delay: Math.min(index, 18) * 18, easing: "ease-out" },
-      );
-    });
-    if (!matchMedia("(prefers-reduced-motion: reduce)").matches) group.querySelector("rect").animate(
-      [{ filter: "brightness(1)" }, { filter: "brightness(1.18)" }, { filter: "brightness(1)" }],
-      { duration: 420, easing: "cubic-bezier(.16,1,.3,1)" },
-    );
-    updateVisibleVerseCount();
-    selectNode(node);
+    container._mindMapPendingSelection = node.id;
+    renderNotesMindMap(container, options);
   };
 
   const activateNode = (group) => {
@@ -615,5 +594,10 @@ export function renderNotesMindMap(container, options) {
   container.querySelector("[data-map-reset]").addEventListener("click", fit);
   container.querySelectorAll("[data-map-zoom]").forEach((button) => button.addEventListener("click", () => zoom(button.dataset.mapZoom === "in" ? 1.22 : .82)));
   container.querySelector(".mindmap-close").addEventListener("click", options.onClose);
+  const pendingSelection = container._mindMapPendingSelection;
+  if (pendingSelection && byId.has(pendingSelection)) {
+    delete container._mindMapPendingSelection;
+    selectNode(byId.get(pendingSelection));
+  }
   container._mindMapCleanup = () => { cancelAnimationFrame(transformFrame); cancelAnimationFrame(cameraFrame); clearTimeout(resizeTimer); resizeObserver.disconnect(); };
 }

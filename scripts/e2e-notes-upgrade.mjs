@@ -28,6 +28,7 @@ async function createNote(title, body, tag, folderName = "") {
 
 const longTitle = "A complete mind map title that must remain visible inside its node";
 await createNote(longTitle, "inclusive-search-marker mercy and patience", "alpha");
+await createNote("Third linked study", "A second direct connection", "gamma");
 await createNote("Second topic note", "inclusive-search-marker wisdom", "beta", "Other studies");
 
 await page.locator('.note-card:has-text("Second topic note") .note-card-main').click();
@@ -35,6 +36,9 @@ await page.locator("#noteLinkSearch").fill("complete mind map title");
 if (!(await page.locator('#noteLinkResults [data-link-note]:has-text("Top-level notes")').count())) throw new Error("The note linker did not search or identify notes outside the current folder.");
 await page.locator('#noteLinkResults [data-link-note]:has-text("A complete mind map title")').click();
 await page.waitForSelector('#noteLinks .note-link-chip:has-text("A complete mind map title")');
+await page.locator("#noteLinkSearch").fill("Third linked study");
+await page.locator('#noteLinkResults [data-link-note]:has-text("Third linked study")').click();
+if (await page.locator("#noteLinks .note-link-chip").count() !== 2) throw new Error("The editor did not preserve multiple note links.");
 await page.locator('#noteSheet button[value="close"]').last().click();
 await page.waitForTimeout(300);
 await page.locator("#notesMindMapMode").click();

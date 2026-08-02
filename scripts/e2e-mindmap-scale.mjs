@@ -44,13 +44,17 @@ const mapStats = await page.evaluate(() => ({
   nodes: document.querySelectorAll(".mindmap-node").length,
   edges: document.querySelectorAll(".mindmap-edge").length,
   zones: [...document.querySelectorAll(".mindmap-zone-title")].map((item) => item.textContent),
+  hiddenNodes: document.querySelectorAll(".mindmap-node.is-map-hidden").length,
 }));
 if (renderTime > 3000) throw new Error(`Large mind map took ${Math.round(renderTime)}ms to render.`);
-if (mapStats.nodes < 250 || mapStats.edges < 400 || mapStats.zones.length !== 6) throw new Error(`Large graph was incomplete: ${JSON.stringify(mapStats)}`);
+if (mapStats.nodes < 170 || mapStats.edges < 600 || mapStats.zones.length < 5 || mapStats.hiddenNodes) throw new Error(`Large graph was incomplete or reserved space for hidden verses: ${JSON.stringify(mapStats)}`);
 
 await page.locator(".mindmap-node.node-tag").first().click();
 if (!(await page.locator("#notesMindMap.has-map-selection").count())) throw new Error("Selecting a topic did not enter focused mode.");
 await page.waitForTimeout(300);
+if (!(await page.locator(".mindmap-inspector:not([hidden])").count())) throw new Error("The selected item inspector closed itself.");
+const connectedTypes = await page.locator(".mindmap-node.is-connected").evaluateAll((items) => items.map((item) => item.dataset.nodeType));
+if (connectedTypes.some((type) => !["tag", "note"].includes(type))) throw new Error(`Topic focus included indirect connections: ${JSON.stringify(connectedTypes)}`);
 const focusOpacity = await page.evaluate(() => {
   const connected = document.querySelector(".mindmap-node.is-connected");
   const unrelated = document.querySelector(".mindmap-node:not(.is-connected):not(.is-map-hidden)");
@@ -87,7 +91,7 @@ await page.waitForSelector("#notesMindMap:not([hidden]) .mindmap-node");
 console.log("Phone map opened.");
 if (await page.locator('.mindmap-stage svg[data-layout="portrait"]').count() !== 1) throw new Error("The mind map did not switch to its portrait layout on a phone.");
 const zoneFlow = await page.locator(".mindmap-zone").evaluateAll((items) => items.map((item) => item.getBBox()).map(({ x, y }) => ({ x, y })));
-if (!zoneFlow.every((zone, index) => index === 0 || zone.y > zoneFlow[index - 1].y)) throw new Error(`Portrait zones were not stacked into a readable flow: ${JSON.stringify(zoneFlow)}`);
+if (!zoneFlow.some((zone, index) => zoneFlow.slice(0, index).some((other) => other.y === zone.y && other.x !== zone.x))) throw new Error(`Portrait zones did not use compact paired rows: ${JSON.stringify(zoneFlow)}`);
 
 const draggableNode = page.locator(".mindmap-node:not(.is-map-hidden)").first();
 const dragBox = await draggableNode.boundingBox();

@@ -3129,7 +3129,7 @@ function renderNoteLinks() {
     if (linkedKeys.includes(key)) return false;
     if (!query) return true;
     return `${noteLinkLabel(key)} ${note.text || ""} ${(note.tags || []).join(" ")} ${getFolderDisplayPath(note.folderId || "")}`.toLocaleLowerCase().includes(query);
-  }).slice(0, query ? 20 : 8);
+  });
   els.noteLinkResults.innerHTML = matches.length
     ? matches.map(([key, note]) => {
       const location = getFolderDisplayPath(note.folderId || "") || "Top-level notes";

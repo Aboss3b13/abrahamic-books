@@ -48,7 +48,7 @@ await page.waitForSelector("#notesMindMap:not([hidden]) .mindmap-node");
 const rangeNode = page.locator('.mindmap-node.node-collection:has-text("2:1-34")');
 if (await rangeNode.count() !== 1) throw new Error("Mind map did not create one shared collection node.");
 if (await page.locator('.mindmap-node.node-reference:not(.is-range-child):has-text("Quran 2:10")').count()) throw new Error("Overlapping verse was duplicated outside its collection.");
-if (await page.locator('.mindmap-node.node-reference.is-range-child:has-text("Quran 2:10")').count() !== 1) throw new Error("The shared verse did not have exactly one expandable node.");
+if (await page.locator('.mindmap-node.node-reference.is-range-child').count()) throw new Error("Collapsed verses reserved hidden space in the mind map.");
 if (!(await rangeNode.textContent()).includes("2 NOTES")) throw new Error("Shared collection did not connect both notes.");
 await rangeNode.evaluate((node) => node.dispatchEvent(new KeyboardEvent("keydown", { key: "Enter", bubbles: true })));
 await page.waitForTimeout(500);
