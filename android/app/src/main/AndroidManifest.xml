@@ -28,8 +28,8 @@
                 <category android:name="android.intent.category.BROWSABLE" />
                 <data
                     android:scheme="https"
-                    android:host="abbas2.ali-raza.net"
-                    android:pathPrefix="/AbrahamicBooks" />
+                    android:host="abrahamicbooks.org"
+                    android:pathPrefix="/" />
             </intent-filter>
 
             <intent-filter android:autoVerify="true">
@@ -38,8 +38,8 @@
                 <category android:name="android.intent.category.BROWSABLE" />
                 <data
                     android:scheme="https"
-                    android:host="abbas2.ali-raza.net"
-                    android:pathPrefix="/quran" />
+                    android:host="www.abrahamicbooks.org"
+                    android:pathPrefix="/" />
             </intent-filter>
 
         </activity>

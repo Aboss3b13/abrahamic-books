@@ -6,7 +6,7 @@
     <meta name="robots" content="noindex">
     <title>Abrahamic Books</title>
     <script>
-      const destination = new URL("/AbrahamicBooks/", location.origin);
+      const destination = new URL("https://abrahamicbooks.org/");
       destination.search = location.search;
       destination.hash = location.hash;
       // Redirect immediately. Old service-worker cleanup is best-effort and
@@ -18,9 +18,9 @@
         .catch(() => {});
       location.replace(destination);
     </script>
-    <noscript><meta http-equiv="refresh" content="0; url=/AbrahamicBooks/"></noscript>
+    <noscript><meta http-equiv="refresh" content="0; url=https://abrahamicbooks.org/"></noscript>
   </head>
   <body>
-    <p>Abrahamic Books moved to <a href="/AbrahamicBooks/">/AbrahamicBooks/</a>.</p>
+    <p>Abrahamic Books moved to <a href="https://abrahamicbooks.org/">abrahamicbooks.org</a>.</p>
   </body>
 </html>

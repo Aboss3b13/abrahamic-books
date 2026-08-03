@@ -63,7 +63,7 @@ public class NotesWidgetService extends RemoteViewsService {
             row.setTextColor(R.id.widget_note_text, body);
             row.setTextColor(R.id.widget_note_arrow, accent);
 
-            Uri uri = Uri.parse("https://abbas2.ali-raza.net/AbrahamicBooks/?view=notesView&note=" + Uri.encode(note.key));
+            Uri uri = Uri.parse(AbrahamicWidgetProvider.SITE_URL + "?view=notesView&note=" + Uri.encode(note.key));
             Intent fillIn = new Intent(Intent.ACTION_VIEW, uri);
             row.setOnClickFillInIntent(R.id.widget_note_row, fillIn);
             return row;

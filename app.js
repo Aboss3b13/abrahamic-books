@@ -21,7 +21,7 @@ const STORE = {
   downloadedCommentaries: "bible-downloaded-commentaries",
   notesOrganizer: "abrahamic-books-notes-organizer-v1",
 };
-const PUBLIC_APP_URL = "https://abbas2.ali-raza.net/AbrahamicBooks/";
+const PUBLIC_APP_URL = "https://abrahamicbooks.org/";
 document.documentElement.classList.toggle("native-app", Capacitor.isNativePlatform());
 let notesSystem;
 let readerLoadToken = 0;
@@ -136,6 +136,7 @@ const state = {
   mindMapContext: null,
   mindMapReturnState: null,
   mindMapShareData: null,
+  notesRenderPending: false,
   currentSharedMapNoteKey: "",
   pendingSharedMapId: "",
   noteFolders: [],
@@ -492,8 +493,9 @@ async function setupAppLinks() {
   if (!Capacitor.isNativePlatform()) return;
   const openAppUrl = async (url) => {
     const incoming = new URL(url);
-    const supportedPath = incoming.pathname.startsWith("/AbrahamicBooks") || incoming.pathname.startsWith("/quran");
-    if (incoming.hostname !== "abbas2.ali-raza.net" || !supportedPath) return;
+    const supportedHost = ["abrahamicbooks.org", "www.abrahamicbooks.org", "abbas2.ali-raza.net"].includes(incoming.hostname);
+    const supportedPath = incoming.pathname === "/" || incoming.pathname.startsWith("/AbrahamicBooks") || incoming.pathname.startsWith("/quran");
+    if (!supportedHost || !supportedPath) return;
     history.replaceState(null, "", `${location.pathname}${incoming.search}${incoming.hash}`);
     await openSharedLink();
   };
@@ -837,9 +839,13 @@ function bindEvents() {
   });
 
   document.querySelectorAll("dialog").forEach((dialog) => {
-    dialog.addEventListener("close", syncModalState);
+    dialog.addEventListener("close", () => {
+      syncModalState();
+      setTimeout(flushDeferredNotesRender, 0);
+    });
     dialog.addEventListener("cancel", syncModalState);
   });
+  document.addEventListener("focusout", () => setTimeout(flushDeferredNotesRender, 0));
   els.noteSheet.addEventListener("close", () => {
     flushPendingNote(state.currentNoteKey);
     if (state.currentNoteKey) refreshVerse(state.currentNoteKey);
@@ -2092,6 +2098,7 @@ function revealStudyContent(html) {
 }
 
 function renderNotes({ animate = true, hydrateReferences = true } = {}) {
+  state.notesRenderPending = false;
   const query = els.notesSearch.value.trim();
   const searchExpression = parseNoteSearchExpression(query);
   renderNoteFolderBrowser();
@@ -3039,7 +3046,7 @@ function applyNotesOrganizer(organizer = {}) {
     tagCatalog: state.tagCatalog,
   }));
   renderNoteFolderOptions();
-  renderNotes();
+  deferOrRenderSyncedNotes();
 }
 
 function renderReferenceResults() {
@@ -4214,7 +4221,11 @@ async function createCollaborativeNote() {
 }
 
 function startSharedNotes() {
-  notesSystem.watchSharedNotes((notes) => { state.sharedNotes = notes; renderNotes(); }, (error) => setStatus(`Shared notes: ${error.message}`));
+  notesSystem.watchSharedNotes((notes) => {
+    const changed = JSON.stringify(state.sharedNotes) !== JSON.stringify(notes);
+    state.sharedNotes = notes;
+    if (changed) deferOrRenderSyncedNotes();
+  }, (error) => setStatus(`Shared notes: ${error.message}`));
 }
 
 function openNotesSyncSettings() {
@@ -5700,7 +5711,32 @@ function noteRenderSignature(notes) {
     Boolean(note?.standalone),
     note?.tags || [],
     note?.references || [],
+    note?.linkedNoteIds || [],
   ]));
+}
+
+function notesInteractionActive() {
+  if (state.currentView !== "notesView") return false;
+  if (state.noteViewMode === "mindmap") return true;
+  if (els.noteSheet?.open) return true;
+  const active = document.activeElement;
+  return active instanceof HTMLElement
+    && active.matches("input, textarea, select, [contenteditable='true']")
+    && Boolean(active.closest("#notesView, dialog"));
+}
+
+function deferOrRenderSyncedNotes() {
+  if (notesInteractionActive()) {
+    state.notesRenderPending = true;
+    return false;
+  }
+  renderNotes({ animate: false });
+  return true;
+}
+
+function flushDeferredNotesRender() {
+  if (!state.notesRenderPending || notesInteractionActive()) return;
+  renderNotes({ animate: false });
 }
 
 function applySyncedNotes(notes) {
@@ -5717,11 +5753,11 @@ function applySyncedNotes(notes) {
   const visibleCard = [...els.notesList.querySelectorAll(".note-card[data-note-key]")]
     .find((card) => card.getBoundingClientRect().bottom > (els.topbar?.getBoundingClientRect().bottom || 0));
   const anchor = visibleCard ? { key: visibleCard.dataset.noteKey, top: visibleCard.getBoundingClientRect().top } : null;
-  renderNotes({ animate: false });
+  const rendered = deferOrRenderSyncedNotes();
   changedKeys.forEach(refreshVerse);
   updateDashboard();
   syncWidgetNotes();
-  if (anchor) requestAnimationFrame(() => {
+  if (anchor && rendered) requestAnimationFrame(() => {
     const replacement = [...els.notesList.querySelectorAll(".note-card[data-note-key]")]
       .find((card) => card.dataset.noteKey === anchor.key);
     if (replacement) window.scrollBy({ top: replacement.getBoundingClientRect().top - anchor.top, behavior: "auto" });

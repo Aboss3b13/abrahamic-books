@@ -8,9 +8,9 @@ It works as:
 - An installable web app (PWA)
 - An offline Android app 
 
-The live app is available at [abbas2.ali-raza.net/AbrahamicBooks](https://abbas2.ali-raza.net/AbrahamicBooks/).
+The live app is available at [abrahamicbooks.org](https://abrahamicbooks.org/).
 
-The Android APK can be downloaded from [the app website](https://abbas2.ali-raza.net/AbrahamicBooks/downloads/abrahamic-books-offline.apk). 
+The Android APK can be downloaded from [the app website](https://abrahamicbooks.org/downloads/abrahamic-books-offline.apk).
 
 ## What can I read?
 

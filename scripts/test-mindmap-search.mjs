@@ -1,6 +1,7 @@
 import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
 import { filterGraphForSearch, wrapNodeText } from "../notes-mindmap.js";
+import { NotesSystem } from "../notes-system.js";
 
 const graph = {
   nodes: [
@@ -45,12 +46,40 @@ assert(notesSystemSource.includes("SHARED_MIND_MAP_API"), "mind-map snapshots sh
 assert(notesSystemSource.includes("this.config.sessionToken"), "private mind-map sharing should authenticate with the VPS account");
 assert(notesSystemSource.includes("SHARED_MIND_MAP_CHUNK_BYTES"), "large shared maps should upload in safe chunks");
 assert(!notesSystemSource.includes("map.notes.slice(0, 60)"), "sharing must not cap maps at sixty notes");
+const sharedWatchBlock = notesSystemSource.slice(notesSystemSource.indexOf("watchSharedNotes"), notesSystemSource.indexOf("async createSharedNote"));
+assert(sharedWatchBlock.includes("signature !== previousSignature"), "unchanged background polls must not refresh the notes interface");
+assert(notesSystemSource.includes('const SERVER_API = "https://abrahamicbooks.org/api"'), "sync must use the root domain API");
+
+const originalSetInterval = globalThis.setInterval;
+const originalClearInterval = globalThis.clearInterval;
+let scheduledSharedPoll = null;
+globalThis.setInterval = (callback) => { scheduledSharedPoll = callback; return 1; };
+globalThis.clearInterval = () => {};
+const pollingSystem = new NotesSystem();
+pollingSystem.user = { email: "test@example.com" };
+let remoteSharedNotes = [{ id: "shared-1", title: "Stable" }];
+let sharedRenderRequests = 0;
+pollingSystem.request = async () => ({ notes: remoteSharedNotes });
+pollingSystem.watchSharedNotes(() => { sharedRenderRequests += 1; });
+await new Promise((resolve) => setImmediate(resolve));
+assert.equal(sharedRenderRequests, 1, "the first shared-note snapshot should render once");
+await scheduledSharedPoll();
+assert.equal(sharedRenderRequests, 1, "an unchanged background poll must not request another render");
+remoteSharedNotes = [{ id: "shared-1", title: "Changed" }];
+await scheduledSharedPoll();
+assert.equal(sharedRenderRequests, 2, "a real remote change should still reach the interface");
+pollingSystem.stopSharedSync();
+globalThis.setInterval = originalSetInterval;
+globalThis.clearInterval = originalClearInterval;
 
 const appSource = readFileSync(new URL("../app.js", import.meta.url), "utf8");
 assert(appSource.includes('makePublicLink(`map=${created.id}`)'), "shared mind maps should use a short document ID");
 assert(appSource.includes("text: String(note.text || \"\")"), "shared maps must retain complete note text");
 assert(appSource.includes("async function saveSharedMindMap"), "recipients need a way to save the map and its notes");
 assert(appSource.includes(".mindmap-stage"), "map gestures must not trigger app-level swipe navigation");
+assert(appSource.includes("function notesInteractionActive"), "background changes must detect active note and mind-map interactions");
+assert(appSource.includes("state.notesRenderPending = true"), "background changes must defer disruptive rendering while the user works");
+assert(appSource.includes('const PUBLIC_APP_URL = "https://abrahamicbooks.org/"'), "shared links must use the root domain");
 
 const shareApiSource = readFileSync(new URL("../public/api/mindmaps.php", import.meta.url), "utf8");
 assert(shareApiSource.includes("ab_require_user"), "the sharing service must verify VPS identities for private maps");

@@ -24,25 +24,26 @@ import org.json.JSONObject;
 
 public class AbrahamicWidgetProvider extends AppWidgetProvider {
     static final String PREFS = "abrahamic_widget_preferences";
+    static final String SITE_URL = "https://abrahamicbooks.org/";
     static final String ACTION_REFRESH = "com.aboss3b13.abrahamicbooks.REFRESH_WIDGET";
     static final String[] MODES = {"Random verse", "Last read", "Library search", "Study notes", "Quran verse", "Bible verse", "Hadith"};
     static final String[] THEMES = {"Green", "Sepia", "Dark"};
 
     private static final Passage[] QURAN = {
-        new Passage("Quran 94:5", "For indeed, with hardship [will be] ease.", "Quran • Sahih International", "https://abbas2.ali-raza.net/AbrahamicBooks/?ref=94%3A5"),
-        new Passage("Quran 55:13", "So which of the favors of your Lord would you deny?", "Quran • Sahih International", "https://abbas2.ali-raza.net/AbrahamicBooks/?ref=55%3A13"),
-        new Passage("Quran 2:286", "Allah does not charge a soul except [with that within] its capacity.", "Quran • Sahih International", "https://abbas2.ali-raza.net/AbrahamicBooks/?ref=2%3A286"),
-        new Passage("Quran 13:28", "Unquestionably, by the remembrance of Allah hearts are assured.", "Quran • Sahih International", "https://abbas2.ali-raza.net/AbrahamicBooks/?ref=13%3A28")
+        new Passage("Quran 94:5", "For indeed, with hardship [will be] ease.", "Quran • Sahih International", SITE_URL + "?ref=94%3A5"),
+        new Passage("Quran 55:13", "So which of the favors of your Lord would you deny?", "Quran • Sahih International", SITE_URL + "?ref=55%3A13"),
+        new Passage("Quran 2:286", "Allah does not charge a soul except [with that within] its capacity.", "Quran • Sahih International", SITE_URL + "?ref=2%3A286"),
+        new Passage("Quran 13:28", "Unquestionably, by the remembrance of Allah hearts are assured.", "Quran • Sahih International", SITE_URL + "?ref=13%3A28")
     };
     private static final Passage[] BIBLE = {
-        new Passage("Psalm 119:105", "Your word is a lamp to my feet, and a light for my path.", "Bible • World English Bible", "https://abbas2.ali-raza.net/AbrahamicBooks/?ref=old%3APsalms%3A119%3A105"),
-        new Passage("John 1:5", "The light shines in the darkness, and the darkness hasn’t overcome it.", "Bible • World English Bible", "https://abbas2.ali-raza.net/AbrahamicBooks/?ref=new%3AJohn%3A1%3A5"),
-        new Passage("Matthew 5:9", "Blessed are the peacemakers, for they shall be called children of God.", "Bible • World English Bible", "https://abbas2.ali-raza.net/AbrahamicBooks/?ref=new%3AMatthew%3A5%3A9"),
-        new Passage("Proverbs 3:5", "Trust in Yahweh with all your heart, and don’t lean on your own understanding.", "Bible • World English Bible", "https://abbas2.ali-raza.net/AbrahamicBooks/?ref=old%3AProverbs%3A3%3A5")
+        new Passage("Psalm 119:105", "Your word is a lamp to my feet, and a light for my path.", "Bible • World English Bible", SITE_URL + "?ref=old%3APsalms%3A119%3A105"),
+        new Passage("John 1:5", "The light shines in the darkness, and the darkness hasn’t overcome it.", "Bible • World English Bible", SITE_URL + "?ref=new%3AJohn%3A1%3A5"),
+        new Passage("Matthew 5:9", "Blessed are the peacemakers, for they shall be called children of God.", "Bible • World English Bible", SITE_URL + "?ref=new%3AMatthew%3A5%3A9"),
+        new Passage("Proverbs 3:5", "Trust in Yahweh with all your heart, and don’t lean on your own understanding.", "Bible • World English Bible", SITE_URL + "?ref=old%3AProverbs%3A3%3A5")
     };
     private static final Passage[] HADITH = {
-        new Passage("Sahih al-Bukhari 1", "Actions are judged by intentions, and every person will have what they intended.", "Hadith • Book of Revelation", "https://abbas2.ali-raza.net/AbrahamicBooks/?ref=hadith%3Abukhari%3A1%3A1"),
-        new Passage("Sahih al-Bukhari 5027", "The best among you are those who learn the Quran and teach it.", "Hadith • Virtues of the Quran", "https://abbas2.ali-raza.net/AbrahamicBooks/?ref=hadith%3Abukhari%3A66%3A5027")
+        new Passage("Sahih al-Bukhari 1", "Actions are judged by intentions, and every person will have what they intended.", "Hadith • Book of Revelation", SITE_URL + "?ref=hadith%3Abukhari%3A1%3A1"),
+        new Passage("Sahih al-Bukhari 5027", "The best among you are those who learn the Quran and teach it.", "Hadith • Virtues of the Quran", SITE_URL + "?ref=hadith%3Abukhari%3A66%3A5027")
     };
 
     protected String defaultMode() { return "daily"; }
@@ -166,14 +167,14 @@ public class AbrahamicWidgetProvider extends AppWidgetProvider {
         long randomSeed = halfHour * 1_000_003L + id * 65_537L + prefs.getInt("seed_" + id, 0);
         if ("continue".equals(mode)) {
             String reference = prefs.getString("last_reference", "");
-            if (reference.isEmpty()) return new WidgetContent("LAST READ", "No saved passage", "Open a passage and tap Save as last read.", "Ready when you are", "RECENT", "OPEN READER", "https://abbas2.ali-raza.net/AbrahamicBooks/?view=readView", false);
-            return new WidgetContent("LAST READ", prefs.getString("last_label", reference), prefs.getString("last_text", "Open your saved passage."), "Saved on this device", "RECENT", "CONTINUE READING", "https://abbas2.ali-raza.net/AbrahamicBooks/?ref=" + Uri.encode(reference), false);
+            if (reference.isEmpty()) return new WidgetContent("LAST READ", "No saved passage", "Open a passage and tap Save as last read.", "Ready when you are", "RECENT", "OPEN READER", SITE_URL + "?view=readView", false);
+            return new WidgetContent("LAST READ", prefs.getString("last_label", reference), prefs.getString("last_text", "Open your saved passage."), "Saved on this device", "RECENT", "CONTINUE READING", SITE_URL + "?ref=" + Uri.encode(reference), false);
         }
         if ("quran".equals(mode)) return fromPassage("QURAN VERSE", randomVerse(context, new Random(randomSeed), "quran"), "QURAN", true);
         if ("bible".equals(mode)) return fromPassage("BIBLE VERSE", randomVerse(context, new Random(randomSeed), "bible"), "BIBLE", true);
         if ("hadith".equals(mode)) return fromPassage("HADITH", HADITH[Math.floorMod((int) randomSeed, HADITH.length)], "HADITH", true);
-        if ("search".equals(mode)) return new WidgetContent("SEARCH LIBRARY", "What are you looking for?", "Search Quran, Bible, hadith, tafsir, commentary, and your offline library.", "Works offline", "SEARCH", "START SEARCH", "https://abbas2.ali-raza.net/AbrahamicBooks/?view=searchView&focus=search", false);
-        if ("notes".equals(mode)) return new WidgetContent("YOUR NOTES", "Notes", "", "", "NOTES", "OPEN ALL NOTES", "https://abbas2.ali-raza.net/AbrahamicBooks/?view=notesView", false);
+        if ("search".equals(mode)) return new WidgetContent("SEARCH LIBRARY", "What are you looking for?", "Search Quran, Bible, hadith, tafsir, commentary, and your offline library.", "Works offline", "SEARCH", "START SEARCH", SITE_URL + "?view=searchView&focus=search", false);
+        if ("notes".equals(mode)) return new WidgetContent("YOUR NOTES", "Notes", "", "", "NOTES", "OPEN ALL NOTES", SITE_URL + "?view=notesView", false);
         return fromPassage("RANDOM VERSE", randomVerse(context, new Random(randomSeed), "all"), "RANDOM", true);
     }
 
@@ -199,7 +200,7 @@ public class AbrahamicWidgetProvider extends AppWidgetProvider {
         String text = "Open this verse in Abrahamic Books.";
         JSONArray translations = verse.optJSONArray("translations");
         if (translations != null && translations.length() > 0) text = cleanText(translations.getJSONObject(0).optString("text", text));
-        return new Passage("Quran " + key, text, "Quran • bundled translation", "https://abbas2.ali-raza.net/AbrahamicBooks/?ref=" + Uri.encode(key));
+        return new Passage("Quran " + key, text, "Quran • bundled translation", SITE_URL + "?ref=" + Uri.encode(key));
     }
 
     private static Passage randomBibleVerse(Context context, Random random) throws Exception {
@@ -222,7 +223,7 @@ public class AbrahamicWidgetProvider extends AppWidgetProvider {
         int chapterNumber = chapter.getInt("number");
         int verseNumber = verse.getInt("number");
         String key = (file.startsWith("old-") ? "old:" : "new:") + book + ":" + chapterNumber + ":" + verseNumber;
-        return new Passage(book + " " + chapterNumber + ":" + verseNumber, jsonText(verse.optJSONArray("content")), "Bible • World English Bible", "https://abbas2.ali-raza.net/AbrahamicBooks/?ref=" + Uri.encode(key));
+        return new Passage(book + " " + chapterNumber + ":" + verseNumber, jsonText(verse.optJSONArray("content")), "Bible • World English Bible", SITE_URL + "?ref=" + Uri.encode(key));
     }
 
     private static String readAsset(Context context, String path) throws Exception {

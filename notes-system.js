@@ -1,4 +1,4 @@
-const SERVER_API = "https://abbas2.ali-raza.net/AbrahamicBooks/api";
+const SERVER_API = "https://abrahamicbooks.org/api";
 const SHARED_MIND_MAP_API = `${SERVER_API}/mindmaps.php`;
 const SHARED_MIND_MAP_CHUNK_BYTES = 384 * 1024;
 
@@ -248,8 +248,17 @@ export class NotesSystem extends EventTarget {
     this.stopLastReadSync();
     if (!this.user) { onChange(null); return; }
     let active = true;
+    let previousSignature = null;
     const poll = async () => {
-      try { const result = await this.request("sync.php?action=last-read"); if (active) onChange(result.lastRead || null); }
+      try {
+        const result = await this.request("sync.php?action=last-read");
+        const value = result.lastRead || null;
+        const signature = JSON.stringify(value);
+        if (active && signature !== previousSignature) {
+          previousSignature = signature;
+          onChange(value);
+        }
+      }
       catch (error) { if (active) onError(error); }
     };
     poll();
@@ -276,8 +285,17 @@ export class NotesSystem extends EventTarget {
     this.stopSharedSync();
     if (!this.user?.email) { onChange([]); return; }
     let active = true;
+    let previousSignature = null;
     const poll = async () => {
-      try { const result = await this.request("shared-notes.php"); if (active) onChange(result.notes || []); }
+      try {
+        const result = await this.request("shared-notes.php");
+        const notes = result.notes || [];
+        const signature = JSON.stringify(notes);
+        if (active && signature !== previousSignature) {
+          previousSignature = signature;
+          onChange(notes);
+        }
+      }
       catch (error) { if (active) onError(error); }
     };
     poll();
