@@ -19,6 +19,7 @@ const FIREBASE_CONFIG = {
   appId: "1:709558646345:web:1e95def83c407e1e0b3198",
   measurementId: "G-LG1GDFMJ9H",
 };
+const SHARED_MIND_MAP_API = "https://abbas2.ali-raza.net/AbrahamicBooks/api/mindmaps.php";
 
 const DB_NAME = "abrahamic-books-notes";
 const DB_VERSION = 1;
@@ -330,15 +331,26 @@ export class NotesSystem extends EventTarget {
     };
     if (!clean.notes.length) throw new Error("This mind map has no notes to share.");
     if (utf8.encode(JSON.stringify(clean)).byteLength > 900000) throw new Error("This map is too large to share at once. Share a folder or a note map instead.");
-    return addDoc(collection(this.firestore, "sharedMindMaps"), clean);
+    const token = await this.user.getIdToken();
+    const response = await fetch(SHARED_MIND_MAP_API, {
+      method: "POST",
+      headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` },
+      body: JSON.stringify(clean),
+    });
+    const result = await response.json().catch(() => ({}));
+    if (!response.ok) throw new Error(result.error || "Could not create the mind-map link.");
+    return result;
   }
 
   async getSharedMindMap(id) {
     const safeId = String(id || "").trim();
-    if (!safeId || safeId.length > 160) throw new Error("This mind map link is invalid.");
-    const snapshot = await getDoc(doc(this.firestore, "sharedMindMaps", safeId));
-    if (!snapshot.exists()) throw new Error("This shared mind map is no longer available.");
-    return { id: snapshot.id, ...snapshot.data() };
+    if (!/^[a-f0-9]{18}$/.test(safeId)) throw new Error("This mind map link is invalid.");
+    const headers = {};
+    if (this.user) headers.Authorization = `Bearer ${await this.user.getIdToken()}`;
+    const response = await fetch(`${SHARED_MIND_MAP_API}?id=${encodeURIComponent(safeId)}`, { headers });
+    const result = await response.json().catch(() => ({}));
+    if (!response.ok) throw new Error(result.error || "This shared mind map is no longer available.");
+    return result;
   }
 
   async activateAccount(uid) {

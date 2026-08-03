@@ -41,14 +41,16 @@ const notesSystemSource = readFileSync(new URL("../notes-system.js", import.meta
 const organizerSaveBlock = notesSystemSource.slice(notesSystemSource.indexOf("async saveOrganizer"), notesSystemSource.indexOf("startRealtimeSync"));
 assert(!/\n\s+viewMode:/.test(organizerSaveBlock), "the active notes view must never be written to synced organizer data");
 assert(!/\n\s+selectedFolderId:/.test(organizerSaveBlock), "the open folder must remain local to each device");
-assert(notesSystemSource.includes('collection(this.firestore, "sharedMindMaps")'), "mind-map snapshots should be stored in Firebase for short links");
+assert(notesSystemSource.includes("SHARED_MIND_MAP_API"), "mind-map snapshots should use the short-link sharing service");
+assert(notesSystemSource.includes("this.user.getIdToken()"), "private mind-map sharing should authenticate with the existing Firebase account");
 
 const appSource = readFileSync(new URL("../app.js", import.meta.url), "utf8");
-assert(appSource.includes('makePublicLink(`map=${created.id}`)'), "shared mind maps should use a short Firebase document ID");
+assert(appSource.includes('makePublicLink(`map=${created.id}`)'), "shared mind maps should use a short document ID");
 assert(appSource.includes("text: String(note.text || \"\")"), "shared maps must retain complete note text");
 assert(appSource.includes("async function saveSharedMindMap"), "recipients need a way to save the map and its notes");
 
-const rulesSource = readFileSync(new URL("../firestore.rules", import.meta.url), "utf8");
-assert(rulesSource.includes("match /sharedMindMaps/{mapId}"), "Firestore rules must cover shared mind maps");
+const shareApiSource = readFileSync(new URL("../public/api/mindmaps.php", import.meta.url), "utf8");
+assert(shareApiSource.includes("accounts:lookup"), "the sharing service must verify Firebase identities for private maps");
+assert(shareApiSource.includes("accessMode"), "the sharing service must enforce link and custom access modes");
 
 console.log("Mindmap search and text containment checks passed.");

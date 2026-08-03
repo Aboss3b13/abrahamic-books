@@ -25,20 +25,5 @@ service cloud.firestore {
       allow delete: if signedIn() && resource.data.ownerUid == request.auth.uid;
     }
 
-    match /sharedMindMaps/{mapId} {
-      function canAccess(data) {
-        return data.accessMode == "link"
-          || (signedIn() && (data.ownerUid == request.auth.uid || email() in data.memberEmails));
-      }
-      allow create: if signedIn()
-        && request.resource.data.ownerUid == request.auth.uid
-        && request.resource.data.memberEmails is list
-        && request.resource.data.accessMode in ["link", "custom"]
-        && request.resource.data.notes is list
-        && request.resource.data.folders is list;
-      allow read: if canAccess(resource.data);
-      allow update: if false;
-      allow delete: if signedIn() && resource.data.ownerUid == request.auth.uid;
-    }
   }
 }

@@ -2812,7 +2812,7 @@ async function createMindMapShare(accessMode) {
   if (!notesSystem?.signedIn) {
     els.mindMapShareSheet.close();
     openNotesSyncSettings();
-    setStatus("Sign in once to create a short Firebase mind-map link.");
+    setStatus("Sign in once to create a secure short mind-map link.");
     return;
   }
   const custom = accessMode === "custom";
