@@ -4250,6 +4250,7 @@ async function runNotesAction(action) {
 async function connectServer(createAccount) {
   await runNotesAction(async () => {
     await notesSystem.connect(els.serverEmail.value.trim(), els.serverPassword.value, createAccount);
+    els.serverPassword.value = "";
     startSharedNotes();
     startAccountLastReadSync();
     els.serverPassword.value = "";

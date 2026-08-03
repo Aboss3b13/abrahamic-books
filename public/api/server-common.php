@@ -2,12 +2,30 @@
 declare(strict_types=1);
 
 define('AB_DATA_DIRECTORY', getenv('AB_DATA_DIRECTORY') ?: '/var/www/html/.abrahamic-books-server');
-const AB_SESSION_DAYS = 180;
+const AB_SESSION_DAYS = 30;
 
 function ab_headers(): void {
     header('Content-Type: application/json; charset=utf-8');
     header('Cache-Control: no-store');
-    header('Access-Control-Allow-Origin: *');
+    header('X-Content-Type-Options: nosniff');
+    header('X-Frame-Options: DENY');
+    header('Referrer-Policy: no-referrer');
+    header("Content-Security-Policy: frame-ancestors 'none'");
+    header('Permissions-Policy: camera=(), microphone=(), geolocation=()');
+    $origin = trim((string) ($_SERVER['HTTP_ORIGIN'] ?? ''));
+    $allowedOrigins = [
+        'https://abrahamicbooks.org',
+        'https://www.abrahamicbooks.org',
+        'https://abbas2.ali-raza.net',
+        'https://quran-reader-abbas.aboss3b13.chatgpt.site',
+        'http://localhost',
+        'https://localhost',
+        'capacitor://localhost',
+    ];
+    if ($origin !== '' && in_array($origin, $allowedOrigins, true)) {
+        header('Access-Control-Allow-Origin: ' . $origin);
+        header('Vary: Origin');
+    }
     header('Access-Control-Allow-Headers: Authorization, Content-Type, X-Upload-Token');
     header('Access-Control-Allow-Methods: GET, POST, PUT, DELETE, OPTIONS');
     if (($_SERVER['REQUEST_METHOD'] ?? '') === 'OPTIONS') {
@@ -51,6 +69,8 @@ function ab_write_json(string $path, array $value): bool {
 }
 
 function ab_input(int $maximumBytes = 4194304): array {
+    $contentLength = (int) ($_SERVER['CONTENT_LENGTH'] ?? 0);
+    if ($contentLength > $maximumBytes) ab_reply(413, ['error' => 'The request data is too large.']);
     $raw = file_get_contents('php://input');
     if (!is_string($raw) || $raw === '' || strlen($raw) > $maximumBytes) ab_reply(400, ['error' => 'The request data is invalid or too large.']);
     $decoded = json_decode($raw, true);
@@ -60,7 +80,47 @@ function ab_input(int $maximumBytes = 4194304): array {
 
 function ab_email(mixed $value): string {
     $email = strtolower(trim((string) $value));
-    return filter_var($email, FILTER_VALIDATE_EMAIL) ? $email : '';
+    return strlen($email) <= 254 && filter_var($email, FILTER_VALIDATE_EMAIL) ? $email : '';
+}
+
+function ab_client_ip(): string {
+    $remote = filter_var($_SERVER['REMOTE_ADDR'] ?? '', FILTER_VALIDATE_IP) ?: 'unknown';
+    $cloudflare = filter_var($_SERVER['HTTP_CF_CONNECTING_IP'] ?? '', FILTER_VALIDATE_IP);
+    return $cloudflare ?: $remote;
+}
+
+function ab_rate_limit(string $scope, string $key, int $maximum, int $windowSeconds): void {
+    $directory = AB_DATA_DIRECTORY . '/rate-limits';
+    if (!is_dir($directory) && !mkdir($directory, 0770, true) && !is_dir($directory)) {
+        ab_reply(503, ['error' => 'The account service is temporarily unavailable.']);
+    }
+    $path = $directory . '/' . hash('sha256', $scope . "\0" . $key) . '.php';
+    $lockPath = $path . '.lock';
+    $lock = fopen($lockPath, 'c');
+    if ($lock === false || !flock($lock, LOCK_EX)) ab_reply(503, ['error' => 'The account service is temporarily unavailable.']);
+    chmod($lockPath, 0660);
+    $now = time();
+    $entry = ab_read_json($path) ?: ['count' => 0, 'resetAt' => $now + $windowSeconds];
+    if ((int) ($entry['resetAt'] ?? 0) <= $now) $entry = ['count' => 0, 'resetAt' => $now + $windowSeconds];
+    $entry['count'] = (int) ($entry['count'] ?? 0) + 1;
+    $saved = ab_write_json($path, $entry);
+    flock($lock, LOCK_UN);
+    fclose($lock);
+    if (!$saved) ab_reply(503, ['error' => 'The account service is temporarily unavailable.']);
+    if ($entry['count'] > $maximum) {
+        header('Retry-After: ' . max(1, (int) $entry['resetAt'] - $now));
+        ab_reply(429, ['error' => 'Too many attempts. Try again later.']);
+    }
+}
+
+function ab_account_lock(string $email) {
+    $directory = AB_DATA_DIRECTORY . '/locks';
+    if (!is_dir($directory) && !mkdir($directory, 0770, true) && !is_dir($directory)) return false;
+    $path = $directory . '/' . hash('sha256', $email) . '.lock';
+    $handle = fopen($path, 'c');
+    if ($handle === false || !flock($handle, LOCK_EX)) return false;
+    chmod($path, 0660);
+    return $handle;
 }
 
 function ab_account_path(string $email): string {
@@ -80,7 +140,8 @@ function ab_require_user(): array {
     $token = ab_bearer();
     if ($token === '') ab_reply(401, ['error' => 'Sign in to your Abrahamic Books account.']);
     $session = ab_read_json(ab_session_path($token));
-    if (!$session || !hash_equals((string) ($session['tokenHash'] ?? ''), hash('sha256', $token)) || (int) ($session['expiresAt'] ?? 0) < time()) {
+    $maximumExpiry = $session ? (int) ($session['createdAt'] ?? 0) + AB_SESSION_DAYS * 86400 : 0;
+    if (!$session || !hash_equals((string) ($session['tokenHash'] ?? ''), hash('sha256', $token)) || min((int) ($session['expiresAt'] ?? 0), $maximumExpiry) < time()) {
         ab_reply(401, ['error' => 'Your session expired. Sign in again.']);
     }
     return ['uid' => (string) $session['uid'], 'email' => (string) $session['email'], 'token' => $token];

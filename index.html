@@ -240,7 +240,7 @@
             <button id="translationButton" class="settings-shortcut" type="button"><i class="ti ti-language" aria-hidden="true"></i><strong>Translations</strong><small>Choose editions</small><i class="ti ti-chevron-right settings-chevron" aria-hidden="true"></i></button>
             <button id="tafsirButton" class="settings-shortcut" type="button"><i class="ti ti-books" aria-hidden="true"></i><strong>Tafsir</strong><small>Commentary sources</small><i class="ti ti-chevron-right settings-chevron" aria-hidden="true"></i></button>
             <button id="themeButton" class="settings-shortcut" type="button"><i class="ti ti-moon-stars" aria-hidden="true"></i><strong>Dark mode</strong><small>Quick theme switch</small><i class="ti ti-chevron-right settings-chevron" aria-hidden="true"></i></button>
-            <button id="accountSettingsButton" class="settings-shortcut" type="button"><i class="ti ti-user-shield" aria-hidden="true"></i><strong>Notes & account</strong><small>Private sync</small><i class="ti ti-chevron-right settings-chevron" aria-hidden="true"></i></button>
+            <button id="accountSettingsButton" class="settings-shortcut" type="button"><i class="ti ti-user-shield" aria-hidden="true"></i><strong>Account</strong><small>Sign in or create account</small><i class="ti ti-chevron-right settings-chevron" aria-hidden="true"></i></button>
           </div>
           <label class="field"><span>App language</span><select id="appLanguageSelect"><option value="en">English</option><option value="ar">العربية</option><option value="de">Deutsch</option><option value="fr">Français</option><option value="tr">Türkçe</option><option value="ur">اردو</option></select></label>
           <div class="settings-download-card">
@@ -391,31 +391,25 @@
     <dialog id="notesSyncSheet" class="sheet notes-sync-sheet">
       <form method="dialog" class="sheet-inner">
         <div class="sheet-header">
-          <div><h2>Private notes & sync</h2><p id="syncAccountStatus">Local-only · no account required</p></div>
+          <div><h2>Account</h2><p id="syncAccountStatus">Not signed in</p></div>
           <button class="icon-button" value="close" aria-label="Close notes sync settings"><i class="ti ti-x" aria-hidden="true"></i></button>
         </div>
-        <div class="privacy-callout"><span class="privacy-icon" aria-hidden="true"><i class="ti ti-shield-lock"></i></span><div>
-          <strong>Your notes are private</strong>
-          <p>Notes always work offline and can sync across your devices.</p>
-        </div></div>
         <section class="settings-section">
-          <div class="section-heading"><span>1</span><div><h3>Choose where notes are saved</h3><p>You can change this later without losing local notes.</p></div></div>
+          <div class="section-heading"><div><h3>Notes</h3></div></div>
           <fieldset class="sync-modes">
-          <label><input type="radio" name="notesMode" value="local"> <span><strong>Local only</strong><small>Offline on this device; no account required.</small></span></label>
-          <label><input type="radio" name="notesMode" value="server"> <span><strong>Account sync</strong><small>Keep notes in sync across the website and APK.</small></span></label>
+          <label><input type="radio" name="notesMode" value="local"> <span><strong>Local only</strong></span></label>
+          <label><input type="radio" name="notesMode" value="server"> <span><strong>Sync</strong></span></label>
           </fieldset>
         </section>
         <section class="settings-section">
-          <div class="section-heading"><span>2</span><div><h3>Connect and sync</h3><p>Use the same account on the website and APK.</p></div></div>
           <div class="server-account-fields">
             <label class="note-field"><span>Email</span><input id="serverEmail" type="email" autocomplete="email" placeholder="you@example.com"></label>
-            <label class="note-field"><span>Password</span><input id="serverPassword" type="password" autocomplete="current-password" placeholder="At least 6 characters"></label>
+            <label class="note-field"><span>Password</span><input id="serverPassword" type="password" autocomplete="current-password" placeholder="Password"></label>
           </div>
           <div class="button-grid sync-actions"><button id="connectServer" class="text-button primary" type="button">Sign in</button><button id="createServerAccount" class="text-button" type="button">Create account</button><button id="syncNow" class="text-button" type="button">Sync notes now</button><button id="disconnectServer" class="text-button danger" type="button">Sign out and use local</button></div>
-          <p class="fine-print"><strong>Moving from the old sync:</strong> create an account with your usual email and a password. Every note already cached on this device will upload automatically; repeat sign-in on each device to merge any remaining cached notes.</p>
         </section>
         <section class="settings-section">
-          <div class="section-heading"><span>3</span><div><h3>Backup and restore</h3><p>Keep a portable encrypted copy of all notes.</p></div></div>
+          <div class="section-heading"><div><h3>Backup</h3></div></div>
           <div class="button-grid backup-actions">
             <button id="exportNotes" class="text-button" type="button"><i class="ti ti-download" aria-hidden="true"></i> Export notes</button>
             <label class="text-button file-button full-label"><i class="ti ti-upload" aria-hidden="true"></i> Import notes<input id="importNotes" type="file" accept="application/json"></label>
@@ -423,7 +417,7 @@
             <label class="text-button file-button full-label"><i class="ti ti-lock-open" aria-hidden="true"></i> Import encrypted backup<input id="importEncryptedBackup" type="file" accept="application/json,.abbackup"></label>
           </div>
         </section>
-        <p id="syncHelp" class="fine-print">Automatic sync runs when the app opens, comes online, or a note changes. Concurrent edits are resolved using note revisions.</p>
+        <p id="syncHelp" class="fine-print"></p>
       </form>
     </dialog>
 
