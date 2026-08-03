@@ -31,6 +31,7 @@ const noteReferenceTextCache = new Map();
 const pendingNoteDrafts = new Map();
 const pendingNoteSaveTimers = new Map();
 let noteSearchHydrationToken = 0;
+let pendingAppUpdateUrl = "";
 const NotesFiles = registerPlugin("NotesFiles");
 const WidgetData = registerPlugin("WidgetData");
 
@@ -369,12 +370,12 @@ const els = {
   notesSyncLabel: document.querySelector("#notesSyncLabel"),
   notesSyncSheet: document.querySelector("#notesSyncSheet"),
   syncAccountStatus: document.querySelector("#syncAccountStatus"),
-  firebaseEmail: document.querySelector("#firebaseEmail"),
-  firebasePassword: document.querySelector("#firebasePassword"),
-  connectFirebase: document.querySelector("#connectFirebase"),
-  createFirebaseAccount: document.querySelector("#createFirebaseAccount"),
+  serverEmail: document.querySelector("#serverEmail"),
+  serverPassword: document.querySelector("#serverPassword"),
+  connectServer: document.querySelector("#connectServer"),
+  createServerAccount: document.querySelector("#createServerAccount"),
   syncNow: document.querySelector("#syncNow"),
-  disconnectFirebase: document.querySelector("#disconnectFirebase"),
+  disconnectServer: document.querySelector("#disconnectServer"),
   exportEncryptedBackup: document.querySelector("#exportEncryptedBackup"),
   importEncryptedBackup: document.querySelector("#importEncryptedBackup"),
   shareNoteSheet: document.querySelector("#shareNoteSheet"),
@@ -396,6 +397,10 @@ const els = {
   sharedMapNoteText: document.querySelector("#sharedMapNoteText"),
   sharedMapNoteReferences: document.querySelector("#sharedMapNoteReferences"),
   saveSharedMapNote: document.querySelector("#saveSharedMapNote"),
+  appUpdateSheet: document.querySelector("#appUpdateSheet"),
+  appUpdateVersion: document.querySelector("#appUpdateVersion"),
+  appUpdateMessage: document.querySelector("#appUpdateMessage"),
+  downloadAppUpdate: document.querySelector("#downloadAppUpdate"),
   appLanguageSelect: document.querySelector("#appLanguageSelect"),
 };
 
@@ -406,6 +411,12 @@ async function init() {
   await loadLocalState();
   setupResponsiveWorkspace();
   bindEvents();
+  if (notesSystem?.config.needsServerMigration && !notesSystem.signedIn) {
+    setTimeout(() => {
+      openNotesSyncSettings();
+      updateSyncUI("offline", "Create or sign in to a private VPS account to transfer the notes already cached on this device.");
+    }, 700);
+  }
   syncStickyOffset();
   setStatus("Loading chapters, translations, and tafsir sources...");
 
@@ -451,6 +462,7 @@ async function init() {
     syncWidgetNotes();
     await openSharedLink();
     await setupAppLinks();
+    await checkForNativeUpdate();
   } catch (error) {
     setStatus(`Could not load Quran data. ${error.message}`);
   }
@@ -498,6 +510,28 @@ async function setupAppLinks() {
   });
   const launch = await CapacitorApp.getLaunchUrl();
   if (launch?.url) await openAppUrl(launch.url);
+}
+
+async function checkForNativeUpdate() {
+  if (!Capacitor.isNativePlatform()) return;
+  const [info, response] = await Promise.all([
+    CapacitorApp.getInfo(),
+    fetch(`${PUBLIC_APP_URL}api/version.php`, { cache: "no-store" }),
+  ]);
+  if (!response.ok) return;
+  const release = await response.json();
+  const installedCode = Number(info.build || 0);
+  if (!Number.isFinite(release.versionCode) || release.versionCode <= installedCode || !release.apkUrl) return;
+  pendingAppUpdateUrl = release.apkUrl;
+  els.appUpdateVersion.textContent = `Version ${release.versionName} is ready · installed ${info.version}`;
+  els.appUpdateMessage.textContent = release.message || "Download the latest version for improvements and fixes.";
+  openDialog(els.appUpdateSheet);
+}
+
+function downloadAppUpdate() {
+  if (!pendingAppUpdateUrl) return;
+  const opened = window.open(pendingAppUpdateUrl, "_blank", "noopener,noreferrer");
+  if (!opened) location.href = pendingAppUpdateUrl;
 }
 
 function bindEvents() {
@@ -692,10 +726,10 @@ function bindEvents() {
   els.exportNotes.addEventListener("click", exportNotes);
   els.importNotes.addEventListener("change", importNotes);
   document.querySelectorAll('input[name="notesMode"]').forEach((input) => input.addEventListener("change", changeNotesMode));
-  els.connectFirebase.addEventListener("click", () => connectFirebase(false));
-  els.createFirebaseAccount.addEventListener("click", () => connectFirebase(true));
+  els.connectServer.addEventListener("click", () => connectServer(false));
+  els.createServerAccount.addEventListener("click", () => connectServer(true));
   els.syncNow.addEventListener("click", () => runNotesAction(() => notesSystem.sync({ force: true })));
-  els.disconnectFirebase.addEventListener("click", () => runNotesAction(async () => {
+  els.disconnectServer.addEventListener("click", () => runNotesAction(async () => {
     await notesSystem.disconnect();
     const localReference = localStorage.getItem("quran-reader-local-last-read-v1") || "";
     const localUpdatedAt = localStorage.getItem("quran-reader-local-last-read-updated-v1") || "";
@@ -716,6 +750,7 @@ function bindEvents() {
   els.shareMindMapCustom.addEventListener("click", openCustomMindMapShare);
   els.createPrivateMindMap.addEventListener("click", () => createMindMapShare("custom"));
   els.saveSharedMapNote.addEventListener("click", saveCurrentSharedMapNote);
+  els.downloadAppUpdate.addEventListener("click", downloadAppUpdate);
   els.appLanguageSelect.addEventListener("change", () => setAppLanguage(els.appLanguageSelect.value));
   els.runSearch.addEventListener("click", runGlobalSearch);
   els.globalSearch.addEventListener("keydown", (event) => {
@@ -2987,7 +3022,7 @@ function saveNotesOrganizer() {
 function applyNotesOrganizer(organizer = {}) {
   // Folders and tag descriptions belong to the notes library and may sync.
   // The active view and open folder are device-local UI state: applying them
-  // from Firestore made a phone navigate when a tablet changed tabs.
+  // from remote storage made a phone navigate when a tablet changed tabs.
   state.noteFolders = Array.isArray(organizer.folders)
     ? organizer.folders.filter((folder) => folder && typeof folder.id === "string" && typeof folder.name === "string").map((folder) => ({ ...folder, parentId: typeof folder.parentId === "string" ? folder.parentId : "" }))
     : [];
@@ -4186,7 +4221,7 @@ function openNotesSyncSettings() {
   const mode = notesSystem.config.mode;
   const radio = document.querySelector(`input[name="notesMode"][value="${mode}"]`);
   if (radio) radio.checked = true;
-  if (notesSystem.accountEmail) els.firebaseEmail.value = notesSystem.accountEmail;
+  if (notesSystem.accountEmail) els.serverEmail.value = notesSystem.accountEmail;
   updateSyncUI(mode === "local" ? "saved locally" : notesSystem.user ? "synced" : "offline");
   openDialog(els.notesSyncSheet);
 }
@@ -4203,7 +4238,7 @@ function updateSyncUI(syncState, detail = "") {
   const icons = { "saved locally": "ti-device-floppy", syncing: "ti-loader-2", synced: "ti-circle-check", offline: "ti-wifi-off", conflict: "ti-alert-triangle" };
   els.notesSyncIcon.className = `ti ${icons[syncState] || "ti-info-circle"}`;
   const mode = notesSystem?.config.mode || "local";
-  els.syncAccountStatus.textContent = mode === "local" ? "Local-only · no account required" : notesSystem?.user ? `Firebase · ${notesSystem.accountEmail}` : "Firebase is not connected";
+  els.syncAccountStatus.textContent = mode === "local" ? "Local-only · no account required" : notesSystem?.user ? `Private VPS · ${notesSystem.accountEmail}` : "VPS account is not connected";
   if (detail) document.querySelector("#syncHelp").textContent = detail;
 }
 
@@ -4212,13 +4247,13 @@ async function runNotesAction(action) {
   catch (error) { updateSyncUI(navigator.onLine ? "conflict" : "offline", error.message); setStatus(error.message); }
 }
 
-async function connectFirebase(createAccount) {
+async function connectServer(createAccount) {
   await runNotesAction(async () => {
-    await notesSystem.connect(els.firebaseEmail.value.trim(), els.firebasePassword.value, createAccount);
+    await notesSystem.connect(els.serverEmail.value.trim(), els.serverPassword.value, createAccount);
     startSharedNotes();
     startAccountLastReadSync();
-    els.firebasePassword.value = "";
-    updateSyncUI("synced", createAccount ? "Firebase account created and notes synced." : "Signed in and synced with Firebase.");
+    els.serverPassword.value = "";
+    updateSyncUI("synced", createAccount ? "Private VPS account created and cached notes transferred." : "Signed in and synced with this VPS.");
     if (state.pendingSharedMapId || new URLSearchParams(location.hash.slice(1)).has("map")) {
       els.notesSyncSheet.close();
       await openSharedLink();

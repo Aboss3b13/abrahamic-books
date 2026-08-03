@@ -42,7 +42,7 @@ const organizerSaveBlock = notesSystemSource.slice(notesSystemSource.indexOf("as
 assert(!/\n\s+viewMode:/.test(organizerSaveBlock), "the active notes view must never be written to synced organizer data");
 assert(!/\n\s+selectedFolderId:/.test(organizerSaveBlock), "the open folder must remain local to each device");
 assert(notesSystemSource.includes("SHARED_MIND_MAP_API"), "mind-map snapshots should use the short-link sharing service");
-assert(notesSystemSource.includes("this.user.getIdToken()"), "private mind-map sharing should authenticate with the existing Firebase account");
+assert(notesSystemSource.includes("this.config.sessionToken"), "private mind-map sharing should authenticate with the VPS account");
 assert(notesSystemSource.includes("SHARED_MIND_MAP_CHUNK_BYTES"), "large shared maps should upload in safe chunks");
 assert(!notesSystemSource.includes("map.notes.slice(0, 60)"), "sharing must not cap maps at sixty notes");
 
@@ -53,8 +53,11 @@ assert(appSource.includes("async function saveSharedMindMap"), "recipients need 
 assert(appSource.includes(".mindmap-stage"), "map gestures must not trigger app-level swipe navigation");
 
 const shareApiSource = readFileSync(new URL("../public/api/mindmaps.php", import.meta.url), "utf8");
-assert(shareApiSource.includes("accounts:lookup"), "the sharing service must verify Firebase identities for private maps");
+assert(shareApiSource.includes("ab_require_user"), "the sharing service must verify VPS identities for private maps");
 assert(shareApiSource.includes("accessMode"), "the sharing service must enforce link and custom access modes");
 assert(shareApiSource.includes('action === \'chunk\''), "the sharing service must accept maps in chunks");
+
+const packageSource = readFileSync(new URL("../package.json", import.meta.url), "utf8");
+assert(!packageSource.toLowerCase().includes("firebase"), "the client dependency graph must be independent of Firebase");
 
 console.log("Mindmap search and text containment checks passed.");

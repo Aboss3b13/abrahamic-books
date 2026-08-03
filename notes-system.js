@@ -1,25 +1,5 @@
-import { initializeApp } from "firebase/app";
-import {
-  createUserWithEmailAndPassword,
-  getAuth,
-  onAuthStateChanged,
-  setPersistence,
-  signInWithEmailAndPassword,
-  signOut,
-  browserLocalPersistence,
-} from "firebase/auth";
-import { addDoc, collection, deleteDoc, doc, getDoc, getDocs, getFirestore, onSnapshot, query, setDoc, updateDoc, where } from "firebase/firestore";
-
-const FIREBASE_CONFIG = {
-  apiKey: "AIzaSyDcZTfjyNPnbGCBdO6HvPSLttQsrOZYx-E",
-  authDomain: "abrahamic-books.firebaseapp.com",
-  projectId: "abrahamic-books",
-  storageBucket: "abrahamic-books.firebasestorage.app",
-  messagingSenderId: "709558646345",
-  appId: "1:709558646345:web:1e95def83c407e1e0b3198",
-  measurementId: "G-LG1GDFMJ9H",
-};
-const SHARED_MIND_MAP_API = "https://abbas2.ali-raza.net/AbrahamicBooks/api/mindmaps.php";
+const SERVER_API = "https://abbas2.ali-raza.net/AbrahamicBooks/api";
+const SHARED_MIND_MAP_API = `${SERVER_API}/mindmaps.php`;
 const SHARED_MIND_MAP_CHUNK_BYTES = 384 * 1024;
 
 const DB_NAME = "abrahamic-books-notes";
@@ -38,11 +18,6 @@ const recoverNoteKey = (key, note = {}) => {
   const reference = Array.isArray(note.references) ? String(note.references.find(Boolean) || "").trim() : "";
   if (reference && !note.standalone) return reference;
   return `note:${note.id || uuid()}`;
-};
-const cloudIdForKey = (key) => {
-  const safeKey = String(key || "").trim();
-  if (!safeKey) throw new Error("A note is missing its storage key. Run sync again to repair it.");
-  return btoa(unescape(encodeURIComponent(safeKey))).replaceAll("+", "-").replaceAll("/", "_").replaceAll("=", "");
 };
 const newerThan = (left, right) => {
   const revisionDifference = Number(left?.revision || 0) - Number(right?.revision || 0);
@@ -67,13 +42,11 @@ export class NotesSystem extends EventTarget {
     this.config = { mode: "local", deviceId: "", accountUid: "", salt: "", iterations: 250000 };
     this.isNative = isNative;
     this.key = null;
-    const firebaseApp = initializeApp(FIREBASE_CONFIG);
-    this.auth = getAuth(firebaseApp);
-    this.firestore = getFirestore(firebaseApp);
     this.user = null;
     this.unsubscribeRemote = null;
     this.sharedUnsubscribers = [];
     this.lastReadUnsubscribe = null;
+    this.serverPollTimer = null;
     this.organizerOnChange = () => {};
   }
 
@@ -88,7 +61,10 @@ export class NotesSystem extends EventTarget {
       request.onerror = () => reject(request.error);
     });
     this.config = { ...this.config, ...((await this.getMeta("config")) || {}) };
-    if (!["local", "firebase"].includes(this.config.mode)) this.config.mode = "local";
+    const hadPreviousRemoteSync = this.config.mode !== "local";
+    if (hadPreviousRemoteSync) this.config.mode = "server";
+    if (hadPreviousRemoteSync && !this.config.sessionToken) this.config.needsServerMigration = true;
+    if (!["local", "server"].includes(this.config.mode)) this.config.mode = "local";
     if (!this.config.deviceId) this.config.deviceId = uuid();
     if (!this.config.salt) this.config.salt = b64(crypto.getRandomValues(new Uint8Array(16)));
     await this.setMeta("config", this.config);
@@ -107,26 +83,21 @@ export class NotesSystem extends EventTarget {
         await this.put(stored, false);
       }
     }
-    await setPersistence(this.auth, browserLocalPersistence);
-    await new Promise((resolve) => {
-      const unsubscribe = onAuthStateChanged(this.auth, (user) => {
-        this.user = user;
-        unsubscribe();
-        resolve();
-      });
-    });
-    if (this.user) await this.activateAccount(this.user.uid);
-    else if (this.config.accountUid) {
-      // Auth persistence can expire independently of IndexedDB. Never leave the
-      // last signed-in account selected while the user is signed out.
-      this.config.accountUid = "";
-      await this.setMeta("config", this.config);
+    if (this.config.sessionToken) {
+      try {
+        const session = await this.request("account.php?action=me");
+        this.user = session.user;
+        await this.activateAccount(this.user.uid);
+      } catch {
+        this.config.sessionToken = "";
+        await this.setMeta("config", this.config);
+      }
     }
     window.addEventListener("online", () => this.scheduleSync(200));
     document.addEventListener("visibilitychange", () => {
       if (document.visibilityState === "visible") this.scheduleSync(100);
     });
-    if (this.config.mode === "firebase" && this.user) {
+    if (this.config.mode === "server" && this.user) {
       this.startRealtimeSync();
       this.scheduleSync(100);
     }
@@ -147,6 +118,19 @@ export class NotesSystem extends EventTarget {
       localOwnerUid: note.localOwnerUid || note.ownerUid || "",
       syncedRevision: Number(note.syncedRevision) || 0, syncState: note.syncState || "saved locally", conflictOf: note.conflictOf || null,
     };
+  }
+
+  async request(path, options = {}, authenticated = true) {
+    const headers = { ...(options.headers || {}) };
+    if (authenticated && this.config.sessionToken) headers.Authorization = `Bearer ${this.config.sessionToken}`;
+    if (options.body && !(options.body instanceof Uint8Array) && typeof options.body !== "string") {
+      headers["Content-Type"] = "application/json";
+      options = { ...options, body: JSON.stringify(options.body) };
+    }
+    const response = await fetch(`${SERVER_API}/${path}`, { ...options, headers });
+    const result = await response.json().catch(() => ({}));
+    if (!response.ok) throw new Error(result.error || "The Abrahamic Books server could not complete this request.");
+    return result;
   }
 
   async save(key, note) {
@@ -201,33 +185,38 @@ export class NotesSystem extends EventTarget {
   }
 
   async setMode(mode) {
-    if (!["local", "firebase"].includes(mode)) throw new Error("Unknown storage mode");
+    if (!["local", "server"].includes(mode)) throw new Error("Unknown storage mode");
     this.config.mode = mode;
     await this.setMeta("config", this.config);
     this.emit(mode === "local" ? "saved locally" : this.user ? "syncing" : "offline");
-    if (mode === "firebase" && this.user) this.scheduleSync(0);
+    if (mode === "server" && this.user) this.scheduleSync(0);
   }
 
   async connect(email, password, createAccount = false) {
     if (!email || !password) throw new Error("Enter your email and password.");
-    if (!navigator.onLine) throw new Error("Connect to the internet to sign in to Firebase.");
-    const credential = createAccount
-      ? await createUserWithEmailAndPassword(this.auth, email, password)
-      : await signInWithEmailAndPassword(this.auth, email, password);
-    this.user = credential.user;
+    if (!navigator.onLine) throw new Error("Connect to the internet to sign in to your Abrahamic Books account.");
+    const result = await this.request(`account.php?action=${createAccount ? "register" : "login"}`, {
+      method: "POST", body: { email, password },
+    }, false);
+    const previousUid = this.config.accountUid;
+    this.config.sessionToken = result.token;
+    this.config.needsServerMigration = false;
+    this.user = result.user;
+    if (previousUid && previousUid !== this.user.uid) await this.migrateCachedAccount(previousUid, this.user.uid);
     await this.activateAccount(this.user.uid);
-    await this.setMode("firebase");
+    await this.setMode("server");
     this.startRealtimeSync();
     await this.sync({ force: true });
   }
 
   async disconnect() {
-    await signOut(this.auth);
+    if (this.config.sessionToken) await this.request("account.php?action=logout", { method: "POST" }).catch(() => {});
     this.unsubscribeRemote?.();
     this.unsubscribeRemote = null;
     this.stopLastReadSync();
     this.stopSharedSync();
     this.user = null;
+    this.config.sessionToken = "";
     this.config.accountUid = "";
     await this.setMode("local");
     this.onChange(await this.visibleMap());
@@ -235,6 +224,20 @@ export class NotesSystem extends EventTarget {
 
   get accountEmail() { return this.user?.email || ""; }
   get signedIn() { return Boolean(this.user); }
+
+  async migrateCachedAccount(previousUid, nextUid) {
+    for (const note of await this.all()) {
+      if (note.localOwnerUid !== previousUid) continue;
+      note.localOwnerUid = nextUid;
+      note.syncedRevision = 0;
+      note.syncState = "saved locally";
+      await this.put(note, false);
+    }
+    const previousOrganizer = await this.getMeta(`organizer:${previousUid}`);
+    if (previousOrganizer && !(await this.getMeta(`organizer:${nextUid}`))) await this.setMeta(`organizer:${nextUid}`, previousOrganizer);
+    this.config.migratedLegacyAccountUid = previousUid;
+    await this.setMeta("config", this.config);
+  }
 
   stopLastReadSync() {
     this.lastReadUnsubscribe?.();
@@ -244,22 +247,24 @@ export class NotesSystem extends EventTarget {
   watchLastRead(onChange, onError = () => {}) {
     this.stopLastReadSync();
     if (!this.user) { onChange(null); return; }
-    this.lastReadUnsubscribe = onSnapshot(
-      doc(this.firestore, "users", this.user.uid, "notes", "reader-state-v1"),
-      (snapshot) => onChange(snapshot.exists() ? snapshot.data()?.lastRead || null : null),
-      onError,
-    );
+    let active = true;
+    const poll = async () => {
+      try { const result = await this.request("sync.php?action=last-read"); if (active) onChange(result.lastRead || null); }
+      catch (error) { if (active) onError(error); }
+    };
+    poll();
+    const timer = setInterval(poll, 8000);
+    this.lastReadUnsubscribe = () => { active = false; clearInterval(timer); };
   }
 
   async setLastRead(lastRead) {
     if (!this.user) return;
-    await setDoc(doc(this.firestore, "users", this.user.uid, "notes", "reader-state-v1"), { lastRead }, { merge: true });
+    await this.request("sync.php?action=last-read", { method: "POST", body: lastRead });
   }
 
   async getLastRead() {
     if (!this.user) return null;
-    const snapshot = await getDoc(doc(this.firestore, "users", this.user.uid, "notes", "reader-state-v1"));
-    return snapshot.exists() ? snapshot.data()?.lastRead || null : null;
+    return (await this.request("sync.php?action=last-read")).lastRead || null;
   }
 
   stopSharedSync() {
@@ -270,44 +275,36 @@ export class NotesSystem extends EventTarget {
   watchSharedNotes(onChange, onError = () => {}) {
     this.stopSharedSync();
     if (!this.user?.email) { onChange([]); return; }
-    const email = this.user.email.toLowerCase();
-    const snapshots = new Map();
-    const publish = () => onChange([...snapshots.values()].sort((a, b) => Date.parse(b.updatedAt || 0) - Date.parse(a.updatedAt || 0)));
-    const listen = (key, constraint) => onSnapshot(query(collection(this.firestore, "sharedNotes"), constraint), (result) => {
-      for (const [id, value] of snapshots) if (value._query === key) snapshots.delete(id);
-      result.docs.forEach((item) => snapshots.set(item.id, { id: item.id, ...item.data(), _query: key }));
-      publish();
-    }, onError);
-    this.sharedUnsubscribers = [
-      listen("owner", where("ownerUid", "==", this.user.uid)),
-      listen("member", where("memberEmails", "array-contains", email)),
-    ];
+    let active = true;
+    const poll = async () => {
+      try { const result = await this.request("shared-notes.php"); if (active) onChange(result.notes || []); }
+      catch (error) { if (active) onError(error); }
+    };
+    poll();
+    const timer = setInterval(poll, 8000);
+    this.sharedUnsubscribers = [() => { active = false; clearInterval(timer); }];
   }
 
   async createSharedNote(note, inviteEmails = []) {
     if (!this.user?.email) throw new Error("Sign in before creating a shared note.");
-    const now = new Date().toISOString();
     const memberEmails = [...new Set(inviteEmails.map((email) => String(email).trim().toLowerCase()).filter(Boolean))];
-    return addDoc(collection(this.firestore, "sharedNotes"), {
+    return this.request("shared-notes.php", { method: "POST", body: {
       title: String(note.title || "Untitled shared note"), text: String(note.text || ""),
       tags: Array.isArray(note.tags) ? note.tags.map(String) : [], references: Array.isArray(note.references) ? note.references.map(String) : [],
-      folderId: String(note.folderId || ""),
-      ownerUid: this.user.uid, ownerEmail: this.user.email.toLowerCase(), memberEmails,
-      createdAt: now, updatedAt: now, updatedBy: this.user.email.toLowerCase(),
-    });
+      folderId: String(note.folderId || ""), memberEmails,
+    } });
   }
 
   async updateSharedNote(id, changes) {
     if (!this.user) throw new Error("Sign in to edit shared notes.");
     const clean = {};
     for (const key of ["title", "text", "tags", "references", "folderId", "memberEmails"]) if (key in changes) clean[key] = changes[key];
-    clean.updatedAt = new Date().toISOString(); clean.updatedBy = this.accountEmail.toLowerCase();
-    await updateDoc(doc(this.firestore, "sharedNotes", id), clean);
+    await this.request(`shared-notes.php?id=${encodeURIComponent(id)}`, { method: "PUT", body: clean });
   }
 
   async deleteSharedNote(id) {
     if (!this.user) throw new Error("Sign in to delete shared notes.");
-    await deleteDoc(doc(this.firestore, "sharedNotes", id));
+    await this.request(`shared-notes.php?id=${encodeURIComponent(id)}`, { method: "DELETE" });
   }
 
   async createSharedMindMap(map, inviteEmails = [], accessMode = "link") {
@@ -333,10 +330,9 @@ export class NotesSystem extends EventTarget {
     if (!clean.notes.length) throw new Error("This mind map has no notes to share.");
     const bytes = utf8.encode(JSON.stringify(clean));
     const totalChunks = Math.max(1, Math.ceil(bytes.byteLength / SHARED_MIND_MAP_CHUNK_BYTES));
-    const token = await this.user.getIdToken();
     const startResponse = await fetch(`${SHARED_MIND_MAP_API}?action=start`, {
       method: "POST",
-      headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` },
+      headers: { "Content-Type": "application/json", Authorization: `Bearer ${this.config.sessionToken}` },
       body: JSON.stringify({ accessMode: mode, memberEmails, totalBytes: bytes.byteLength, totalChunks }),
     });
     const upload = await startResponse.json().catch(() => ({}));
@@ -366,7 +362,7 @@ export class NotesSystem extends EventTarget {
     const safeId = String(id || "").trim();
     if (!/^[a-f0-9]{18}$/.test(safeId)) throw new Error("This mind map link is invalid.");
     const headers = {};
-    if (this.user) headers.Authorization = `Bearer ${await this.user.getIdToken()}`;
+    if (this.user) headers.Authorization = `Bearer ${this.config.sessionToken}`;
     const response = await fetch(`${SHARED_MIND_MAP_API}?id=${encodeURIComponent(safeId)}`, { headers });
     const result = await response.json().catch(() => ({}));
     if (!response.ok) throw new Error(result.error || "This shared mind map is no longer available.");
@@ -455,16 +451,11 @@ export class NotesSystem extends EventTarget {
 
   startRealtimeSync() {
     this.unsubscribeRemote?.();
-    if (!this.user || this.config.mode !== "firebase") return;
-    let initialSnapshot = true;
-    this.unsubscribeRemote = onSnapshot(
-      collection(this.firestore, "users", this.user.uid, "notes"),
-      () => {
-        if (initialSnapshot) { initialSnapshot = false; return; }
-        this.scheduleSync(100);
-      },
-      (error) => this.emit("conflict", `Firebase listener: ${error.message}`),
-    );
+    if (!this.user || this.config.mode !== "server") return;
+    const timer = setInterval(() => {
+      if (document.visibilityState === "visible" && navigator.onLine) this.scheduleSync(100);
+    }, 8000);
+    this.unsubscribeRemote = () => clearInterval(timer);
   }
 
   async sync({ force = false } = {}) {
@@ -472,14 +463,14 @@ export class NotesSystem extends EventTarget {
       this.syncRequested = true;
       return;
     }
-    if (this.config.mode !== "firebase") return;
-    if (!this.user) throw new Error("Sign in to Firebase first.");
+    if (this.config.mode !== "server") return;
+    if (!this.user) throw new Error("Sign in to your Abrahamic Books account first.");
     if (!navigator.onLine) { this.emit("offline"); return; }
     this.syncing = true;
     this.emit("syncing");
     try {
       await this.writeQueue;
-      const remoteSnapshot = await getDocs(collection(this.firestore, "users", this.user.uid, "notes"));
+      const remoteSnapshot = await this.request("sync.php?action=notes");
       const localRecords = (await this.all()).filter((note) => note.localOwnerUid === this.user.uid);
       const localByKey = new Map();
       for (const stored of localRecords) {
@@ -489,23 +480,17 @@ export class NotesSystem extends EventTarget {
         if (!existing || newerThan(note, existing)) localByKey.set(note.key, note);
       }
       const remoteByKey = new Map();
-      const duplicateRemoteDocs = [];
-      for (const remoteDoc of remoteSnapshot.docs) {
-        const data = remoteDoc.data();
+      for (const data of remoteSnapshot.notes || []) {
         if (!data?.key) continue;
         const remote = this.normalize(data.key, data);
         const existing = remoteByKey.get(remote.key);
-        if (!existing || newerThan(remote, existing.note)) {
-          if (existing) duplicateRemoteDocs.push({ id: existing.docId, key: remote.key });
-          remoteByKey.set(remote.key, { note: remote, docId: remoteDoc.id });
-        } else duplicateRemoteDocs.push({ id: remoteDoc.id, key: remote.key });
+        if (!existing || newerThan(remote, existing)) remoteByKey.set(remote.key, remote);
       }
       let uploaded = 0;
       const allKeys = new Set([...localByKey.keys(), ...remoteByKey.keys()]);
       for (const key of allKeys) {
         const local = localByKey.get(key);
-        const remoteEntry = remoteByKey.get(key);
-        const remote = remoteEntry?.note;
+        const remote = remoteByKey.get(key);
         if (!local && remote) {
           remote.syncState = "synced";
           remote.syncedRevision = remote.revision;
@@ -521,21 +506,9 @@ export class NotesSystem extends EventTarget {
           local.syncState = "synced";
           await this.put(local, false);
         }
-
-        const canonicalId = cloudIdForKey(key);
-        if (remoteEntry && remoteEntry.docId !== canonicalId) {
-          const winner = newerThan(remote, local) ? remote : local;
-          if (winner) await this.upload(winner);
-          duplicateRemoteDocs.push({ id: remoteEntry.docId, key });
-        }
-      }
-      const deletions = new Map(duplicateRemoteDocs.map((entry) => [entry.id, entry]));
-      for (const duplicate of deletions.values()) {
-        if (duplicate.id === cloudIdForKey(duplicate.key)) continue;
-        await deleteDoc(doc(this.firestore, "users", this.user.uid, "notes", duplicate.id));
       }
       await this.syncOrganizer();
-      this.emit("synced", uploaded ? `${uploaded} local ${uploaded === 1 ? "note" : "notes"} synced with ${this.accountEmail}.` : `All notes are synced with ${this.accountEmail}.`);
+      this.emit("synced", uploaded ? `${uploaded} local ${uploaded === 1 ? "note" : "notes"} synced to this VPS.` : `All notes are synced to this VPS for ${this.accountEmail}.`);
     } catch (error) {
       this.emit(navigator.onLine ? "conflict" : "offline", error.message);
       throw error;
@@ -553,16 +526,14 @@ export class NotesSystem extends EventTarget {
     if (!this.user) return;
     const localKey = `organizer:${this.user.uid}`;
     const local = await this.getMeta(localKey);
-    const reference = doc(this.firestore, "users", this.user.uid, "notes", "notes-organizer-v1");
-    const snapshot = await getDoc(reference);
-    const remote = snapshot.exists() ? snapshot.data() : null;
+    const remote = (await this.request("sync.php?action=organizer")).organizer;
     const localTime = Date.parse(local?.updatedAt || 0) || 0;
     const remoteTime = Date.parse(remote?.updatedAt || 0) || 0;
     if (remote && remoteTime > localTime) {
       await this.setMeta(localKey, remote);
       this.organizerOnChange(remote);
     } else if (local && (!remote || localTime > remoteTime)) {
-      await setDoc(reference, local);
+      await this.request("sync.php?action=organizer", { method: "POST", body: local });
     }
   }
 
@@ -574,7 +545,7 @@ export class NotesSystem extends EventTarget {
       syncState: "synced",
       syncedRevision: note.revision,
     };
-    await setDoc(doc(this.firestore, "users", this.user.uid, "notes", cloudIdForKey(note.key)), clean);
+    await this.request("sync.php?action=note", { method: "POST", body: clean });
     note.syncedRevision = note.revision;
     note.syncState = "synced";
     await this.put(note, false);
@@ -645,7 +616,7 @@ export class NotesSystem extends EventTarget {
   async flush() {
     clearTimeout(this.timer);
     await this.writeQueue;
-    if (this.config.mode === "firebase" && this.user && navigator.onLine) await this.sync({ force: true });
+    if (this.config.mode === "server" && this.user && navigator.onLine) await this.sync({ force: true });
   }
   emit(state, detail = "") { this.dispatchEvent(new CustomEvent("status", { detail: { state, detail } })); }
   async all() { return this.tx(NOTES, "readonly", (store) => store.getAll()); }

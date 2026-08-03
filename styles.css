@@ -2976,7 +2976,7 @@ html[dir="rtl"] .note-select { right: auto; left: 12px; }
 .section-heading h3 { margin: .05rem 0 .2rem; font-size: 1rem; }
 .section-heading p { margin: 0; color: var(--muted); font-size: .85rem; line-height: 1.4; }
 .sync-modes { grid-template-columns: repeat(2, minmax(0, 1fr)); }
-.firebase-account-fields { display: grid; grid-template-columns: 1fr 1fr; gap: .7rem; margin-bottom: .75rem; }
+.server-account-fields { display: grid; grid-template-columns: 1fr 1fr; gap: .7rem; margin-bottom: .75rem; }
 .sync-modes label { min-width: 0; height: 100%; box-sizing: border-box; }
 .button-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: .65rem; margin-top: .75rem; }
 .button-grid .text-button, .button-grid.file-button, .full-label { justify-content: center; width: 100%; min-height: 44px; height: auto; padding: .7rem .85rem; box-sizing: border-box; text-align: center; white-space: normal; line-height: 1.25; }
@@ -2989,7 +2989,7 @@ html[dir="rtl"] .note-select { right: auto; left: 12px; }
 .collaborative-controls .text-button { margin-top: .7rem; width: 100%; min-height: 44px; white-space: normal; }
 
 @media (max-width: 620px) {
-  .sync-modes, .button-grid, .sync-actions, .firebase-account-fields { grid-template-columns: 1fr; }
+  .sync-modes, .button-grid, .sync-actions, .server-account-fields { grid-template-columns: 1fr; }
   .sync-actions .danger { grid-column: auto; }
   .notes-actions { align-items: stretch; }
   .notes-actions .sync-button { flex-basis: 100%; justify-content: center; }
@@ -7436,7 +7436,7 @@ canvas { max-width: 100%; }
   .mindmap-help-card { top: 184px; }
 }
 
-/* Firebase-backed mind-map sharing and full shared-note viewing. */
+/* VPS-backed mind-map sharing and full shared-note viewing. */
 .mindmap-actions [data-map-save] {
   color: #684895;
   border-color: color-mix(in srgb, #7553a5 38%, var(--line));
@@ -7498,6 +7498,22 @@ canvas { max-width: 100%; }
 }
 
 .shared-map-note-content .note-card-references { max-width: 100%; }
+
+.app-update-card {
+  display: flex;
+  min-width: 0;
+  align-items: center;
+  gap: 16px;
+  padding: 20px;
+  border: 1px solid color-mix(in srgb, var(--green-2) 30%, var(--line));
+  border-radius: 20px;
+  background: linear-gradient(135deg, color-mix(in srgb, var(--green-2) 11%, var(--panel)), color-mix(in srgb, var(--gold) 8%, var(--panel)));
+}
+.app-update-card > span { display: grid; width: 48px; height: 48px; flex: 0 0 48px; place-items: center; border-radius: 15px; color: var(--on-accent); background: var(--green); font-size: 1.35rem; }
+.app-update-card div { min-width: 0; }
+.app-update-card strong,
+.app-update-card p { overflow-wrap: anywhere; }
+.app-update-card p { margin: 5px 0 0; color: var(--muted); line-height: 1.5; }
 
 @media (max-width: 599px) {
   .shared-map-note-sheet .sheet-inner { width: 100%; }

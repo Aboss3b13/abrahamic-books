@@ -1,8 +1,8 @@
 <?php
 declare(strict_types=1);
+require_once __DIR__ . '/server-common.php';
 
-const FIREBASE_API_KEY = 'AIzaSyDcZTfjyNPnbGCBdO6HvPSLttQsrOZYx-E';
-const SHARE_DIRECTORY = '/var/www/html/.abrahamic-books-shares';
+define('SHARE_DIRECTORY', getenv('AB_SHARE_DIRECTORY') ?: '/var/www/html/.abrahamic-books-shares');
 const MAX_CHUNK_BYTES = 524288;
 const MAX_CHUNKS = 10000;
 
@@ -21,37 +21,6 @@ function reply(int $status, array $body): never {
     http_response_code($status);
     echo json_encode($body, JSON_UNESCAPED_SLASHES | JSON_UNESCAPED_UNICODE);
     exit;
-}
-
-function bearerToken(): string {
-    $authorization = $_SERVER['HTTP_AUTHORIZATION'] ?? '';
-    return preg_match('/^Bearer\s+(.+)$/i', $authorization, $match) ? trim($match[1]) : '';
-}
-
-function firebaseUser(bool $required): ?array {
-    $token = bearerToken();
-    if ($token === '') {
-        if ($required) reply(401, ['error' => 'Sign in to share or open this private mind map.']);
-        return null;
-    }
-    $request = curl_init('https://identitytoolkit.googleapis.com/v1/accounts:lookup?key=' . FIREBASE_API_KEY);
-    curl_setopt_array($request, [
-        CURLOPT_POST => true,
-        CURLOPT_RETURNTRANSFER => true,
-        CURLOPT_TIMEOUT => 12,
-        CURLOPT_HTTPHEADER => ['Content-Type: application/json'],
-        CURLOPT_POSTFIELDS => json_encode(['idToken' => $token]),
-    ]);
-    $response = curl_exec($request);
-    $status = (int) curl_getinfo($request, CURLINFO_HTTP_CODE);
-    curl_close($request);
-    $decoded = is_string($response) ? json_decode($response, true) : null;
-    $user = is_array($decoded) ? ($decoded['users'][0] ?? null) : null;
-    if ($status !== 200 || !is_array($user) || empty($user['localId'])) {
-        if ($required) reply(401, ['error' => 'Your sign-in expired. Sign in again and retry.']);
-        return null;
-    }
-    return ['uid' => (string) $user['localId'], 'email' => strtolower((string) ($user['email'] ?? ''))];
 }
 
 function safeId(): string {
@@ -89,9 +58,9 @@ function verifyUploadToken(array $upload): void {
 
 function enforceMapAccess(array $access): void {
     if (($access['accessMode'] ?? 'link') !== 'custom') return;
-    $user = firebaseUser(true);
+    $user = ab_require_user();
     $members = is_array($access['memberEmails'] ?? null) ? $access['memberEmails'] : [];
-    if ($user['uid'] !== ($access['ownerUid'] ?? '') && !in_array($user['email'], $members, true)) {
+    if ($user['uid'] !== ($access['ownerUid'] ?? '') && $user['email'] !== ($access['ownerEmail'] ?? '') && !in_array($user['email'], $members, true)) {
         reply(403, ['error' => 'This private mind map was not shared with your email address.']);
     }
 }
@@ -100,7 +69,7 @@ $method = $_SERVER['REQUEST_METHOD'];
 $action = strtolower(trim((string) ($_GET['action'] ?? '')));
 
 if ($method === 'POST' && $action === 'start') {
-    $user = firebaseUser(true);
+    $user = ab_require_user();
     $raw = file_get_contents('php://input');
     $request = is_string($raw) ? json_decode($raw, true) : null;
     if (!is_array($request)) reply(400, ['error' => 'The upload information is invalid.']);

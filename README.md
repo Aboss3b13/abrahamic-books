@@ -85,7 +85,7 @@ The Android APK can be downloaded from [the app website](https://abbas2.ali-raza
 - Save exported notes to the Android Downloads folder
 - Import a notes backup on the website or Android app
 - Create an encrypted backup with a password
-- Optional Firebase account and note synchronization
+- Optional private VPS account and note synchronization
 - Collaborative notes for signed-in users
 - Conflict copies help protect simultaneous edits
 
@@ -134,7 +134,7 @@ The project uses simple web technologies:
 - `public/offline/` contains bundled offline scripture and search data
 - `sw.js` provides website caching and offline support
 - Capacitor packages the same web app as an Android app
-- Firebase is optional and is only used when a user chooses cloud note sync
+- The app's accounts, note sync, last-read state, and sharing APIs run on the Abrahamic Books VPS
 
 Local notes are stored in IndexedDB. Basic reader preferences and small settings are stored in local storage.
 
@@ -194,16 +194,9 @@ The APK is created at:
 android/app/build/outputs/apk/debug/app-debug.apk
 ```
 
-## Firebase notes sync
+## Private VPS notes sync
 
-Firebase is optional. The app works without it.
-
-The repository contains:
-
-- `firebase.json`
-- `firestore.rules`
-
-To use your own Firebase project, update the Firebase configuration in `notes-system.js` and deploy the Firestore rules to your Firebase project.
+The app works locally without an account. Optional cross-device sync uses the PHP APIs in `public/api/` and protected file storage outside the public application directory. No external database or identity provider is required.
 
 ## Important folders
 
