@@ -7519,3 +7519,221 @@ canvas { max-width: 100%; }
   .shared-map-note-sheet .sheet-inner { width: 100%; }
   .shared-map-note-content { padding: 16px; border-radius: 18px; }
 }
+
+/* Tablet comfort, text containment, and Chrome rendering performance. */
+:where(.view, .card, .panel, .sheet-inner, .notes-toolbar, .note-card, .note-card-main,
+  .note-card-heading, .note-card-footer, .note-editor-section, .mindmap-header,
+  .mindmap-search, .mindmap-help-card, .shared-map-note-content) {
+  min-width: 0;
+  max-width: 100%;
+}
+
+:where(.view, .card, .panel, .sheet-inner, .note-card, .note-editor-section,
+  .shared-map-note-content) :where(p, span, strong, small, label, button, a, input,
+  textarea, select, option) {
+  max-width: 100%;
+  overflow-wrap: anywhere;
+}
+
+:where(input, textarea, select) {
+  min-width: 0;
+  max-width: 100%;
+}
+
+@media (min-width: 600px) and (max-width: 1180px) {
+  :root {
+    --card-pad: clamp(22px, 3vw, 30px);
+    --reader-width: 100%;
+  }
+
+  body { font-size: 16px; }
+
+  .app-shell {
+    padding-bottom: calc(106px + env(safe-area-inset-bottom));
+  }
+
+  .topbar {
+    min-height: 98px;
+    padding: max(18px, env(safe-area-inset-top)) clamp(24px, 4vw, 44px) 18px;
+  }
+
+  main {
+    width: 100%;
+    max-width: none;
+    padding: clamp(24px, 4vw, 42px);
+  }
+
+  #readView.active,
+  #searchView.active {
+    display: block;
+  }
+
+  #readView .reader-controls,
+  #readView .quick-actions,
+  #readView #status,
+  #readView .focused-verse,
+  #readView .verses,
+  #searchView > * {
+    width: 100%;
+    max-width: 100%;
+    grid-column: auto;
+    grid-row: auto;
+  }
+
+  .reader-controls,
+  .view-toolbar,
+  #notesView .notes-toolbar {
+    gap: 16px;
+    padding: clamp(20px, 3vw, 28px);
+    border-radius: 24px;
+  }
+
+  .reader-controls {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  .reader-controls :where(button, input, select),
+  .view-toolbar :where(button, input, select),
+  #notesView .notes-toolbar :where(button, input, select) {
+    min-height: 48px;
+  }
+
+  .reading-dashboard {
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+    gap: 14px;
+  }
+
+  .ayah-card,
+  .search-result,
+  #notesView .note-card {
+    padding: clamp(22px, 3vw, 30px);
+    border-radius: 24px;
+  }
+
+  .translation,
+  .commentary-text,
+  #notesView .note-card-main p {
+    font-size: 1rem;
+    line-height: 1.7;
+  }
+
+  #notesView .notes-list {
+    width: min(100%, 980px);
+    gap: 18px;
+    margin-inline: auto;
+  }
+
+  #notesView .note-card-main p {
+    -webkit-line-clamp: 6;
+  }
+
+  .note-sheet .sheet-inner {
+    width: min(94vw, 860px);
+    max-height: min(92dvh, 980px);
+    padding: clamp(22px, 3vw, 32px);
+  }
+
+  .note-sheet textarea {
+    min-height: 260px;
+    font-size: 1rem;
+    line-height: 1.65;
+  }
+
+  .bottom-nav {
+    min-height: 72px;
+    padding: 8px 12px calc(8px + env(safe-area-inset-bottom));
+  }
+
+  .nav-item {
+    min-height: 56px;
+    padding-inline: 12px;
+  }
+
+  .mindmap-header {
+    gap: 12px;
+    padding: max(20px, env(safe-area-inset-top)) clamp(22px, 3vw, 32px) 14px;
+  }
+
+  .mindmap-search {
+    min-height: 52px;
+    border-radius: 16px;
+  }
+
+  .mindmap-actions {
+    gap: 8px;
+    padding: 6px;
+  }
+
+  .mindmap-actions button,
+  .mindmap-header > .mindmap-close {
+    width: 46px;
+    min-width: 46px;
+    min-height: 46px;
+    height: 46px;
+    flex-basis: 46px;
+    border-radius: 14px;
+  }
+
+  .mindmap-legend {
+    gap: 10px;
+    padding-block: 2px 6px;
+  }
+
+  .mindmap-legend span {
+    min-height: 34px;
+    padding: 7px 11px;
+  }
+
+  body.mindmap-fullscreen .mindmap-stage {
+    min-height: 0;
+  }
+}
+
+/* Avoid permanently promoting the entire map to a GPU layer. Chromium is much
+   smoother when the layer exists only while the canvas is actually moving. */
+.mindmap-world { will-change: auto; }
+.mindmap-stage.is-panning .mindmap-world { will-change: transform; }
+
+@media (min-width: 960px) and (hover: hover) and (pointer: fine) {
+  :where(.topbar, .reader-controls, .view-toolbar, .bottom-nav, .mindmap-header,
+    .mindmap-help-card, .workspace-pane-head) {
+    -webkit-backdrop-filter: none;
+    backdrop-filter: none;
+  }
+
+  :where(.ayah-card, .search-result, .note-card, .mindmap-node, .mindmap-zone) {
+    animation: none;
+  }
+
+  .mindmap-node rect,
+  .mindmap-node.is-focus-note rect,
+  .mindmap-edge {
+    filter: none;
+  }
+
+  .mindmap-zone,
+  .mindmap-node,
+  .mindmap-edge {
+    transition-duration: 140ms;
+  }
+
+  .search-empty > span,
+  .sync-indicator::before {
+    animation: none;
+  }
+
+  .ayah-card,
+  .search-result,
+  .note-card {
+    box-shadow: 0 8px 24px color-mix(in srgb, var(--ink) 7%, transparent);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  *, *::before, *::after {
+    scroll-behavior: auto !important;
+    animation-duration: .01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: .01ms !important;
+  }
+}

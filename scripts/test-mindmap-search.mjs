@@ -80,6 +80,11 @@ assert(appSource.includes(".mindmap-stage"), "map gestures must not trigger app-
 assert(appSource.includes("function notesInteractionActive"), "background changes must detect active note and mind-map interactions");
 assert(appSource.includes("state.notesRenderPending = true"), "background changes must defer disruptive rendering while the user works");
 assert(appSource.includes('const PUBLIC_APP_URL = "https://abrahamicbooks.org/"'), "shared links must use the root domain");
+assert(appSource.includes('theme: "light"'), "a fresh website or APK installation must start in light mode");
+assert(appSource.includes('(min-width: 1181px) and (orientation: landscape) and (hover: hover) and (pointer: fine)'), "the compact research workspace must be limited to large pointer-based screens");
+assert(appSource.includes('(min-width: 600px) and (max-width: 1180px)'), "tablet controls should remain expanded throughout the tablet range");
+
+assert(stylesSource.includes("Tablet comfort, text containment, and Chrome rendering performance"), "tablet and laptop performance overrides must remain enabled");
 
 const shareApiSource = readFileSync(new URL("../public/api/mindmaps.php", import.meta.url), "utf8");
 assert(shareApiSource.includes("ab_require_user"), "the sharing service must verify VPS identities for private maps");

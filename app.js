@@ -94,7 +94,9 @@ const state = {
   selectedTranslations: [85],
   selectedTafsir: 169,
   selectedCommentary: "matthew-henry",
-  theme: window.matchMedia?.("(prefers-color-scheme: dark)").matches ? "dark" : "light",
+  // A fresh install always starts in light mode. loadPreferences() still
+  // restores an explicit theme chosen by an existing user.
+  theme: "light",
   width: "comfortable",
   arabicFont: "uthmani",
   translationFont: "system",
@@ -974,7 +976,7 @@ let controlsMotionToolbar = null;
 let toolbarTouchActive = false;
 
 function keepsExpandedTabletControls() {
-  return matchMedia("(min-width: 600px) and (max-width: 959px)").matches;
+  return matchMedia("(min-width: 600px) and (max-width: 1180px)").matches;
 }
 
 window.addEventListener("touchstart", () => { toolbarTouchActive = true; }, { passive: true });
@@ -4569,7 +4571,7 @@ function switchView(viewId, reselectedFromNav = false, currentScrollOverride = n
 }
 
 function isLandscapeWorkspace() {
-  return window.matchMedia("(min-width: 960px) and (orientation: landscape)").matches;
+  return window.matchMedia("(min-width: 1181px) and (orientation: landscape) and (hover: hover) and (pointer: fine)").matches;
 }
 
 function setupResponsiveWorkspace() {
@@ -4623,7 +4625,7 @@ function setupResponsiveWorkspace() {
     node._workspaceMarker = marker;
   });
 
-  const media = window.matchMedia("(min-width: 960px) and (orientation: landscape)");
+  const media = window.matchMedia("(min-width: 1181px) and (orientation: landscape) and (hover: hover) and (pointer: fine)");
   const sync = () => {
     const active = media.matches;
     document.body.classList.toggle("landscape-workspace", active);
