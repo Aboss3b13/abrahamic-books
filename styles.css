@@ -6550,6 +6550,29 @@ dialog::backdrop { animation-duration: 180ms; }
 .mindmap-node.is-search-match { opacity: 1 !important; }
 .mindmap-node.is-search-match rect { stroke-width: 3; filter: drop-shadow(0 0 12px color-mix(in srgb, var(--gold) 38%, transparent)); }
 
+/* Keep Android WebView and very large SVG maps on the inexpensive paint path. */
+.native-app .mindmap-world,
+.notes-mindmap.is-large-map .mindmap-world { will-change: auto; }
+.native-app .mindmap-node,
+.native-app .mindmap-edge,
+.native-app .mindmap-zone,
+.notes-mindmap.is-large-map .mindmap-node,
+.notes-mindmap.is-large-map .mindmap-edge,
+.notes-mindmap.is-large-map .mindmap-zone {
+  animation: none !important;
+  transition: none !important;
+}
+.native-app .mindmap-node rect,
+.native-app .mindmap-edge,
+.notes-mindmap.is-large-map .mindmap-node rect,
+.notes-mindmap.is-large-map .mindmap-edge { filter: none !important; }
+.native-app .mindmap-header,
+.native-app .mindmap-actions,
+.native-app .mindmap-inspector { backdrop-filter: none !important; }
+.mindmap-stage.is-panning .mindmap-node,
+.mindmap-stage.is-panning .mindmap-edge,
+.mindmap-stage.is-panning .mindmap-zone { transition: none !important; }
+
 .mindmap-no-results {
   position: absolute;
   inset: 0;

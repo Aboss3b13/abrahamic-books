@@ -260,9 +260,13 @@ function layOut(nodes, viewport) {
       node.layoutWidth = nodeWidth(node);
       node.layoutHeight = nodeHeight(node);
     });
-    const rowHeights = Array.from({ length: rows }, (_, row) => Math.max(...items
-      .filter((_, index) => Math.floor(index / columns) === row)
-      .map((node) => node.layoutHeight)));
+    const rowHeights = Array(rows).fill(0);
+    items.forEach((node, index) => {
+      const row = Math.floor(index / columns);
+      rowHeights[row] = Math.max(rowHeights[row], node.layoutHeight);
+    });
+    const rowOffsets = [];
+    rowHeights.forEach((height, row) => { rowOffsets[row] = (rowOffsets[row - 1] || 0) + (row ? rowHeights[row - 1] + cellGapY : 0); });
     const contentHeight = rowHeights.reduce((total, value) => total + value, 0) + Math.max(0, rows - 1) * cellGapY;
     const height = headerHeight + panelPadding + contentHeight;
     const zone = { type, items, columns, cellWidth, x, y, width, height };
@@ -270,7 +274,7 @@ function layOut(nodes, viewport) {
     const contentX = x + (width - contentWidth) / 2;
     items.forEach((node, index) => {
       const row = Math.floor(index / columns);
-      const precedingHeight = rowHeights.slice(0, row).reduce((total, value) => total + value, 0) + row * cellGapY;
+      const precedingHeight = rowOffsets[row];
       node.x = contentX + cellWidth * (index % columns) + cellWidth / 2;
       node.y = y + headerHeight + panelPadding / 2 + precedingHeight + rowHeights[row] / 2;
     });
@@ -366,7 +370,7 @@ export function renderNotesMindMap(container, options) {
   const noSearchResults = Boolean(searchQuery.trim() && !initialSearchGraph.nodes.length);
 
   const countNodes = searchQuery.trim() ? initialSearchGraph.nodes : graph.nodes;
-  const counts = countNodes.reduce((result, node) => ({ ...result, [node.type]: (result[node.type] || 0) + 1 }), {});
+  const counts = countNodes.reduce((result, node) => { result[node.type] = (result[node.type] || 0) + 1; return result; }, {});
   const mapTitle = options.focusNoteId || options.focusFolderId ? `${escapeHTML(options.rootLabel)} connections` : options.sharedMap ? escapeHTML(options.rootLabel) : "Notes and connections";
   const mapKicker = options.sharedMap ? "A shared map to explore" : options.focusNoteId ? "Everything connected to this note" : "A clear map of your study";
   container.classList.remove("has-map-selection", "has-map-search");
@@ -421,6 +425,7 @@ export function renderNotesMindMap(container, options) {
   });
   resizeObserver.observe(stage);
   const links = graph.edges.map((edge) => ({ ...edge, a: byId.get(edge.source), b: byId.get(edge.target) })).filter((edge) => edge.a && edge.b && edge.visible);
+  container.classList.toggle("is-large-map", visibleNodes.length > 140 || links.length > 220);
   const linkById = new Map(links.map((edge) => [edge.id, edge]));
   const adjacency = new Map();
   links.forEach((edge) => {
@@ -721,7 +726,11 @@ export function renderNotesMindMap(container, options) {
   let gesture = null;
   let gestureMoved = false;
   let pressedNode = null;
-  const mapPoint = (point) => { const rect = svg.getBoundingClientRect(); return { x: (point.x - rect.left) / rect.width * viewportWidth, y: (point.y - rect.top) / rect.height * viewportHeight }; };
+  let gestureRect = null;
+  const mapPoint = (point) => {
+    const rect = gestureRect || svg.getBoundingClientRect();
+    return { x: (point.x - rect.left) / rect.width * viewportWidth, y: (point.y - rect.top) / rect.height * viewportHeight };
+  };
   const beginGesture = () => {
     const points = [...pointers.values()].slice(0, 2);
     if (points.length === 2) {
@@ -731,6 +740,7 @@ export function renderNotesMindMap(container, options) {
   };
   svg.addEventListener("pointerdown", (event) => {
     cancelAnimationFrame(cameraFrame);
+    gestureRect = svg.getBoundingClientRect();
     pointers.set(event.pointerId, { x: event.clientX, y: event.clientY });
     pressedNode = pointers.size === 1 ? event.target.closest?.(".mindmap-node") : null;
     gestureMoved = false;
@@ -771,6 +781,7 @@ export function renderNotesMindMap(container, options) {
     if (pointers.size) beginGesture();
     else {
       gesture = null;
+      gestureRect = null;
       stage.classList.remove("is-panning");
       pressedNode = null;
       if (shouldActivate) {

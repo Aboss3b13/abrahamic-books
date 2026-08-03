@@ -22,6 +22,7 @@ const STORE = {
   notesOrganizer: "abrahamic-books-notes-organizer-v1",
 };
 const PUBLIC_APP_URL = "https://abbas2.ali-raza.net/AbrahamicBooks/";
+document.documentElement.classList.toggle("native-app", Capacitor.isNativePlatform());
 let notesSystem;
 let readerLoadToken = 0;
 const offlineJsonCache = new Map();
@@ -859,7 +860,7 @@ function setupSwipeNavigation() {
   let axis = "";
   let transitioning = false;
   const isHorizontalScroller = (target) => {
-    if (target.closest("input, textarea, select, dialog, .sheet, .bottom-nav, .search-book-index, .quick-actions, .notes-tabs, .notes-filter-row, .tag-filters, .ayah-actions, .selection-bar, .search-check")) return true;
+    if (target.closest("input, textarea, select, dialog, .sheet, .bottom-nav, .search-book-index, .quick-actions, .notes-tabs, .notes-filter-row, .tag-filters, .ayah-actions, .selection-bar, .search-check, .mindmap-stage")) return true;
     for (let node = target; node && node !== main; node = node.parentElement) {
       const style = getComputedStyle(node);
       if (node.scrollWidth > node.clientWidth + 4 && ["auto", "scroll"].includes(style.overflowX)) return true;
@@ -2758,7 +2759,7 @@ function closeMindMap() {
 }
 
 function buildMindMapSnapshot(entries, folders, details = {}) {
-  const included = entries.slice(0, 60);
+  const included = entries;
   const includedKeys = new Set(included.map(([key]) => key));
   const usedFolderIds = new Set(included.map(([, note]) => note.folderId).filter(Boolean));
   return {
@@ -4371,7 +4372,7 @@ async function openSharedLink() {
         sharedTitle = String(sharedMap.t || "Shared mind map").slice(0, 120);
         focusNoteId = Number.isInteger(sharedMap.f) && sharedMap.f >= 0 ? keys[sharedMap.f] || "" : "";
       } else {
-        const items = Array.isArray(sharedMap?.notes) ? sharedMap.notes.slice(0, 60) : [];
+        const items = Array.isArray(sharedMap?.notes) ? sharedMap.notes : [];
         entries = items.map((item, index) => {
           const key = String(item.key || `shared-map:${index}`);
           return [key, {
@@ -4382,7 +4383,7 @@ async function openSharedLink() {
             folderId: String(item.folderId || ""), standalone: true,
           }];
         });
-        sharedFolders = Array.isArray(sharedMap.folders) ? sharedMap.folders.slice(0, 60) : [];
+        sharedFolders = Array.isArray(sharedMap.folders) ? sharedMap.folders : [];
         sharedTitle = String(sharedMap.title || "Shared mind map").slice(0, 120);
         focusNoteId = entries.some(([key]) => key === sharedMap.focusNoteId) ? sharedMap.focusNoteId : "";
       }

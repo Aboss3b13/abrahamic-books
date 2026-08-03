@@ -20,6 +20,7 @@ const FIREBASE_CONFIG = {
   measurementId: "G-LG1GDFMJ9H",
 };
 const SHARED_MIND_MAP_API = "https://abbas2.ali-raza.net/AbrahamicBooks/api/mindmaps.php";
+const SHARED_MIND_MAP_CHUNK_BYTES = 384 * 1024;
 
 const DB_NAME = "abrahamic-books-notes";
 const DB_VERSION = 1;
@@ -321,8 +322,8 @@ export class NotesSystem extends EventTarget {
       version: 1,
       title: String(map.title || "Shared mind map").slice(0, 120),
       focusNoteId: String(map.focusNoteId || ""),
-      notes: Array.isArray(map.notes) ? map.notes.slice(0, 60) : [],
-      folders: Array.isArray(map.folders) ? map.folders.slice(0, 60) : [],
+      notes: Array.isArray(map.notes) ? map.notes : [],
+      folders: Array.isArray(map.folders) ? map.folders : [],
       ownerUid: this.user.uid,
       memberEmails,
       accessMode: mode,
@@ -330,15 +331,34 @@ export class NotesSystem extends EventTarget {
       updatedAt: now,
     };
     if (!clean.notes.length) throw new Error("This mind map has no notes to share.");
-    if (utf8.encode(JSON.stringify(clean)).byteLength > 900000) throw new Error("This map is too large to share at once. Share a folder or a note map instead.");
+    const bytes = utf8.encode(JSON.stringify(clean));
+    const totalChunks = Math.max(1, Math.ceil(bytes.byteLength / SHARED_MIND_MAP_CHUNK_BYTES));
     const token = await this.user.getIdToken();
-    const response = await fetch(SHARED_MIND_MAP_API, {
+    const startResponse = await fetch(`${SHARED_MIND_MAP_API}?action=start`, {
       method: "POST",
       headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` },
-      body: JSON.stringify(clean),
+      body: JSON.stringify({ accessMode: mode, memberEmails, totalBytes: bytes.byteLength, totalChunks }),
     });
-    const result = await response.json().catch(() => ({}));
-    if (!response.ok) throw new Error(result.error || "Could not create the mind-map link.");
+    const upload = await startResponse.json().catch(() => ({}));
+    if (!startResponse.ok) throw new Error(upload.error || "Could not start the mind-map upload.");
+    const uploadChunk = async (index) => {
+      const response = await fetch(`${SHARED_MIND_MAP_API}?action=chunk&id=${encodeURIComponent(upload.id)}&index=${index}`, {
+        method: "POST",
+        headers: { "Content-Type": "application/octet-stream", "X-Upload-Token": upload.uploadToken },
+        body: bytes.slice(index * SHARED_MIND_MAP_CHUNK_BYTES, (index + 1) * SHARED_MIND_MAP_CHUNK_BYTES),
+      });
+      const result = await response.json().catch(() => ({}));
+      if (!response.ok) throw new Error(result.error || `Could not upload part ${index + 1}.`);
+    };
+    for (let index = 0; index < totalChunks; index += 3) {
+      await Promise.all(Array.from({ length: Math.min(3, totalChunks - index) }, (_, offset) => uploadChunk(index + offset)));
+    }
+    const finishResponse = await fetch(`${SHARED_MIND_MAP_API}?action=finish&id=${encodeURIComponent(upload.id)}`, {
+      method: "POST",
+      headers: { "X-Upload-Token": upload.uploadToken },
+    });
+    const result = await finishResponse.json().catch(() => ({}));
+    if (!finishResponse.ok) throw new Error(result.error || "Could not finish the mind-map upload.");
     return result;
   }
 
