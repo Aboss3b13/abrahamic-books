@@ -396,13 +396,13 @@
         </div>
         <div class="privacy-callout"><span class="privacy-icon" aria-hidden="true"><i class="ti ti-shield-lock"></i></span><div>
           <strong>Your notes are private</strong>
-          <p>Notes always work offline on this device. VPS sync keeps an independent private copy on this Abrahamic Books server.</p>
+          <p>Notes always work offline and can sync across your devices.</p>
         </div></div>
         <section class="settings-section">
           <div class="section-heading"><span>1</span><div><h3>Choose where notes are saved</h3><p>You can change this later without losing local notes.</p></div></div>
           <fieldset class="sync-modes">
           <label><input type="radio" name="notesMode" value="local"> <span><strong>Local only</strong><small>Offline on this device; no account required.</small></span></label>
-          <label><input type="radio" name="notesMode" value="server"> <span><strong>Private VPS sync</strong><small>Keep notes in sync across the website and APK on this server.</small></span></label>
+          <label><input type="radio" name="notesMode" value="server"> <span><strong>Account sync</strong><small>Keep notes in sync across the website and APK.</small></span></label>
           </fieldset>
         </section>
         <section class="settings-section">
@@ -411,8 +411,8 @@
             <label class="note-field"><span>Email</span><input id="serverEmail" type="email" autocomplete="email" placeholder="you@example.com"></label>
             <label class="note-field"><span>Password</span><input id="serverPassword" type="password" autocomplete="current-password" placeholder="At least 6 characters"></label>
           </div>
-          <div class="button-grid sync-actions"><button id="connectServer" class="text-button primary" type="button">Sign in</button><button id="createServerAccount" class="text-button" type="button">Create VPS account</button><button id="syncNow" class="text-button" type="button">Sync notes now</button><button id="disconnectServer" class="text-button danger" type="button">Sign out and use local</button></div>
-          <p class="fine-print"><strong>Moving from the old sync:</strong> create a VPS account with your usual email and a password. Every note already cached on this device will upload automatically; repeat sign-in on each device to merge any remaining cached notes.</p>
+          <div class="button-grid sync-actions"><button id="connectServer" class="text-button primary" type="button">Sign in</button><button id="createServerAccount" class="text-button" type="button">Create account</button><button id="syncNow" class="text-button" type="button">Sync notes now</button><button id="disconnectServer" class="text-button danger" type="button">Sign out and use local</button></div>
+          <p class="fine-print"><strong>Moving from the old sync:</strong> create an account with your usual email and a password. Every note already cached on this device will upload automatically; repeat sign-in on each device to merge any remaining cached notes.</p>
         </section>
         <section class="settings-section">
           <div class="section-heading"><span>3</span><div><h3>Backup and restore</h3><p>Keep a portable encrypted copy of all notes.</p></div></div>
@@ -423,7 +423,7 @@
             <label class="text-button file-button full-label"><i class="ti ti-lock-open" aria-hidden="true"></i> Import encrypted backup<input id="importEncryptedBackup" type="file" accept="application/json,.abbackup"></label>
           </div>
         </section>
-        <p id="syncHelp" class="fine-print">Automatic VPS sync runs when the app opens, comes online, or a note changes. Concurrent edits are resolved using note revisions.</p>
+        <p id="syncHelp" class="fine-print">Automatic sync runs when the app opens, comes online, or a note changes. Concurrent edits are resolved using note revisions.</p>
       </form>
     </dialog>
 
@@ -432,7 +432,7 @@
         <div class="sheet-header"><div><h2>Share note</h2><p>Choose what recipients can access</p></div><button class="icon-button" value="close">×</button></div>
         <button id="shareSnapshot" class="share-mode" type="button"><span class="share-number">1</span><span><strong>Share a fixed snapshot</strong><small>Quick read-only link. It shows the note as it is now and will not update.</small></span></button>
         <button id="shareCollaborative" class="share-mode" type="button"><span class="share-number">2</span><span><strong>Invite people to edit</strong><small>Account-only collaboration with live updates across the website and APK.</small></span></button>
-        <p class="fine-print">Shared snapshots contain only the note you choose and do not grant access to your private VPS notes.</p>
+        <p class="fine-print">Shared snapshots contain only the note you choose and do not grant access to your other notes.</p>
       </form>
     </dialog>
 

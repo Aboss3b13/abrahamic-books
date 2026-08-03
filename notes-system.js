@@ -508,7 +508,7 @@ export class NotesSystem extends EventTarget {
         }
       }
       await this.syncOrganizer();
-      this.emit("synced", uploaded ? `${uploaded} local ${uploaded === 1 ? "note" : "notes"} synced to this VPS.` : `All notes are synced to this VPS for ${this.accountEmail}.`);
+      this.emit("synced", uploaded ? `${uploaded} local ${uploaded === 1 ? "note" : "notes"} synced.` : `All notes are synced for ${this.accountEmail}.`);
     } catch (error) {
       this.emit(navigator.onLine ? "conflict" : "offline", error.message);
       throw error;

@@ -414,7 +414,7 @@ async function init() {
   if (notesSystem?.config.needsServerMigration && !notesSystem.signedIn) {
     setTimeout(() => {
       openNotesSyncSettings();
-      updateSyncUI("offline", "Create or sign in to a private VPS account to transfer the notes already cached on this device.");
+      updateSyncUI("offline", "Create an account or sign in to transfer the notes already cached on this device.");
     }, 700);
   }
   syncStickyOffset();
@@ -4238,7 +4238,7 @@ function updateSyncUI(syncState, detail = "") {
   const icons = { "saved locally": "ti-device-floppy", syncing: "ti-loader-2", synced: "ti-circle-check", offline: "ti-wifi-off", conflict: "ti-alert-triangle" };
   els.notesSyncIcon.className = `ti ${icons[syncState] || "ti-info-circle"}`;
   const mode = notesSystem?.config.mode || "local";
-  els.syncAccountStatus.textContent = mode === "local" ? "Local-only · no account required" : notesSystem?.user ? `Private VPS · ${notesSystem.accountEmail}` : "VPS account is not connected";
+  els.syncAccountStatus.textContent = mode === "local" ? "Local-only · no account required" : notesSystem?.user ? notesSystem.accountEmail : "Not signed in";
   if (detail) document.querySelector("#syncHelp").textContent = detail;
 }
 
@@ -4253,7 +4253,7 @@ async function connectServer(createAccount) {
     startSharedNotes();
     startAccountLastReadSync();
     els.serverPassword.value = "";
-    updateSyncUI("synced", createAccount ? "Private VPS account created and cached notes transferred." : "Signed in and synced with this VPS.");
+    updateSyncUI("synced", createAccount ? "Account created and cached notes transferred." : "Signed in and synced.");
     if (state.pendingSharedMapId || new URLSearchParams(location.hash.slice(1)).has("map")) {
       els.notesSyncSheet.close();
       await openSharedLink();
