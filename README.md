@@ -3,7 +3,7 @@
 Abrahamic Books is a free reading and study app for the Quran, Bible, and hadith.
 It works as:
 
-- A website
+- A website 
 - An installable web app (PWA)
 - An offline Android app 
 
